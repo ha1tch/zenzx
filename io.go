@@ -348,6 +348,19 @@ func (io *SpectrumIO) LoadDisk(filename string) error {
 	return io.fdc.LoadDisk(filename)
 }
 
+// FDCTick advances the FDC frame clock and runs the auto-commit debounce. The
+// front-end calls it once per frame. A modified disk is flushed to its file
+// after it has been quiet for debounceFrames and the controller is idle.
+func (io *SpectrumIO) FDCTick(frame, debounceFrames int) {
+	if io.fdc == nil || !io.hasFDC {
+		return
+	}
+	io.fdc.Tick(frame)
+	if io.fdc.AutoCommit(debounceFrames) {
+		fmt.Printf("Disk auto-committed: %s\n", io.fdc.diskFilename)
+	}
+}
+
 // SaveDisk saves the current disk image
 func (io *SpectrumIO) SaveDisk() error {
 	if io.fdc != nil && io.hasFDC {

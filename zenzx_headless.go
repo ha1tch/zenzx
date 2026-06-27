@@ -45,6 +45,7 @@ func main() {
 	shotDir := flag.String("shot-dir", ".", "Directory to write screenshots into")
 	shotPrefix := flag.String("shot-prefix", "zenzx", "Filename prefix for screenshots")
 	quiet := flag.Bool("quiet", false, "Suppress per-frame logging")
+	scriptFile := flag.String("script", "", "Path to a .zen action script to drive the emulator")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -96,6 +97,9 @@ func main() {
 				logf(*quiet, "Loaded Spectrum +3 ROM")
 				if !*noFdc {
 					zx.io.EnableFDC()
+					if os.Getenv("ZENZX_FDC_DEBUG") != "" {
+						zx.io.SetFDCDebug(true)
+					}
 					if *disk != "" {
 						if err := zx.io.LoadDisk(*disk); err != nil {
 							fmt.Fprintf(os.Stderr, "Warning: failed to load disk %s: %v\n", *disk, err)
@@ -206,30 +210,74 @@ func main() {
 	}
 
 	// --- Run ---------------------------------------------------------------
+	// --- Action script (.zen) ---------------------------------------------
+	var sched *Scheduler
+	if *scriptFile != "" {
+		script, err := ParseScriptFile(*scriptFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing script: %v\n", err)
+			os.Exit(1)
+		}
+		sched = NewScheduler(script, ScheduleConfig{
+			ShotDir:    *shotDir,
+			ShotPrefix: *shotPrefix,
+			Quiet:      *quiet,
+			Model:      *model,
+		})
+		logf(*quiet, "Loaded script: %s (%d actions)", *scriptFile, len(script.Actions))
+	}
+
 	logf(*quiet, "Running %d frames (model=%s)", *frames, *model)
 	shots := 0
 	for f := 1; f <= *frames; f++ {
-		zx.RunFrame()
+		if sched != nil {
+			sched.Tick(zx)
+			if sched.QuitRequested() {
+				logf(*quiet, "Script requested quit at frame %d", f)
+				break
+			}
+		}
 
-		capture := false
-		if *shotInterval > 0 && f%*shotInterval == 0 {
-			capture = true
-		}
-		if f == *frames {
-			capture = true // always capture the final frame
-		}
-		if capture {
-			path := filepath.Join(*shotDir, fmt.Sprintf("%s-frame%06d.png", *shotPrefix, f))
-			if err := writePNG(path, zx.screen); err != nil {
-				fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", path, err)
-			} else {
-				shots++
-				logf(*quiet, "  frame %d -> %s", f, path)
+		zx.RunFrame()
+		zx.io.FDCTick(f, 30*50)
+
+		// Legacy interval/final-frame capture is disabled while a script is
+		// driving the run: the script's own shot actions own capture, and
+		// running both would write competing screenshots into the same
+		// directory (and could collide on the auto-name pattern).
+		if sched == nil {
+			capture := false
+			if *shotInterval > 0 && f%*shotInterval == 0 {
+				capture = true
+			}
+			if f == *frames {
+				capture = true // always capture the final frame
+			}
+			if capture {
+				path := filepath.Join(*shotDir, fmt.Sprintf("%s-frame%06d.png", *shotPrefix, f))
+				if err := writePNG(path, zx.screen); err != nil {
+					fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", path, err)
+				} else {
+					shots++
+					logf(*quiet, "  frame %d -> %s", f, path)
+				}
 			}
 		}
 	}
 
-	fmt.Printf("Done: %d frames, %d screenshot(s) written to %s\n", *frames, shots, *shotDir)
+	// Commit any disk changes made during the run (e.g. by a script driving a
+	// SAVE) back to the .dsk file before exiting.
+	if zx.io.hasFDC && zx.io.fdc != nil && zx.io.fdc.IsModified() && zx.io.fdc.diskFilename != "" {
+		if err := zx.io.SaveDisk(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save disk on exit: %v\n", err)
+		}
+	}
+
+	if sched != nil {
+		fmt.Printf("Done: %d frames, %d script screenshot(s) written to %s\n", *frames, sched.ShotsTaken(), *shotDir)
+	} else {
+		fmt.Printf("Done: %d frames, %d screenshot(s) written to %s\n", *frames, shots, *shotDir)
+	}
 }
 
 func writePNG(path string, screen *SpectrumScreen) error {

@@ -32,7 +32,8 @@ type SpectrumMemory struct {
 	screenBank   uint8 // Which RAM bank is displayed (5 or 7)
 	is128K       bool  // True for 128K mode, false for 48K mode
 	isPlus3      bool  // True for +2A/+3 mode with 4 ROMs
-	specialMode  uint8 // +3 special paging mode (0=normal, 1-3=special configs)
+	specialMode  uint8 // +3 special paging config index (0-3); valid only when specialPaging is true
+	specialPaging bool // +3 special (all-RAM) paging active (port 0x1FFD bit 0)
 	port7FFD     uint8 // Last value written to 0x7FFD
 	port1FFD     uint8 // Last value written to 0x1FFD (+3 only)
 }
@@ -99,7 +100,7 @@ func (m *SpectrumMemory) Read(address uint16) uint8 {
 
 	// 128K/+3 mode with banking
 	// Check for special paging modes (+3 only)
-	if m.isPlus3 && m.specialMode > 0 {
+	if m.isPlus3 && m.specialPaging {
 		return m.readSpecialMode(address)
 	}
 
@@ -159,36 +160,30 @@ func (m *SpectrumMemory) Read(address uint16) uint8 {
 }
 
 func (m *SpectrumMemory) readSpecialMode(address uint16) uint8 {
-	// +3 special paging modes
+	// +3 special paging: four all-RAM configurations, indexed by specialMode.
 	config := [4][4]uint8{
-		{0, 1, 2, 3}, // Mode 0: ROM0, ROM1, ROM2, ROM3
-		{4, 5, 6, 7}, // Mode 1: RAM4, RAM5, RAM6, RAM7
-		{4, 5, 6, 3}, // Mode 2: RAM4, RAM5, RAM6, RAM3
-		{4, 7, 6, 3}, // Mode 3: RAM4, RAM7, RAM6, RAM3
+		{0, 1, 2, 3}, // Config 0: RAM 0,1,2,3
+		{4, 5, 6, 7}, // Config 1: RAM 4,5,6,7
+		{4, 5, 6, 3}, // Config 2: RAM 4,5,6,3
+		{4, 7, 6, 3}, // Config 3: RAM 4,7,6,3
 	}
 
 	bank := address / 0x4000
 	offset := address % 0x4000
 
-	if m.specialMode == 0 {
-		// All ROM mode
-		return m.rom[config[0][bank]][offset]
-	} else {
-		// RAM configurations
-		ramBank := config[m.specialMode][bank]
-		val := m.ram[ramBank][offset]
+	ramBank := config[m.specialMode][bank]
+	val := m.ram[ramBank][offset]
 
-		// Handle screen memory in special modes
-		if ramBank == m.screenBank {
-			relAddr := bank*0x4000 + offset
-			if relAddr >= 0x0000 && relAddr < 0x1800 {
-				return m.screen.bitmap[relAddr]
-			} else if relAddr >= 0x1800 && relAddr < 0x1B00 {
-				return m.screen.attributes[relAddr-0x1800]
-			}
+	// Handle screen memory in special modes
+	if ramBank == m.screenBank {
+		relAddr := bank*0x4000 + offset
+		if relAddr >= 0x0000 && relAddr < 0x1800 {
+			return m.screen.bitmap[relAddr]
+		} else if relAddr >= 0x1800 && relAddr < 0x1B00 {
+			return m.screen.attributes[relAddr-0x1800]
 		}
-		return val
 	}
+	return val
 }
 
 func (m *SpectrumMemory) Write(address uint16, value uint8) {
@@ -226,7 +221,7 @@ func (m *SpectrumMemory) Write(address uint16, value uint8) {
 	}
 
 	// 128K/+3 mode
-	if m.isPlus3 && m.specialMode > 0 {
+	if m.isPlus3 && m.specialPaging {
 		m.writeSpecialMode(address, value)
 		return
 	}
@@ -291,17 +286,12 @@ func (m *SpectrumMemory) Load(address uint16, data []byte) {
 }
 
 func (m *SpectrumMemory) writeSpecialMode(address uint16, value uint8) {
-	// +3 special paging mode writes
-	if m.specialMode == 0 {
-		// All ROM mode - no writes
-		return
-	}
-
+	// +3 special paging: four all-RAM configurations; all are writable.
 	config := [4][4]uint8{
-		{0, 1, 2, 3}, // Mode 0: not used here
-		{4, 5, 6, 7}, // Mode 1: RAM4, RAM5, RAM6, RAM7
-		{4, 5, 6, 3}, // Mode 2: RAM4, RAM5, RAM6, RAM3
-		{4, 7, 6, 3}, // Mode 3: RAM4, RAM7, RAM6, RAM3
+		{0, 1, 2, 3}, // Config 0: RAM 0,1,2,3
+		{4, 5, 6, 7}, // Config 1: RAM 4,5,6,7
+		{4, 5, 6, 3}, // Config 2: RAM 4,5,6,3
+		{4, 7, 6, 3}, // Config 3: RAM 4,7,6,3
 	}
 
 	bank := address / 0x4000
@@ -352,7 +342,7 @@ func (m *SpectrumMemory) SetPaging(value uint8) {
 	m.port7FFD = value
 
 	// In special mode, only screen select works
-	if m.isPlus3 && m.specialMode > 0 {
+	if m.isPlus3 && m.specialPaging {
 		// Bit 3: Screen select still works in special modes
 		newScreenBank := uint8(5)
 		if value&0x08 != 0 {
@@ -400,44 +390,34 @@ func (m *SpectrumMemory) SetPlus3Paging(value uint8) {
 
 	m.port1FFD = value
 
-	// Bit 0: Paging mode (0=normal, 1=special)
+	// Bit 0: paging mode (0 = normal, 1 = special all-RAM paging).
 	if value&0x01 != 0 {
-		// Special paging mode
-		// Bits 1-2: Configuration
+		// Special paging mode. Bits 1-2 select one of four all-RAM
+		// configurations (there is no "all ROM" special config):
+		//   0: banks 0,1,2,3   1: banks 4,5,6,7
+		//   2: banks 4,5,6,3   3: banks 4,7,6,3
+		m.specialPaging = true
 		m.specialMode = (value >> 1) & 0x03
-
-		// Update memory configuration based on special mode
 		switch m.specialMode {
-		case 0: // All ROM
-			// Banks 0-3 all show ROM 0-3
-		case 1: // RAM 4,5,6,7
-			m.ramBankLow = 5
-			m.ramBankHigh = 6
-			m.ramBankTop = 7
-		case 2: // RAM 4,5,6,3
-			m.ramBankLow = 5
-			m.ramBankHigh = 6
-			m.ramBankTop = 3
-		case 3: // RAM 4,7,6,3
-			m.ramBankLow = 7
-			m.ramBankHigh = 6
-			m.ramBankTop = 3
-		}
-
-		// Set special mode flag
-		if m.specialMode > 0 {
-			m.specialMode++ // Make it 1-3 instead of 0-2
+		case 0:
+			m.ramBankLow, m.ramBankHigh, m.ramBankTop = 1, 2, 3
+		case 1:
+			m.ramBankLow, m.ramBankHigh, m.ramBankTop = 5, 6, 7
+		case 2:
+			m.ramBankLow, m.ramBankHigh, m.ramBankTop = 5, 6, 3
+		case 3:
+			m.ramBankLow, m.ramBankHigh, m.ramBankTop = 7, 6, 3
 		}
 	} else {
-		// Normal paging mode
+		// Normal paging mode.
+		m.specialPaging = false
 		m.specialMode = 0
 		m.ramBankLow = 5
 		m.ramBankHigh = 2
-		// ramBankTop is controlled by port 7FFD
-	}
+		// ramBankTop is controlled by port 0x7FFD.
 
-	// Bit 2: High bit of ROM selection (with bit 4 of port 7FFD)
-	if m.specialMode == 0 { // Only in normal mode
+		// Bit 2 of 0x1FFD is the high bit of ROM selection (combined with
+		// bit 4 of 0x7FFD). Only meaningful in normal paging mode.
 		m.romBank = ((value >> 1) & 0x02) | (m.romBank & 0x01)
 	}
 

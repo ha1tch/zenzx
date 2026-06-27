@@ -63,6 +63,15 @@ type AudioManagerOto struct {
 	samplesGenerated int
 	samplesRequested int
 
+	// Output conditioning: a DC blocker removes the offset of the unipolar
+	// beeper output, and a lowpass biquad reconstructs the duty-cycle stream,
+	// removing the residual high-frequency aliasing that the boxcar
+	// (per-sample duty cycle) averaging leaves behind -- the "jagged" edge of
+	// the square wave.
+	dcBlocker  *DCBlocker
+	outputLP   *BiquadFilter
+	filterOn   bool
+
 	// History cleanup
 	lastCleanupCycle uint64
 }
@@ -85,6 +94,16 @@ func NewAudioManagerOto() *AudioManagerOto {
 
 	// Initialize AY chip
 	am.ay = NewAYChip(1773400)
+
+	// Output conditioning filters. The lowpass cutoff (14 kHz) sits above the
+	// beeper's musically useful range but well below Nyquist (22.05 kHz),
+	// rolling off the aliased harmonics that make the square wave sound jagged
+	// while leaving its brightness intact. Q = 0.707 is Butterworth (maximally
+	// flat passband, no resonant peak). The DC blocker removes the offset of
+	// the unipolar 0..volume output so it does not eat headroom or click.
+	am.dcBlocker = NewDCBlocker(20.0, float32(AudioSampleRate))
+	am.outputLP = NewLowpassBiquad(float32(AudioSampleRate), 14000.0, 0.707)
+	am.filterOn = true
 
 	return am
 }
@@ -340,6 +359,16 @@ func (am *AudioManagerOto) fillRingBuffer() {
 	samples := make([]float32, samplesToGenerate)
 	am.generateSamplesFromHistory(samples, am.lastProcessCycle, cyclesConsumed)
 
+	// Output conditioning: block DC, then lowpass to remove the residual
+	// high-frequency aliasing left by the per-sample duty-cycle averaging.
+	// Both are stateful IIR filters processing the continuous stream in order.
+	if am.filterOn {
+		for i := 0; i < samplesToGenerate; i++ {
+			s := am.dcBlocker.Process(samples[i])
+			samples[i] = am.outputLP.Process(s)
+		}
+	}
+
 	// Write to ring buffer
 	for i := 0; i < samplesToGenerate; i++ {
 		am.ringBuffer[am.ringWritePos] = samples[i]
@@ -521,6 +550,17 @@ func (am *AudioManagerOto) SetMasterVolume(volume float32) {
 		volume = 1
 	}
 	am.masterVolume = volume
+}
+
+// SetAudioFilter enables or disables the output anti-alias filtering (DC
+// blocker + lowpass). On by default; disabling yields the raw duty-cycle
+// output for comparison or for a deliberately harsher sound.
+func (am *AudioManagerOto) SetAudioFilter(on bool) {
+	am.filterOn = on
+	if !on && am.dcBlocker != nil {
+		am.dcBlocker.Reset()
+		am.outputLP.Reset()
+	}
 }
 
 // SetBeeperVolume sets the beeper volume (0.0 to 1.0)

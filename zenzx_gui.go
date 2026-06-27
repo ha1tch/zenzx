@@ -30,6 +30,7 @@ func main() {
 	binAddr := flag.String("binaddr", "0x8000", "Load address for -bin (hex 0x.. or decimal)")
 	binStart := flag.String("binstart", "", "PC start address after -bin (hex/decimal; empty = use load address; -1 = leave PC unchanged)")
 	scrFile := flag.String("scr", "", "Load a raw .scr screen dump onto the display (still image)")
+	scriptFile := flag.String("script", "", "Path to a .zen action script to drive the emulator")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -334,19 +335,62 @@ func main() {
 	fmt.Println("  ./zenzx -tape=game.tap -tapemode=fast")
 	fmt.Println("  ./zenzx -noaudio  (disable audio)")
 
+	// Action script (.zen): drive the emulator from a timed action list.
+	var sched *Scheduler
+	if *scriptFile != "" {
+		script, err := ParseScriptFile(*scriptFile)
+		if err != nil {
+			fmt.Printf("Error parsing script: %v\n", err)
+			return
+		}
+		sched = NewScheduler(script, ScheduleConfig{
+			ShotDir:    ".",
+			ShotPrefix: "zenzx",
+			Quiet:      false,
+			Model:      *model,
+		})
+		fmt.Printf("Loaded script: %s (%d actions)\n", *scriptFile, len(script.Actions))
+	}
+
 	// Main loop
+	// Auto-commit a modified disk after it has been quiet for ~30s (50 fps).
+	const autoCommitDebounceFrames = 30 * 50
+	frameNo := 0
 	for !rl.WindowShouldClose() || zx.noEscKey {
 		// If ESC is disabled, only check for window close button
 		if zx.noEscKey && rl.WindowShouldClose() && !rl.IsKeyPressed(rl.KeyEscape) {
 			break
 		}
 
+		if sched != nil {
+			sched.Tick(zx)
+			if sched.QuitRequested() {
+				rl.CloseWindow()
+				break
+			}
+		}
+
 		zx.HandleInput()
 		zx.RunFrame()
 		zx.Render()
+
+		frameNo++
+		zx.io.FDCTick(frameNo, autoCommitDebounceFrames)
 	}
 
 	// Clean up
+	// Commit any unsaved disk changes before exiting, so writes made during
+	// the session (e.g. a BASIC SAVE) persist to the .dsk file without needing
+	// a manual save. Only writes back to an existing file; a blank disk with no
+	// filename is left for the user to save explicitly (F8).
+	if zx.io.hasFDC && zx.io.fdc != nil && zx.io.fdc.IsModified() && zx.io.fdc.diskFilename != "" {
+		if err := zx.io.SaveDisk(); err != nil {
+			fmt.Printf("Warning: failed to save disk on exit: %v\n", err)
+		} else {
+			fmt.Println("Disk changes saved on exit")
+		}
+	}
+
 	zx.screen.CleanupTextures()
 	fmt.Println("ZenZX Stopped")
 }

@@ -108,6 +108,16 @@ func (ay *AYChip) GenerateSamples(cycles int, sampleRate int, cpuFreq int) []flo
 		// Accumulate AY clocks
 		ay.cycleAccumulator += ayClockPerSample
 
+		// Area-sample the output: accumulate the mixed channel level at every
+		// AY clock within this sample window and average, rather than reading
+		// the level once per sample. Point-sampling a square/noise source whose
+		// edges fall between samples aliases high harmonics into the audible
+		// band before any output filter can act; averaging over the window is
+		// first-order anti-aliasing at the source (the same treatment the
+		// beeper's duty-cycle path uses).
+		var acc float32
+		var ticks int
+
 		// Process whole AY clocks
 		for ay.cycleAccumulator >= 1.0 {
 			ay.cycleAccumulator -= 1.0
@@ -158,50 +168,67 @@ func (ay *AYChip) GenerateSamples(cycles int, sampleRate int, cpuFreq int) []flo
 				ay.envelopeCounter = 0
 				ay.updateEnvelope()
 			}
+
+			// Sample the mixed output at this AY clock and accumulate.
+			acc += ay.mixOutput()
+			ticks++
 		}
 
-		// Mix channels with proper AND logic
-		output := float32(0)
-		enable := ay.registers[7]
-
-		for ch := 0; ch < 3; ch++ {
-			// Check if tone and noise are disabled (inverted logic in register)
-			toneDisable := (enable & (1 << ch)) != 0
-			noiseDisable := (enable & (8 << ch)) != 0
-
-			// Channel output using AND logic:
-			// Output is ON only if all enabled sources are ON
-			channelOn := true
-
-			// If tone is enabled and tone output is low, channel is off
-			if !toneDisable && !ay.toneOutputs[ch] {
-				channelOn = false
-			}
-
-			// If noise is enabled and noise output is low, channel is off
-			if !noiseDisable && !ay.noiseOutput {
-				channelOn = false
-			}
-
-			if channelOn {
-				// Get volume
-				vol := ay.registers[8+ch]
-				if vol&0x10 != 0 {
-					// Use envelope
-					vol = ay.envelopeOutput
-				} else {
-					vol = vol & 0x0F
-				}
-
-				// Use logarithmic volume table
-				output += ayVolumeTable[vol] / 3.0 // Divide by 3 for mixing
-			}
+		// Average over the clocks in this window. If the sample was shorter
+		// than one AY clock (very high sample rates), fall back to the current
+		// instantaneous level so the output is never silent.
+		if ticks > 0 {
+			samples[i] = acc / float32(ticks)
+		} else {
+			samples[i] = ay.mixOutput()
 		}
-
-		samples[i] = output
 	}
 
 	return samples
+}
+
+// mixOutput computes the current mixed output level of the three AY channels
+// using the chip's tone/noise enable logic and per-channel volume (or
+// envelope). Factored out so the sample generator can average it over every
+// AY clock within a sample window.
+func (ay *AYChip) mixOutput() float32 {
+	output := float32(0)
+	enable := ay.registers[7]
+
+	for ch := 0; ch < 3; ch++ {
+		// Check if tone and noise are disabled (inverted logic in register)
+		toneDisable := (enable & (1 << ch)) != 0
+		noiseDisable := (enable & (8 << ch)) != 0
+
+		// Channel output using AND logic:
+		// Output is ON only if all enabled sources are ON
+		channelOn := true
+
+		// If tone is enabled and tone output is low, channel is off
+		if !toneDisable && !ay.toneOutputs[ch] {
+			channelOn = false
+		}
+
+		// If noise is enabled and noise output is low, channel is off
+		if !noiseDisable && !ay.noiseOutput {
+			channelOn = false
+		}
+
+		if channelOn {
+			// Get volume
+			vol := ay.registers[8+ch]
+			if vol&0x10 != 0 {
+				// Use envelope
+				vol = ay.envelopeOutput
+			} else {
+				vol = vol & 0x0F
+			}
+
+			// Use logarithmic volume table
+			output += ayVolumeTable[vol] / 3.0 // Divide by 3 for mixing
+		}
+	}
+	return output
 }
 
 // updateEnvelope updates the envelope generator with corrected patterns

@@ -18,6 +18,7 @@ const (
 type FDC765 struct {
 	// Disk image
 	diskImage    []byte
+	disk         *Disk // parsed DSK structure (CHRN-addressable sectors)
 	diskFilename string
 	diskPresent  bool
 	diskModified bool
@@ -58,6 +59,21 @@ type FDC765 struct {
 	// The +3 ROM expects exactly 4 reset interrupts (one per drive)
 	resetCount int // Number of reset interrupts reported
 	seekEnd    bool
+	readIdIndex int // rotating index for Read ID across a track's sectors
+
+	// Auto-commit debounce: lastWriteFrame is the frame at which the disk was
+	// last modified; AutoCommit flushes once the disk has been quiet long
+	// enough and the controller is idle.
+	currentFrame    int // updated each frame by the front-end via Tick
+	lastWriteFrame  int // frame of the most recent disk modification
+	currentR    uint8 // sector ID (R) currently being transferred in a read
+	eotSector   uint8 // EOT: last sector ID to transfer in a multi-sector read
+
+	// Format Track state.
+	fmtSizeCode  uint8 // N: sector size code for the track being formatted
+	fmtNumSec    uint8 // SC: sectors per track
+	fmtFiller    uint8 // D: filler byte for sector data
+	fmtCollected int   // how many of the 4*SC id bytes have been received
 
 	// Debug flag
 	debug bool
@@ -111,6 +127,40 @@ func (fdc *FDC765) HasDisk() bool {
 // IsModified returns true if the disk has been modified
 func (fdc *FDC765) IsModified() bool {
 	return fdc.diskModified
+}
+
+// Tick advances the FDC's frame clock. The front-end calls it once per frame.
+func (fdc *FDC765) Tick(frame int) {
+	fdc.currentFrame = frame
+}
+
+// markModified flags the disk dirty and records the time of the write, so the
+// auto-commit debounce window is measured from the most recent write.
+func (fdc *FDC765) markModified() {
+	fdc.diskModified = true
+	fdc.lastWriteFrame = fdc.currentFrame
+}
+
+// AutoCommit flushes a modified disk back to its file, but only once writing
+// has settled: it commits when the disk is dirty, the controller is idle (no
+// command in execution or result phase), and at least debounceFrames have
+// passed since the last write. This avoids serializing a torn image in the
+// middle of a multi-sector operation. No-op when there is nothing to commit.
+// Returns true if a commit occurred.
+func (fdc *FDC765) AutoCommit(debounceFrames int) bool {
+	if !fdc.diskModified || fdc.diskFilename == "" {
+		return false
+	}
+	if fdc.commandPhase != 0 {
+		return false // never commit mid-command
+	}
+	if fdc.currentFrame-fdc.lastWriteFrame < debounceFrames {
+		return false // not quiet long enough
+	}
+	if err := fdc.SaveDisk(); err != nil {
+		return false // retry on a later frame
+	}
+	return true
 }
 
 func NewFDC765() *FDC765 {
@@ -173,32 +223,30 @@ func (fdc *FDC765) LoadDisk(filename string) error {
 
 	// Check for standard +3 disk size or extended DSK format
 	if len(data) == DiskImageSize {
-		// Standard 180KB disk
+		// Standard 180KB raw sector dump (no DSK header).
 		copy(fdc.diskImage, data)
+		fdc.disk = nil // raw image: addressed by flat geometry
 		fdc.diskPresent = true
 		fdc.diskFilename = filename
 		fdc.diskModified = false
-		// Update ST3 to indicate disk is ready
 		fdc.st3 |= 0x20 // Set Ready bit
-		fmt.Printf("Loaded disk: %s (180KB)\n", filename)
+		fmt.Printf("Loaded disk: %s (180KB raw)\n", filename)
 		return nil
-	} else if len(data) > 256 && string(data[0:8]) == "EXTENDED" {
-		// Extended DSK format (with header)
-		// Skip header and load track data
-		// This is a simplified implementation
-		fmt.Printf("Loaded extended DSK: %s\n", filename)
-		// TODO: Properly parse extended DSK format
+	} else if len(data) > 256 && (string(data[0:8]) == "EXTENDED" || string(data[0:8]) == "MV - CPC") {
+		// Standard or extended DSK image: parse into a CHRN-addressable
+		// track/sector structure.
+		disk, err := ParseDSK(data)
+		if err != nil {
+			return fmt.Errorf("parsing DSK %s: %v", filename, err)
+		}
+		fdc.disk = disk
 		fdc.diskPresent = true
 		fdc.diskFilename = filename
+		fdc.diskModified = false
 		fdc.st3 |= 0x20 // Set Ready bit
-		return nil
-	} else if len(data) > 256 && string(data[0:8]) == "MV - CPC" {
-		// Standard DSK format
-		fmt.Printf("Loaded standard DSK: %s\n", filename)
-		// TODO: Parse standard DSK header
-		fdc.diskPresent = true
-		fdc.diskFilename = filename
-		fdc.st3 |= 0x20 // Set Ready bit
+		fmt.Printf("Loaded DSK: %s (%d tracks, %d side(s)%s)\n",
+			filename, disk.NumTracks, disk.NumSides,
+			map[bool]string{true: ", extended", false: ""}[disk.Extended])
 		return nil
 	}
 
@@ -211,11 +259,21 @@ func (fdc *FDC765) SaveDisk() error {
 		return nil
 	}
 
-	err := os.WriteFile(fdc.diskFilename, fdc.diskImage, 0644)
-	if err != nil {
-		return err
+	if fdc.disk != nil {
+		// Parsed DSK: re-serialize the (possibly modified) structure.
+		if err := fdc.disk.SaveDSK(fdc.diskFilename); err != nil {
+			return err
+		}
+		fdc.disk.Modified = false
+		fdc.diskModified = false
+		fmt.Printf("Saved DSK: %s\n", fdc.diskFilename)
+		return nil
 	}
 
+	// Raw flat image.
+	if err := os.WriteFile(fdc.diskFilename, fdc.diskImage, 0644); err != nil {
+		return err
+	}
 	fdc.diskModified = false
 	fmt.Printf("Saved disk: %s\n", fdc.diskFilename)
 	return nil
@@ -274,8 +332,18 @@ func (fdc *FDC765) ReadData() uint8 {
 			data = fdc.dataBuffer[fdc.dataIdx]
 			fdc.dataIdx++
 			if fdc.dataIdx >= fdc.dataLen {
-				// Data transfer complete
-				fdc.completeCommand()
+				// Sector drained. In a multi-sector read, advance to the next
+				// sector ID (up to and including EOT) and keep transferring;
+				// otherwise complete the command.
+				if fdc.command() == 0x06 && fdc.currentR < fdc.eotSector {
+					fdc.currentR++
+					fdc.currentSector = fdc.currentR - 1
+					fdc.loadSectorForRead(fdc.currentCylinder, fdc.currentHead, fdc.commandBuf[1]&0x03)
+					// If the next sector wasn't found, loadSectorForRead has
+					// already set an error result (phase 2); nothing more here.
+				} else {
+					fdc.completeCommand()
+				}
 			}
 			return data
 		}
@@ -313,7 +381,11 @@ func (fdc *FDC765) WriteData(value uint8) {
 			fdc.dataIdx++
 			if fdc.dataIdx >= fdc.dataLen {
 				// Data transfer complete
-				fdc.writeDataToImage()
+				if fdc.command() == 0x0D {
+					fdc.buildFormattedTrack()
+				} else {
+					fdc.writeDataToImage()
+				}
 				fdc.completeCommand()
 			}
 		}
@@ -425,6 +497,9 @@ func (fdc *FDC765) executeCommand() {
 	case 0x05: // Write Data
 		fdc.prepareSectorWrite()
 
+	case 0x0D: // Format Track
+		fdc.prepareFormatTrack()
+
 	case 0x07: // Recalibrate - seek to track 0
 		drv := uint8(0)
 		if len(fdc.commandBuf) > 1 {
@@ -488,25 +563,33 @@ func (fdc *FDC765) executeCommand() {
 		fdc.commandBuf = nil
 
 	case 0x0A: // Read ID - read sector header
-		// This command reads the next sector header
-		// For simplicity, return the current position
-		fdc.st0 = 0x00 // Normal termination
+		// Read ID returns the next sector header under the head. For a parsed
+		// DSK, rotate through the current track's real sector list so +3DOS
+		// sees the actual sector IDs; otherwise fall back to a synthetic CHRN.
+		fdc.st0 = 0x00
 		fdc.st1 = 0x00
 		fdc.st2 = 0x00
 
-		fdc.resultBuf = []uint8{
-			fdc.st0,               // ST0
-			fdc.st1,               // ST1
-			fdc.st2,               // ST2
-			fdc.currentCylinder,   // C
-			fdc.currentHead,       // H
-			fdc.currentSector + 1, // R (sector numbers start at 1)
-			0x02,                  // N (512 bytes = 2^(7+2))
+		var c, h, r, n uint8 = fdc.currentCylinder, fdc.currentHead, fdc.currentSector + 1, 0x02
+		if fdc.disk != nil {
+			if trk := fdc.disk.Track(fdc.currentCylinder, fdc.currentHead); trk != nil && len(trk.Sectors) > 0 {
+				if fdc.readIdIndex >= len(trk.Sectors) {
+					fdc.readIdIndex = 0
+				}
+				s := trk.Sectors[fdc.readIdIndex]
+				c, h, r, n = s.C, s.H, s.R, s.N
+				fdc.readIdIndex++
+			} else {
+				// No formatted track here: missing address mark.
+				fdc.st0 = 0x40
+				fdc.st1 = 0x01
+			}
 		}
 
+		fdc.resultBuf = []uint8{fdc.st0, fdc.st1, fdc.st2, c, h, r, n}
+
 		if fdc.debug {
-			fmt.Printf("FDC: Read ID - C=%d H=%d R=%d N=%d\n",
-				fdc.currentCylinder, fdc.currentHead, fdc.currentSector+1, 2)
+			fmt.Printf("FDC: Read ID - C=%d H=%d R=%d N=%d\n", c, h, r, n)
 		}
 
 		fdc.commandPhase = 2
@@ -544,6 +627,15 @@ func (fdc *FDC765) executeCommand() {
 	}
 }
 
+// command returns the current command opcode (low 5 bits), or 0xFF if no
+// command is buffered.
+func (fdc *FDC765) command() uint8 {
+	if len(fdc.commandBuf) == 0 {
+		return 0xFF
+	}
+	return fdc.commandBuf[0] & 0x1F
+}
+
 // readSector reads a sector from disk image
 func (fdc *FDC765) readSector() {
 	if len(fdc.commandBuf) < 9 {
@@ -569,6 +661,12 @@ func (fdc *FDC765) readSector() {
 	fdc.currentCylinder = cylinder
 	fdc.currentSector = sector
 
+	// Multi-sector read state: start at R (commandBuf[4]) and continue up to
+	// and including EOT (commandBuf[6]). The data-completion path advances R
+	// after each sector until R passes EOT.
+	fdc.currentR = fdc.commandBuf[4]
+	fdc.eotSector = fdc.commandBuf[6]
+
 	if !fdc.diskPresent {
 		// No disk - return "not ready" error
 		// This tells +3DOS that there's no disk
@@ -577,7 +675,7 @@ func (fdc *FDC765) readSector() {
 		fdc.st2 = 0x01       // Missing data address mark
 
 		// Return error result immediately
-		fdc.resultBuf = []uint8{fdc.st0, fdc.st1, fdc.st2, cylinder, head, sector + 1, 0x02}
+		fdc.resultBuf = []uint8{fdc.st0, fdc.st1, fdc.st2, cylinder, head, fdc.currentR, 0x02}
 		fdc.commandPhase = 2
 		fdc.resultIdx = 0
 		fdc.mainStatus = 0xD0
@@ -589,37 +687,58 @@ func (fdc *FDC765) readSector() {
 		return
 	}
 
-	// Calculate offset in disk image
-	track := cylinder
-	if head == 1 {
-		track += TracksPerSide
+	fdc.loadSectorForRead(cylinder, head, drv)
+}
+
+// loadSectorForRead locates the sector with the current record ID and either
+// arms the data-transfer phase or sets a sector-not-found error result. It is
+// called for the first sector and again for each subsequent sector in a
+// multi-sector read.
+func (fdc *FDC765) loadSectorForRead(cylinder, head, drv uint8) {
+	requestedR := fdc.currentR
+	var sectorData []byte
+	if fdc.disk != nil {
+		sec := fdc.disk.FindSector(cylinder, head, requestedR)
+		if sec != nil {
+			sectorData = sec.Data
+		}
+	} else {
+		sector := requestedR - 1
+		track := cylinder
+		if head == 1 {
+			track += TracksPerSide
+		}
+		offset := (int(track)*SectorsPerTrack + int(sector)) * BytesPerSector
+		if offset+BytesPerSector <= len(fdc.diskImage) {
+			sectorData = fdc.diskImage[offset : offset+BytesPerSector]
+		}
 	}
 
-	offset := (int(track)*SectorsPerTrack + int(sector)) * BytesPerSector
-
-	if offset+BytesPerSector <= len(fdc.diskImage) {
+	if sectorData != nil {
 		// Read sector data
-		fdc.dataBuffer = make([]byte, BytesPerSector)
-		copy(fdc.dataBuffer, fdc.diskImage[offset:offset+BytesPerSector])
+		fdc.dataBuffer = make([]byte, len(sectorData))
+		copy(fdc.dataBuffer, sectorData)
 		fdc.dataIdx = 0
-		fdc.dataLen = BytesPerSector
+		fdc.dataLen = len(sectorData)
 		fdc.commandPhase = 1
 		fdc.mainStatus = 0xF0 // RQM=1, DIO=1, EXM=1, CB=1 - ready to send data
-		// Don't clear command buffer yet - needed for result phase
 
 		if fdc.debug {
-			fmt.Printf("FDC: Reading sector C=%d H=%d R=%d\n", cylinder, head, sector+1)
+			fmt.Printf("FDC: Reading sector C=%d H=%d R=%d (%d bytes)\n", cylinder, head, requestedR, len(sectorData))
 		}
 	} else {
 		// Sector not found
 		fdc.st0 = 0x40 | drv // Abnormal termination
 		fdc.st1 = 0x04       // No data
 		fdc.st2 = 0x00
-		fdc.resultBuf = []uint8{fdc.st0, fdc.st1, fdc.st2, cylinder, head, sector + 1, 0x02}
+		fdc.resultBuf = []uint8{fdc.st0, fdc.st1, fdc.st2, cylinder, head, requestedR, 0x02}
 		fdc.commandPhase = 2
 		fdc.resultIdx = 0
 		fdc.mainStatus = 0xD0
 		fdc.commandBuf = nil
+		if fdc.debug {
+			fmt.Printf("FDC: Sector not found C=%d H=%d R=%d\n", cylinder, head, requestedR)
+		}
 	}
 }
 
@@ -642,6 +761,7 @@ func (fdc *FDC765) prepareSectorWrite() {
 	drv := fdc.commandBuf[1] & 0x03
 	fdc.currentCylinder = fdc.commandBuf[2]
 	fdc.currentSector = fdc.commandBuf[4] - 1
+	fdc.currentR = fdc.commandBuf[4] // record ID for CHRN-based write targeting
 
 	if !fdc.diskPresent {
 		// No disk - return "not ready" error immediately
@@ -676,6 +796,88 @@ func (fdc *FDC765) prepareSectorWrite() {
 	}
 }
 
+// prepareFormatTrack begins a Format Track command. The command bytes are:
+// 0x0D, (H<<2|drive), N (size code), SC (sectors/track), GPL, D (filler).
+// The execution phase then receives 4 bytes per sector (C,H,R,N).
+func (fdc *FDC765) prepareFormatTrack() {
+	if len(fdc.commandBuf) < 6 {
+		fdc.st0 = 0x40
+		fdc.resultBuf = []uint8{fdc.st0, 0, 0, 0, 0, 0, 0}
+		fdc.commandPhase = 2
+		fdc.resultIdx = 0
+		fdc.mainStatus = 0xD0
+		fdc.commandBuf = nil
+		return
+	}
+
+	fdc.currentHead = (fdc.commandBuf[1] >> 2) & 0x01
+	drv := fdc.commandBuf[1] & 0x03
+	fdc.fmtSizeCode = fdc.commandBuf[2]
+	fdc.fmtNumSec = fdc.commandBuf[3]
+	fdc.fmtFiller = fdc.commandBuf[5]
+
+	if !fdc.diskPresent || fdc.disk == nil {
+		fdc.st0 = 0x48 | drv // not ready
+		fdc.st1 = 0x02       // not writable
+		fdc.resultBuf = []uint8{fdc.st0, fdc.st1, 0, 0, 0, 0, 0}
+		fdc.commandPhase = 2
+		fdc.resultIdx = 0
+		fdc.mainStatus = 0xD0
+		fdc.commandBuf = nil
+		return
+	}
+
+	// Collect 4 ID bytes (C,H,R,N) per sector in the execution phase.
+	fdc.dataBuffer = make([]byte, 4*int(fdc.fmtNumSec))
+	fdc.dataIdx = 0
+	fdc.dataLen = len(fdc.dataBuffer)
+	fdc.commandPhase = 1
+	fdc.mainStatus = 0xB0 // RQM=1, DIO=0, EXM=1, CB=1 - ready to receive
+
+	if fdc.debug {
+		fmt.Printf("FDC: Format track C=%d H=%d sectors=%d N=%d filler=0x%02X\n",
+			fdc.currentCylinder, fdc.currentHead, fdc.fmtNumSec, fdc.fmtSizeCode, fdc.fmtFiller)
+	}
+}
+
+// buildFormattedTrack constructs the track from the collected sector ID bytes,
+// filling each sector's data with the filler byte, and stores it in the disk.
+func (fdc *FDC765) buildFormattedTrack() {
+	if fdc.disk == nil {
+		return
+	}
+	idx := fdc.disk.trackIndex(fdc.currentCylinder, fdc.currentHead)
+	if idx < 0 {
+		return
+	}
+
+	secLen := 0x80 << fdc.fmtSizeCode
+	trk := DiskTrack{
+		Track:    fdc.currentCylinder,
+		Side:     fdc.currentHead,
+		SizeCode: fdc.fmtSizeCode,
+		Filler:   fdc.fmtFiller,
+	}
+	for s := 0; s < int(fdc.fmtNumSec); s++ {
+		b := fdc.dataBuffer[4*s : 4*s+4]
+		data := make([]byte, secLen)
+		for i := range data {
+			data[i] = fdc.fmtFiller
+		}
+		trk.Sectors = append(trk.Sectors, DiskSector{
+			C: b[0], H: b[1], R: b[2], N: b[3], Data: data,
+		})
+	}
+	fdc.disk.Tracks[idx] = trk
+	fdc.disk.Modified = true
+	fdc.markModified()
+
+	if fdc.debug {
+		fmt.Printf("FDC: Formatted track %d/%d with %d sectors of %d bytes\n",
+			fdc.currentCylinder, fdc.currentHead, len(trk.Sectors), secLen)
+	}
+}
+
 // writeDataToImage writes sector data to disk image
 func (fdc *FDC765) writeDataToImage() {
 	if !fdc.diskPresent {
@@ -683,16 +885,39 @@ func (fdc *FDC765) writeDataToImage() {
 		return
 	}
 
+	if fdc.disk != nil {
+		// Locate the target sector by CHRN (R was stored as currentR) and copy
+		// the received data into it. Writing into the parsed structure means a
+		// later SaveDisk re-serializes the change.
+		sec := fdc.disk.FindSector(fdc.currentCylinder, fdc.currentHead, fdc.currentR)
+		if sec != nil {
+			n := len(fdc.dataBuffer)
+			if n > len(sec.Data) {
+				n = len(sec.Data)
+			}
+			copy(sec.Data, fdc.dataBuffer[:n])
+			fdc.disk.Modified = true
+			fdc.markModified()
+			if fdc.debug {
+				fmt.Printf("FDC: Wrote sector C=%d H=%d R=%d (%d bytes)\n",
+					fdc.currentCylinder, fdc.currentHead, fdc.currentR, n)
+			}
+		} else if fdc.debug {
+			fmt.Printf("FDC: Write target sector not found C=%d H=%d R=%d\n",
+				fdc.currentCylinder, fdc.currentHead, fdc.currentR)
+		}
+		return
+	}
+
+	// Raw 180KB image: flat geometry.
 	track := fdc.currentCylinder
 	if fdc.currentHead == 1 {
 		track += TracksPerSide
 	}
-
 	offset := (int(track)*SectorsPerTrack + int(fdc.currentSector)) * BytesPerSector
-
 	if offset+BytesPerSector <= len(fdc.diskImage) {
 		copy(fdc.diskImage[offset:], fdc.dataBuffer)
-		fdc.diskModified = true
+		fdc.markModified()
 	}
 }
 
@@ -715,7 +940,7 @@ func (fdc *FDC765) completeCommand() {
 		fdc.st2,
 		fdc.currentCylinder,
 		fdc.currentHead,
-		fdc.currentSector + 1,
+		fdc.currentR + 1,
 		0x02, // 512 bytes per sector
 	}
 	fdc.commandPhase = 2

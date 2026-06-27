@@ -171,15 +171,16 @@ if $CUT_ZIP; then
         syncver.sh release.sh build.sh build_linux.sh build_windows.sh
         build_bsd.sh build_example_bsd.sh _bsd.sh build_headless.sh Dockerfile
         zxspectrum.txt
-        pkg/ rom/
+        pkg/ rom/ docs/
     )
     [ -f go.sum ] && ZIP_SOURCES+=(go.sum)
     [ -f README.md ] && ZIP_SOURCES+=(README.md)
     [ -f LICENSE ] && ZIP_SOURCES+=(LICENSE)
     [ -f NOTICE ] && ZIP_SOURCES+=(NOTICE)
-    [ -f .gitignore ] && ZIP_SOURCES+=(.gitignore)
     # All Go sources at the package root.
     for f in *.go; do ZIP_SOURCES+=("$f"); done
+    # Bundled formatted DSK image for disk-write experimentation.
+    [ -f zenzx-formatted.dsk ] && ZIP_SOURCES+=(zenzx-formatted.dsk)
 
     zip -X -r "$ZIPNAME" "${ZIP_SOURCES[@]}" \
         -x "*.out" -x "test-errors.txt" -x "cover.out" \

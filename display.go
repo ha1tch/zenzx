@@ -173,6 +173,48 @@ func (s *SpectrumScreen) calcByteOffset(x, y int) int {
 	return blockOffset*2048 + rowOffset*32 + yOffset*256 + xOffset
 }
 
+// DecodeRGBA translates the current display file into a 256x192 image.RGBA.
+//
+// It mirrors the headless build's decoder so that screenshot capture is
+// identical across front-ends, but reads from the GUI's rl.Color palette
+// (ZXPaletteRGBA) and honours flashEnabled in the flash swap, matching this
+// build's own render() steady-state behaviour.
+func (s *SpectrumScreen) DecodeRGBA() *image.RGBA {
+	const w, h = ScreenWidth, ScreenHeight // 256 x 192
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+
+	for y := 0; y < h; y++ {
+		attrRow := (y / 8) * 32
+		for x := 0; x < w; x++ {
+			b := s.bitmap[s.calcByteOffset(x, y)]
+			pixelOn := (b>>(7-uint(x%8)))&1 == 1
+
+			attr := s.attributes[attrRow+x/8]
+			ink := attr & 0x07
+			paper := (attr >> 3) & 0x07
+			bright := (attr >> 6) & 0x01
+			flash := (attr >> 7) & 0x01
+
+			if s.flashEnabled && flash == 1 && s.flashTickTock {
+				ink, paper = paper, ink
+			}
+
+			var idx uint8
+			if pixelOn {
+				idx = ink
+			} else {
+				idx = paper
+			}
+			if bright == 1 {
+				idx += 8
+			}
+			c := ZXPaletteRGBA[idx]
+			img.SetRGBA(x, y, color.RGBA{R: c.R, G: c.G, B: c.B, A: c.A})
+		}
+	}
+	return img
+}
+
 func (s *SpectrumScreen) LoadFromFile(filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
