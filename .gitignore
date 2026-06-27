@@ -1,0 +1,27 @@
+# Build outputs
+/zenzx
+/zenzx-headless
+/zenzx_linux
+/zenzx_windows*
+/zenzx_darwin*
+/build/
+*.exe
+
+# Release artifacts
+zenzx-v*-checkpoint.zip
+
+# Test / coverage artifacts
+cover.out
+cover-summary.txt
+test-output.json
+test-errors.txt
+*.test
+
+# Screenshots produced by the headless build
+*.png
+!docs/**/*.png
+!reference/**/*.png
+
+# OS / editor cruft
+.DS_Store
+*.swp
