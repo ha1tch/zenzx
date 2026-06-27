@@ -191,9 +191,6 @@ As of this version, the following are known not to work or not to work well.
 - **`.sna` and `.z80` snapshots do not load correctly.** The proprietary ZenZX
   snapshot format (`.zxs`, chunk-based) works; the standard SNA and Z80 formats
   are currently broken.
-- **`.dsk` disc images do not load correctly.** The +3 floppy disc *controller*
-  is recognised and initialises (the +3 boots reporting drives A: and M:), but
-  loading a `.dsk` image does not work yet.
 - **Fast tape loading does not work.** Use `-tapemode=accurate`, which performs
   pulse-level emulation and loads correctly. The default `-tapemode=fast`
   (ROM-trap acceleration) is broken.
