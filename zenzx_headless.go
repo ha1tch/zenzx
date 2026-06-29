@@ -26,7 +26,7 @@ import (
 // ============================================================================
 
 func main() {
-	model := flag.String("model", "48k", "Spectrum model: 48k, 128k, plus2, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3")
+	model := flag.String("model", "48k", "Spectrum model: 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3")
 	romPath := flag.String("rom", "", "Path to custom ROM file")
 	romDir := flag.String("romdir", "./rom", "Directory containing ROM files")
 	snapshot := flag.String("snapshot", "", "Load snapshot on startup")
@@ -92,6 +92,15 @@ func main() {
 			romLoaded = tryLoad2(*quiet, "128K (Sinclair)", zx.Load128KROM, rom("128-0.rom"), rom("128-1.rom"))
 		case "plus2":
 			romLoaded = tryLoad2(*quiet, "Spectrum +2", zx.Load128KROM, rom("plus2-0.rom"), rom("plus2-1.rom"))
+		case "plus2a":
+			// +2A/+2B: shares the +3's motherboard and uses the exact same 64K
+			// +3 ROM set (including +3DOS, which goes unused). The only hardware
+			// difference is the absent floppy controller, so we load the +3 ROMs
+			// but do NOT enable the FDC.
+			if zx.LoadPlus3ROM(rom("plus3-0.rom"), rom("plus3-1.rom"), rom("plus3-2.rom"), rom("plus3-3.rom")) == nil {
+				logf(*quiet, "Loaded Spectrum +2A (+3 ROM, no floppy controller)")
+				romLoaded = true
+			}
 		case "plus3":
 			if zx.LoadPlus3ROM(rom("plus3-0.rom"), rom("plus3-1.rom"), rom("plus3-2.rom"), rom("plus3-3.rom")) == nil {
 				logf(*quiet, "Loaded Spectrum +3 ROM")

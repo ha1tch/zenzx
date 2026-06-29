@@ -4,6 +4,26 @@ All notable changes to ZenZX are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-06-29
+
+### Added
+
+- **Headless `-model plus2a`**: the +2A is now selectable in the headless build,
+  not only the GUI. It loads the +3 ROM set (the +2A shares the +3's ROM,
+  including the unused +3DOS) but does not enable the floppy controller, since
+  the +2A has no drive. A measured boot baseline (frame 55) was added for the
+  `wait-boot` action; the +2A settles far sooner than the +3 (frame 135)
+  precisely because it has no FDC seeking for a boot disk.
+
+### Fixed
+
+- **README fast-tape note corrected.** The previous note stated flatly that fast
+  tape loading does not work. In fact the instant-inject path (used when a tape
+  is loaded with `-tape` in fast mode) places `.tap` and `.tzx` CODE blocks into
+  memory byte-identically to the source. The note now distinguishes this working
+  path from the separate, still-unverified ROM-trap path that would intercept a
+  guest's own `LOAD ""`, and records that a CODE tape is loaded but not run.
+
 ## [0.4.0] - 2026-06-29
 
 Migrates the standard snapshot codecs (`.sna`, `.z80`) onto the shared

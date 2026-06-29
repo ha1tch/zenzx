@@ -186,9 +186,15 @@ As of this version, the following are known not to work or not to work well.
 
 **Loading**
 
-- **Fast tape loading does not work.** Use `-tapemode=accurate`, which performs
-  pulse-level emulation and loads correctly. The default `-tapemode=fast`
-  (ROM-trap acceleration) is broken.
+- **Fast tape loading: partial.** When a tape is loaded with `-tape` in
+  `-tapemode=fast`, ZenZX injects the tape's CODE blocks directly into memory on
+  play. This instant-inject path is verified: `.tap` and `.tzx` images place
+  their code byte-identically to the source. Note that, like real hardware, a
+  CODE tape is *loaded* but not *run* — execution still needs a `USR` call or a
+  BASIC loader. The separate ROM-trap path (intercepting a guest's own
+  `LOAD ""` from BASIC) is present but not verified end to end; for guest-driven
+  loading, `-tapemode=accurate` performs full pulse-level emulation and loads
+  correctly.
 
 The `-bin` direct-memory loader (see above) is unaffected by these and is the
 most reliable way to get code into the machine for testing.

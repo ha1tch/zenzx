@@ -36,6 +36,7 @@ var bootBaselines = map[string]bootBaseline{
 	"48k":         {frame: 85, rainbow: false},
 	"128k":        {frame: 61, rainbow: true},
 	"plus2":       {frame: 62, rainbow: true},
+	"plus2a":      {frame: 55, rainbow: true}, // +3 ROM but no FDC, so no boot-disk seek: far faster than +3
 	"plus3":       {frame: 135, rainbow: true},
 	"spanish48k":  {frame: 85, rainbow: false},
 	"spanish128k": {frame: 44, rainbow: false}, // Investronica 1985 ROM: simpler, faster boot
