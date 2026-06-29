@@ -213,6 +213,59 @@ wait-boot
 310   quit
 ```
 
+## Recipes: probing machine state
+
+These patterns came out of using scripts to read post-boot system state (for
+example, finding where the +3 BASIC program area lands) rather than just driving
+the display. They are reliable because they let the ROM finish its own
+initialisation before anything is read or patched.
+
+### Read a system variable after boot
+
+The robust way to inspect a system variable (or any RAM) is to let the machine
+boot fully, save a snapshot, then read the bytes out of the snapshot on the host.
+`wait-boot` is the key: offsets after it are relative to boot-ready, so the ROM
+has already set up the system variables by the time the snapshot is taken.
+
+```
+wait-boot
+0   snapshot-save   state.sna   sna
+1   quit
+```
+
+Run it and parse the snapshot. In a standard `.sna`, RAM at `0x4000` begins at
+file offset 27, so a system variable at address `A` (in the `0x4000`-`0x7FFF`
+range, which is RAM page 5) is at snapshot offset `27 + (A - 0x4000)`, stored
+little-endian. For example, PROG lives at `0x5C53`:
+
+```
+offset = 27 + (0x5C53 - 0x4000)   # = 27 + 0x1C53
+prog   = snap[offset] | (snap[offset+1] << 8)
+```
+
+Cross-check against a couple of neighbouring variables to confirm the machine is
+in the state you expect: on a freshly booted machine with no BASIC program
+entered, `VARS` (`0x5C4B`) equals `PROG`, because the variables area sits
+immediately after a zero-length program.
+
+### Patch RAM after boot without redirecting execution
+
+`bin` takes an optional start address. Passing `-1` loads the blob into memory but
+leaves the program counter untouched, so the running system continues normally
+with the patched bytes in place. This is the way to inject a probe, a patch, or
+fixture data into an already-booted machine rather than jumping straight into a
+blob from a cold start (where the ROM has not initialised the system variables
+yet).
+
+```
+wait-boot
+0   bin   patch.bin   0x8000   -1
+```
+
+Without `wait-boot`, a `bin` that *does* set a start address runs your code before
+the ROM has set up the system, which is rarely what you want when the code expects
+a normal machine environment.
+
 ## Validation
 
 Unknown verbs are a hard error: the script is refused and the offending line is

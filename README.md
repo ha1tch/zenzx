@@ -40,8 +40,7 @@ GUI binary. Run `./zenzx -version` or `./zenzx-headless -version` to confirm.
 ```
 
 ROM files are loaded from `./rom`. See `-help` for the full flag list, and
-**Known issues** below for loaders that do not currently work (`.sna`/`.z80`
-snapshots, `.dsk` images, and fast tape loading).
+**Known issues** below for loaders that do not currently work (`.dsk` images).
 
 ### Runtime keyboard shortcuts (GUI)
 
@@ -82,11 +81,10 @@ In the GUI build, dropping a file onto the window loads it by extension:
 | `.zxs` | A ZenZX snapshot (the proprietary chunk format). |
 | `.tap` / `.tzx` | A tape image (loaded, then driven with the `Alt+P/R/T/I` controls). |
 | `.dsk` | A +3 disk image (requires +3 mode with the FDC enabled). |
-| `.sna` / `.z80` | Standard snapshots. |
+| `.sna` / `.z80` | Standard snapshots (48K and 128K), via the shared `zentools` library. |
 
 See **Known issues** for the formats that do not currently load correctly
-(`.sna`, `.z80`, `.dsk`). A `.scr` can also be loaded headlessly with `-scr`
-(see above).
+(`.dsk`). A `.scr` can also be loaded headlessly with `-scr` (see above).
 
 ### Spectrum keyboard mapping
 
@@ -188,9 +186,6 @@ As of this version, the following are known not to work or not to work well.
 
 **Loading**
 
-- **`.sna` and `.z80` snapshots do not load correctly.** The proprietary ZenZX
-  snapshot format (`.zxs`, chunk-based) works; the standard SNA and Z80 formats
-  are currently broken.
 - **Fast tape loading does not work.** Use `-tapemode=accurate`, which performs
   pulse-level emulation and loads correctly. The default `-tapemode=fast`
   (ROM-trap acceleration) is broken.
@@ -251,3 +246,6 @@ You may obtain a copy of the License at
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

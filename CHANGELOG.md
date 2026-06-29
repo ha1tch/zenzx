@@ -4,6 +4,56 @@ All notable changes to ZenZX are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-06-29
+
+Migrates the standard snapshot codecs (`.sna`, `.z80`) onto the shared
+`zentools/pkg/snapshot` library, replacing ZenZX's in-tree implementations with
+thin delegations over a neutral machine-state adapter. The proprietary `.zxs`
+format stays native to ZenZX. This both removes duplicated format code and fixes
+real defects the in-tree versions carried.
+
+### Added
+
+- **`snapshot_adapter.go`**: `toMachineState` / `fromMachineState` map ZenZX's
+  live emulator state to and from `zentools`' neutral `MachineState`. The format
+  codecs never see ZenZX's types; this adapter is the only coupling point.
+- **Snapshot regression suite** validated against real third-party artifacts:
+  round-trip tests for 48K/128K `.sna` and `.z80`, plus sentinel tests that load
+  genuine game snapshots (Jet Set Willy v1, Manic Miner v2, Z80 Attack v3 128K)
+  and a load -> re-save -> independent-decode check confirming byte-identical
+  memory across a v1-to-v3 conversion.
+
+### Changed
+
+- **`.z80` save now writes version 3** (extended header, 128K-capable) rather
+  than the previous version 1. Loading still accepts v1, v2, and v3.
+- `SaveSNA` / `LoadSNA` / `SaveZ80` / `LoadZ80` are now thin wrappers over
+  `zentools`; roughly 460 lines of in-tree codec were removed.
+
+### Fixed
+
+- **`.sna` 48K save lost the program counter.** The previous in-tree `SaveSNA`
+  never pushed PC onto the stack for 48K snapshots (the 48K SNA header has no PC
+  field, so PC must be saved on the stack), silently losing it. The `zentools`
+  codec does this correctly; a regression test pins PC survival across a round
+  trip.
+- **`.sna` and `.z80` snapshots now load correctly**, resolving the prior
+  known-issue. Verified by running loaded game snapshots headlessly to their
+  title/menu screens.
+
+## [0.3.5] - 2026-06-28
+
+### Fixed
+
+- **Headless fast-load**: a tape loaded in the headless runner is now played
+  automatically, so fast-load injection actually fires. `LoadFile` leaves the
+  tape stopped, and the headless main set the tape mode but never called
+  `Play()`; the tape `Tick` returns early unless the tape is playing, so in fast
+  mode no block was ever injected. The headless main now calls `Play()` after
+  loading, matching the GUI path. Verified by loading a CODE tape and reading the
+  target memory directly: the block's bytes are placed at the address its header
+  specifies.
+
 ## [0.3.4] - 2026-06-27
 
 Smooths AY-3-8912 sound. The chip was clocked accurately but its output was

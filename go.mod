@@ -6,6 +6,7 @@ require (
 	github.com/ebitengine/oto/v3 v3.4.0
 	github.com/gen2brain/raylib-go/raylib v0.60.0
 	github.com/ha1tch/zen80 v0.1.0
+	github.com/ha1tch/zentools v0.2.0
 )
 
 require (

@@ -173,6 +173,8 @@ if $CUT_ZIP; then
         zxspectrum.txt
         pkg/ rom/ docs/
     )
+    # Test fixtures (real snapshot sentinels) so the shipped tests can run.
+    [ -d testdata ] && ZIP_SOURCES+=(testdata/)
     [ -f go.sum ] && ZIP_SOURCES+=(go.sum)
     [ -f README.md ] && ZIP_SOURCES+=(README.md)
     [ -f LICENSE ] && ZIP_SOURCES+=(LICENSE)

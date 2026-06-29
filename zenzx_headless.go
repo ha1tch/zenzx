@@ -169,6 +169,9 @@ func main() {
 			} else {
 				zx.tape.SetMode(TapeFast)
 			}
+			// LoadFile leaves the tape stopped; start playback so the Tick loop
+			// actually advances it (in fast mode this triggers block injection).
+			zx.tape.Play()
 			logf(*quiet, "Loaded tape: %s (%s mode)", *tapeFile, *tapeMode)
 		}
 	}
