@@ -31,6 +31,13 @@ func setDistinctiveState(zx *ZenZX) {
 	zx.io.borderColor = 5
 
 	// Memory markers across the three 48K banks (5 @ 0x4000, 2 @ 0x8000, 0 @ 0xC000).
+	// The screen region of bank 5 (0x4000-0x5AFF) is held authoritatively in the
+	// display buffers, not ram[5]; memory writes update both, but the snapshot
+	// adapter treats the buffers as the source of truth. Set the screen-region
+	// markers in the buffers so the round trip reflects how the screen is really
+	// stored. Non-screen markers go directly in RAM.
+	zx.screen.bitmap[0] = 0x11
+	zx.screen.bitmap[6143] = 0x22
 	zx.memory.ram[5][0] = 0x11
 	zx.memory.ram[5][6143] = 0x22
 	zx.memory.ram[2][100] = 0x33
@@ -67,6 +74,12 @@ func assertStateRestored(t *testing.T, zx *ZenZX, label string) {
 	if zx.memory.ram[5][0] != 0x11 || zx.memory.ram[5][6143] != 0x22 ||
 		zx.memory.ram[2][100] != 0x33 || zx.memory.ram[0][16383] != 0x44 {
 		t.Errorf("%s: memory markers not preserved", label)
+	}
+	// The screen must survive in the display buffers (the authoritative copy the
+	// renderer reads). This is the real regression: border restored but screen
+	// blank meant the buffers were not round-tripped.
+	if zx.screen.bitmap[0] != 0x11 || zx.screen.bitmap[6143] != 0x22 {
+		t.Errorf("%s: screen buffer markers not preserved (screen would render blank)", label)
 	}
 }
 
@@ -142,6 +155,10 @@ func TestSNA128RoundTrip(t *testing.T) {
 	for b := 0; b < 8; b++ {
 		src.memory.ram[b][b*10] = byte(0xA0 + b)
 	}
+	// Bank 5's marker (offset 50) lies in the screen region, which is held
+	// authoritatively in the display buffer; mirror it there so the snapshot
+	// (which captures the buffer for the displayed bank, 5) preserves it.
+	src.screen.bitmap[50] = 0xA5
 
 	if err := src.SaveSNA(path); err != nil {
 		t.Fatalf("SaveSNA 128K: %v", err)

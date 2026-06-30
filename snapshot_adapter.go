@@ -52,6 +52,19 @@ func (zx *ZenZX) toMachineState() *snapshot.MachineState {
 		s.Memory.RAM[b] = zx.memory.ram[b]
 	}
 
+	// The display buffers (zx.screen.bitmap/attributes) are the authoritative
+	// copy of the screen: memory writes update them, and some paths (e.g. loading
+	// a .scr screenshot directly) populate them without going through the RAM
+	// write path, leaving ram[bank]'s screen region stale. Copy the buffers into
+	// the displayed bank's screen region so the snapshot always captures what is
+	// actually on screen. Mirror of resyncAfterLoad, which copies the other way.
+	bank := zx.memory.screenBank
+	if bank != 5 && bank != 7 {
+		bank = 5
+	}
+	copy(s.Memory.RAM[bank][0:6144], zx.screen.bitmap)
+	copy(s.Memory.RAM[bank][6144:6912], zx.screen.attributes)
+
 	// Paging and IO.
 	s.Paging.Port7FFD = zx.memory.port7FFD
 	s.Paging.Port1FFD = zx.memory.port1FFD

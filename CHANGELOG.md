@@ -4,6 +4,23 @@ All notable changes to ZenZX are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.2] - 2026-06-30
+
+### Fixed
+
+- **Snapshots saved with a blank screen.** After loading a screen directly (e.g.
+  a `.scr` image) and saving a `.sna` or `.z80`, reloading that snapshot restored
+  the border but left the screen blank. The display is held authoritatively in
+  the render buffers (`screen.bitmap`/`attributes`); a directly loaded screen
+  populates those buffers without going through the RAM write path, so the bank
+  5 screen region stayed stale and the snapshot captured an empty screen. The
+  border survived because it is a single restored value. `toMachineState` now
+  copies the display buffers into the displayed bank's screen region before
+  encoding (the mirror of `resyncAfterLoad`, which copies the other way on load),
+  so a snapshot always captures what is actually on screen. The round-trip tests
+  now set and check screen-region markers through the display buffers, matching
+  how the screen is really stored, and reproduce the reported scenario.
+
 ## [0.4.1] - 2026-06-29
 
 ### Added
