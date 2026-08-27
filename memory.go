@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // ============================================================================
 // Memory Constants
 // ============================================================================
@@ -28,14 +30,24 @@ type SpectrumMemory struct {
 	ramBankTop  uint8 // RAM bank at 0xC000-0xFFFF
 
 	// Paging control
-	pagingLocked bool  // When true, no more paging allowed
-	screenBank   uint8 // Which RAM bank is displayed (5 or 7)
-	is128K       bool  // True for 128K mode, false for 48K mode
-	isPlus3      bool  // True for +2A/+3 mode with 4 ROMs
-	specialMode  uint8 // +3 special paging config index (0-3); valid only when specialPaging is true
-	specialPaging bool // +3 special (all-RAM) paging active (port 0x1FFD bit 0)
-	port7FFD     uint8 // Last value written to 0x7FFD
-	port1FFD     uint8 // Last value written to 0x1FFD (+3 only)
+	pagingLocked  bool  // When true, no more paging allowed
+	screenBank    uint8 // Which RAM bank is displayed (5 or 7)
+	is128K        bool  // True for 128K mode, false for 48K mode
+	isPlus3       bool  // True for +2A/+3 mode with 4 ROMs
+	specialMode   uint8 // +3 special paging config index (0-3); valid only when specialPaging is true
+	specialPaging bool  // +3 special (all-RAM) paging active (port 0x1FFD bit 0)
+	port7FFD      uint8 // Last value written to 0x7FFD
+	port1FFD      uint8 // Last value written to 0x1FFD (+3 only)
+
+	// TS2068 model support (ts2068.go). Kept orthogonal to is128K/isPlus3:
+	// TS2068 sets is128K=false deliberately, to reuse the existing 48K-style
+	// RAM addressing path unchanged (structurally identical: 16K Home Bank
+	// RAM + 32K upper RAM, screen mirroring at 0x4000-0x5AFF) -- only the
+	// ROM region (0000H-3FFFH) needs TS2068-specific handling.
+	isTS2068          bool
+	ts2068ExtROM      [8192]byte // Extension ROM, 8K, chunk 0 only
+	ts2068HSRChunk0   bool       // Port F4H (HSR) bit 0: chunk 0 selected out of Home Bank
+	ts2068ExRomSelect bool       // Port FFH bit 7: selected-chunks source is Extension ROM (true) vs Dock (false)
 }
 
 func NewSpectrumMemory(screen *SpectrumScreen) *SpectrumMemory {
@@ -62,12 +74,43 @@ func (m *SpectrumMemory) EnablePlus3() {
 	m.isPlus3 = true
 }
 
+// is48KROMActive reports whether the currently-paged ROM bank is
+// genuinely the 48K-BASIC-compatible one containing LD-BYTES/SA-BYTES
+// at the addresses the fast loader (tape.go) traps -- verified directly
+// against the actual shipped ROM bytes, not assumed from documentation:
+// 48K's only bank; 128K/+2's bank 1; +3/+2A's bank 3 (English and
+// Spanish alike -- confirmed the same bank-index convention holds
+// across localisations). TS2068 has its own, completely different tape
+// ROM routines (in the Extension ROM, reached only via chunk-0 banking)
+// and is explicitly excluded here rather than accidentally matching.
+func (m *SpectrumMemory) is48KROMActive() bool {
+	if m.isTS2068 {
+		return false
+	}
+	if !m.is128K {
+		return true
+	}
+	if m.isPlus3 {
+		return m.romBank == 3
+	}
+	return m.romBank == 1
+}
+
 func (m *SpectrumMemory) Read(address uint16) uint8 {
 	if !m.is128K {
 		// 48K mode - simple memory map (no banking)
 		// The 48K Spectrum has continuous RAM from 0x4000-0xFFFF
 		// But this emulator stores it in banks 5, 2, 0 for compatibility
 		if address < ROMSize {
+			if m.isTS2068 && address < 0x2000 && m.ts2068HSRChunk0 && m.ts2068ExRomSelect {
+				// Chunk 0 (0000H-1FFFH) switched out of the Home Bank to
+				// the Extension ROM -- Technical Manual 2.1.8.1/5.3.1,
+				// confirmed against the disassembled Extension ROM
+				// Interface Routine (IFRTN). Chunk 1 (2000H-3FFFH) is
+				// never affected -- the Extension ROM is only 8K and the
+				// HSR has no bit for chunk 1.
+				return m.ts2068ExtROM[address]
+			}
 			return m.rom[0][address]
 		}
 
@@ -309,6 +352,23 @@ func (m *SpectrumMemory) writeSpecialMode(address uint16, value uint8) {
 			m.screen.attributes[relAddr-0x1800] = value
 		}
 	}
+}
+
+// SetROMBank overwrites a single ROM bank (0-3) in place, without
+// touching the others or re-inferring is128K/isPlus3 -- the memory-level
+// primitive behind -rom0 through -rom3 (zenzx.go's OverrideROMBank),
+// which replace one bank of an already-loaded model's ROM set (e.g.
+// only +3DOS via -rom3 on an otherwise-standard +3) rather than
+// requiring every bank to be respecified.
+func (m *SpectrumMemory) SetROMBank(bank int, data []byte) error {
+	if bank < 0 || bank > 3 {
+		return fmt.Errorf("ROM bank must be 0-3, got %d", bank)
+	}
+	if len(data) != 16384 {
+		return fmt.Errorf("ROM bank must be 16384 bytes, got %d", len(data))
+	}
+	copy(m.rom[bank][:], data)
+	return nil
 }
 
 func (m *SpectrumMemory) LoadROM(data []byte) {

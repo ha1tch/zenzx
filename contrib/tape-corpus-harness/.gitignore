@@ -1,0 +1,6 @@
+# Downloaded third-party corpus content -- never committed. See README.md.
+/cache/
+/out/
+
+# Build artefact -- `go build .` output.
+/tape-corpus-harness

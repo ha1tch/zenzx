@@ -1,0 +1,28 @@
+# ZENZX
+
+A ZX Spectrum emulator: 48K, 128K, +2, +2A, +3, the Spanish
+variants of each, and the Timex Sinclair 2068.
+
+
+## Version
+
+  __VERSION__
+
+
+## Project
+
+  ZenZX is part of the Zen Spectrum Project.
+
+  https://ha1tch.github.io/zsp/projects/zenzx
+
+
+## Licence
+
+  Copyright (c) 2026 haitch
+
+  Licensed under the Apache License, Version 2.0.
+  https://www.apache.org/licenses/LICENSE-2.0
+
+  pkg/zenui, pkg/bdf, pkg/zxpalette, and pkg/zenuiraylib
+  originate from github.com/ha1tch/zenimate (same author),
+  likewise Apache 2.0.

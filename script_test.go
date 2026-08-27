@@ -179,9 +179,9 @@ wait-boot
 		verb string
 		arg  string
 	}{
-		{"shot", "pre-early"}, // 50 sorted before 200 within pre-partition
-		{"shot", "pre-late"},  // 200
-		{"wait-boot", ""},     // barrier stays in place
+		{"shot", "pre-early"},  // 50 sorted before 200 within pre-partition
+		{"shot", "pre-late"},   // 200
+		{"wait-boot", ""},      // barrier stays in place
 		{"shot", "post-early"}, // 10 sorted before 100 within post-partition
 		{"shot", "post-late"},  // 100
 	}

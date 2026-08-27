@@ -1,0 +1,303 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  headless-binaries:
+    # The headless build has no cgo dependency at all (no raylib, no
+    # oto), so it cross-compiles cleanly for every target from one
+    # runner.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+          - { goos: freebsd, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION from tag and sync
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" > VERSION
+          python3 repoman/syncver.py set "$VERSION"
+
+      - name: Build
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          out="dist/zenzx-${GOOS}-${GOARCH}-headless"
+          mkdir -p "$out"
+          go build -tags headless -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "${out}/zenzx-headless${ext}" .
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+
+      - name: Archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="zenzx-${VERSION}-${GOOS}-${{ matrix.goarch }}-headless"
+          cd dist
+          if [ "$GOOS" = "windows" ]; then
+            zip -q -r "${base}.zip" "zenzx-${GOOS}-${{ matrix.goarch }}-headless"
+            echo "asset=dist/${base}.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "${base}.tar.gz" "zenzx-${GOOS}-${{ matrix.goarch }}-headless"
+            echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zenzx-${{ matrix.goos }}-${{ matrix.goarch }}-headless
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+  gui-binaries-cross:
+    # Cgo-free GUI targets: raylib-go's purego backend embeds a
+    # prebuilt native library per GOOS/GOARCH, and oto has no cgo
+    # dependency on darwin or windows, so these are complete,
+    # self-contained binaries built cross-platform from one runner --
+    # not a type-check. Linux is covered separately (see below): oto's
+    # Linux backend needs cgo + ALSA with no purego alternative here.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION from tag and sync
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" > VERSION
+          python3 repoman/syncver.py set "$VERSION"
+
+      - name: Build the GUI
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          out="dist/zenzx-${GOOS}-${GOARCH}"
+          mkdir -p "$out"
+          go build -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "${out}/zenzx${ext}" .
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+
+      - name: Archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="zenzx-${VERSION}-${GOOS}-${{ matrix.goarch }}"
+          cd dist
+          if [ "$GOOS" = "windows" ]; then
+            zip -q -r "${base}.zip" "zenzx-${GOOS}-${{ matrix.goarch }}"
+            echo "asset=dist/${base}.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "${base}.tar.gz" "zenzx-${GOOS}-${{ matrix.goarch }}"
+            echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zenzx-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+  gui-binaries-linux-amd64:
+    # Native cgo build: oto's Linux backend requires ALSA via cgo, with
+    # no purego alternative in the pinned oto version.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install GUI dev libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            build-essential pkg-config \
+            libgl1-mesa-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libasound2-dev libwayland-dev \
+            libxkbcommon-dev wayland-protocols
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION from tag and sync
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" > VERSION
+          python3 repoman/syncver.py set "$VERSION"
+
+      - name: Build the GUI
+        env:
+          CGO_ENABLED: '1'
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          out="dist/zenzx-linux-amd64"
+          mkdir -p "$out"
+          go build -ldflags "-s -w -X main.version=${VERSION}" -o "${out}/zenzx" .
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+
+      - name: Archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="zenzx-${VERSION}-linux-amd64"
+          cd dist
+          tar -czf "${base}.tar.gz" "zenzx-linux-amd64"
+          echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zenzx-linux-amd64
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+  gui-binaries-linux-arm64:
+    # Native cgo build on GitHub's arm64-hosted runner (GA, free on
+    # public repositories -- see GitHub's runner documentation for
+    # private-repository availability and cost).
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install GUI dev libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            build-essential pkg-config \
+            libgl1-mesa-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libasound2-dev libwayland-dev \
+            libxkbcommon-dev wayland-protocols
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION from tag and sync
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" > VERSION
+          python3 repoman/syncver.py set "$VERSION"
+
+      - name: Build the GUI
+        env:
+          CGO_ENABLED: '1'
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          out="dist/zenzx-linux-arm64"
+          mkdir -p "$out"
+          go build -ldflags "-s -w -X main.version=${VERSION}" -o "${out}/zenzx" .
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+
+      - name: Archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="zenzx-${VERSION}-linux-arm64"
+          cd dist
+          tar -czf "${base}.tar.gz" "zenzx-linux-arm64"
+          echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zenzx-linux-arm64
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+  release:
+    needs:
+      - headless-binaries
+      - gui-binaries-cross
+      - gui-binaries-linux-amd64
+      - gui-binaries-linux-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

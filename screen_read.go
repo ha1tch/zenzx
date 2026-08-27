@@ -148,8 +148,8 @@ func attrCell(zx *ZenZX, col, row int) uint8 {
 // attrMatch is a colour predicate parsed from a spec string. Any unset field
 // is a wildcard. Fields: ink, paper (0-7 or name), bright (0/1).
 type attrMatch struct {
-	ink, paper   int // -1 = any
-	bright       int // -1 = any, else 0/1
+	ink, paper int // -1 = any
+	bright     int // -1 = any, else 0/1
 }
 
 // parseAttrSpec parses a spec like "ink=yellow paper=blue bright" or

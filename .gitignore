@@ -25,3 +25,9 @@ test-errors.txt
 # OS / editor cruft
 .DS_Store
 *.swp
+
+# repoman run state and journals
+.release-state.json
+.ed-journal.json
+release-*.log
+repoman/__pycache__/

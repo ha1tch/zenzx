@@ -1,0 +1,95 @@
+# ZENZX
+
+A ZX Spectrum emulator: 48K, 128K, +2, +2A, +3, the Spanish
+variants of each, and the Timex Sinclair 2068.
+
+Hover the mouse near the top edge of the window and hold still
+for a moment to reveal the menu bar. It's the primary way to
+control the emulator; every action it offers also has a keyboard
+shortcut below, for anyone who prefers not to wait for it to
+appear.
+
+
+## Top menu bar
+
+  Machine        reset, pause/resume, pick a model (grouped by
+                 manufacturer -- Sinclair, Amstrad, Investronica,
+                 Timex)
+  Custom ROM     load a ROM file live from -custom-roms-dir
+  Tape           play/stop, rewind, accurate/fast mode, tape info
+  Floppy Disk    open a .dsk image, save, insert blank, eject,
+                 save as, disk info (+3 and Spanish +3 only)
+  Snapshot       quick save/load, save timestamped, snapshot
+                 info, run diagnostics
+  View           FPS and border are checkboxes now, not one-shot
+                 actions; status display
+  Theme          Dark, Light, or Spectrum (the real 128K/+2/
+                 +3 boot menu's own palette, rainbow and all)
+  Font           six bundled bitmap faces, plus zoom X1/X2/X3
+
+The rainbow (Spectrum theme) or logo (Dark/Light themes) on
+the right of the bar has its own menu: click it for this help
+screen, an About box, pinning the bar so it stops auto-hiding,
+and a link to the project's own page.
+
+
+## Keyboard shortcuts
+
+  F1             Reset
+  F2             Pause / Resume
+  F3             Show status
+  PgUp / PgDn    Scale window up / down
+  Alt+F          FPS counter on/off
+  Alt+B          Border on/off (animates the window size)
+
+  F9             Quick save
+  F10            Quick load
+  F11            Save snapshot
+  F12            Snapshot info (Shift+F12: run diagnostics)
+
+
+## Tape (when a tape is loaded)
+
+  Alt+P          Play / Stop
+  Alt+R          Rewind
+  Alt+T          Accurate / Fast mode
+  Alt+I          Tape info
+
+
+## Disk (+3 and Spanish +3 only)
+
+  F4             Save disk
+  F5             Insert blank disk
+  F6             Eject disk
+  F7             Disk info
+  F8             Save disk as (timestamped)
+
+
+## Command line
+
+  -model=NAME        48k, 128k, plus2, plus2a, plus3,
+                      spanish48k, spanish128k, spanishplus2,
+                      spanishplus3, ts2068
+  -theme=NAME         Dark, Light, or Spectrum
+  -settings=PATH      settings.json path (theme/font/zoom/scale/
+                      fixed-bar persistence; default settings.json)
+  -disk=FILE          mount a .dsk at startup (+3 models)
+  -snapshot=FILE      load a snapshot at startup
+  -format=FORMAT      snapshot format: sna, z80, zxs, auto
+  -audiobackend=NAME  raylib or oto
+
+Examples:
+
+  ./zenzx -model=48k
+  ./zenzx -model=128k
+  ./zenzx -model=plus3 -disk=game.dsk
+  ./zenzx -snapshot=saved.sna -format=sna
+
+
+## Scroll this help
+
+  Up / Down          one line
+  PgUp / PgDn         one page
+  Home / End          jump to start / end
+  Mouse wheel         scroll
+  Escape, the x, or a click outside  close

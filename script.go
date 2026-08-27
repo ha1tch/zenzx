@@ -61,20 +61,26 @@ type Script struct {
 // fail at dispatch until the handlers are implemented.
 var knownVerbs = map[string]bool{
 	// Phase 1 -- wired against existing functionality.
-	"shot":      true,
-	"reset":     true,
-	"tape-play": true,
-	"tape-stop": true,
-	"snapshot":  true,
-	"snapshot-save": true,
-	"bin":       true,
-	"scr":       true,
-	"quit":      true,
-	"wait-boot": true,
-	"wait-screen":   true,
-	"wait-attr":     true,
-	"dump-screen":   true,
-	"expect-screen": true,
+	"shot":           true,
+	"reset":          true,
+	"tape-play":      true,
+	"tape-stop":      true,
+	"snapshot":       true,
+	"snapshot-save":  true,
+	"bin":            true,
+	"bin-safe":       true,
+	"scr":            true,
+	"quit":           true,
+	"wait-boot":      true,
+	"wait-screen":    true,
+	"wait-attr":      true,
+	"dump-screen":    true,
+	"expect-screen":  true,
+	"sym":            true,
+	"wait-mem":       true,
+	"wait-tape-done": true,
+	"expect-mem":     true,
+	"dump-mem":       true,
 	// Phase 2 -- known but not yet wired.
 	"key":     true,
 	"type":    true,
@@ -86,7 +92,7 @@ var knownVerbs = map[string]bool{
 // verbs partition the timeline: offsets do not sort across them. wait-screen
 // takes arguments (so is not a lone-token barrierVerb) but is still a barrier.
 func isBarrier(verb string) bool {
-	return verb == "wait-boot" || verb == "wait-screen" || verb == "wait-attr"
+	return verb == "wait-boot" || verb == "wait-screen" || verb == "wait-attr" || verb == "wait-mem" || verb == "wait-tape-done"
 }
 
 // ParseScriptFile reads and parses a .zen file from disk.

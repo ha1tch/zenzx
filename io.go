@@ -25,7 +25,7 @@ type BorderHistory struct {
 func NewBorderHistory() *BorderHistory {
 	return &BorderHistory{
 		changes: make([]BorderChange, 0, 256), // Pre-allocate for performance
-		maxSize: 256, // Limit to prevent runaway memory
+		maxSize: 256,                          // Limit to prevent runaway memory
 	}
 }
 
@@ -54,20 +54,66 @@ type SpectrumIO struct {
 	borderColor uint8
 	speaker     bool
 	tapeIn      bool
-	tapeEar     bool            // Current tape input level (bit 6 of port 0xFE)
-	memory      *SpectrumMemory // Need reference to memory for paging
-	ayRegister  uint8           // Selected AY-3-8912 register (128K sound chip)
-	hasFDC      bool            // Floppy Disk Controller present (+3 only)
-	fdc         *FDC765         // FDC implementation
-	fdcDebug    bool            // Debug flag for FDC operations
-	
+	tapeEar     bool  // Current tape input level (bit 6 of port 0xFE)
+	ulaLastOut  uint8 // Last byte written to the ULA port (0xFE); source of the idle EAR feedback
+	issue2      bool  // Issue 2 EAR feedback (bit 6 = OUT bits 4|3); false = Issue 3 (bit 6 = OUT bit 4)
+	// tapePlayingFn reports whether the tape is actively playing; wired
+	// by NewZenZX. While playing the tape drives bit 6; otherwise the
+	// idle level derived from ulaLastOut does -- the Speedlock-class
+	// hardware check (write EAR/MIC, read bit 6 back) probes exactly
+	// that feedback.
+	tapePlayingFn func() bool
+	// floatingBusFn returns the byte the ULA is fetching at the current
+	// T-state (the 48K/128K floating bus); wired by NewZenZX. nil, or
+	// non-fetch cycles, read as 0xFF.
+	floatingBusFn func() uint8
+	memory        *SpectrumMemory // Need reference to memory for paging
+	ayRegister    uint8           // Selected AY-3-8912 register (128K sound chip)
+	hasFDC        bool            // Floppy Disk Controller present (+3 only)
+	fdc           *FDC765         // FDC implementation
+	fdcDebug      bool            // Debug flag for FDC operations
+
 	// Audio support
-	audio       *AudioWrapper  // Reference to audio manager wrapper (changed from *AudioManager)
-	ayRegisters [16]uint8      // AY register cache for snapshots
-	
+	audio       *AudioWrapper // Reference to audio manager wrapper (changed from *AudioManager)
+	ayRegisters [16]uint8     // AY register cache for snapshots
+
 	// Border effect support
 	borderHistory *BorderHistory // Track border changes per frame
 	cpu           Z80CPU         // Reference to CPU for cycle count (interface, not pointer)
+
+	// Joystick support (joystick.go)
+	joystickMode   JoystickMode
+	kempstonState  uint8 // Current Kempston port 0x1F byte, updated by SetJoystickState
+	kempston2State uint8 // Current second Kempston port 0x37 byte (neo-Spectrum platforms only, joystick.go)
+
+	// Mouse support (mouse.go)
+	mouseMode            MouseMode
+	kempstonMouseX       uint8   // Wrapping X counter, port 0xFBDF
+	kempstonMouseY       uint8   // Wrapping Y counter, port 0xFFDF
+	kempstonMouseButtons uint8   // Port 0xFADF, active low, unused bits high
+	mouseRemX, mouseRemY float32 // Fractional remainder carried between frames
+	amxMouseButtons      uint8   // Port 0xDF bits 5-7, active high
+	amxPortValue         uint8   // What port 0x1F/0x3F return until the next popped request
+	amxIntQueue          []amxInterruptRequest
+	amxPendingVector     uint8 // Vector GetInterruptVector should hand out next
+	amxVectorPending     bool
+
+	// TS2068 model support (ts2068.go)
+	ts2068HSR      uint8 // Last value written to port F4H
+	ts2068Port0xFF uint8 // Last value written to port FFH
+
+	// onTS2068VideoModeChange, if set, is called whenever TS2068 mode
+	// guest code writes new video-mode bits (0-2) to port FFH -- lets a
+	// running program dynamically switch the active renderer itself
+	// (real hardware behaviour: real software engaged hi-colour mode via
+	// a direct OUT to this port, not a documented ROM service call).
+	// Set by NewZenZX as a closure over the owning ZenZX, since
+	// SelectVideoRenderer lives there, not on SpectrumIO.
+	onTS2068VideoModeChange func(modeBits uint8)
+
+	// ts2068Joy1/Joy2 hold the current state of TS2068's own built-in
+	// joystick ports, read via AY register 14 (ts2068.go).
+	ts2068Joy1, ts2068Joy2 JoystickState
 }
 
 // Z80CPU interface to avoid circular dependency
@@ -78,7 +124,7 @@ type Z80CPU interface {
 func NewSpectrumIO(memory *SpectrumMemory, audio *AudioWrapper) *SpectrumIO {
 	io := &SpectrumIO{
 		memory:        memory,
-		audio:         audio,  // Initialize audio reference (can be nil)
+		audio:         audio, // Initialize audio reference (can be nil)
 		hasFDC:        false,
 		fdc:           nil,
 		fdcDebug:      false,
@@ -87,6 +133,7 @@ func NewSpectrumIO(memory *SpectrumMemory, audio *AudioWrapper) *SpectrumIO {
 	for i := range io.keyboard {
 		io.keyboard[i] = 0x1F // No keys pressed
 	}
+	io.kempstonMouseButtons = 0xFF // Active low: no buttons pressed
 	return io
 }
 
@@ -112,6 +159,16 @@ func (io *SpectrumIO) Out(port uint16, value uint8) {
 // ============================================================================
 
 func (io *SpectrumIO) ReadPort(port uint16) uint8 {
+	// TS2068 HSR (F4H) and display-enhancement-control (FFH) -- must be
+	// checked before the ULA keyboard branch below: F4H is even (bit0=0)
+	// and would otherwise be swallowed by the "any even port = keyboard"
+	// catch-all that's correct for the standard ULA's incomplete decode
+	// but wrong here, since TS2068's SCLD chip decodes F4H specifically,
+	// distinct from FEH (Technical Manual Table 2.1.13-1).
+	if v, ok := io.ts2068ReadPort(port); ok {
+		return v
+	}
+
 	// ULA port (0xFE) - keyboard and tape
 	if port&0x01 == 0 {
 		result := uint8(0x1F)
@@ -123,20 +180,89 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 			}
 		}
 
-		// Tape EAR bit (bit 6)
-		if io.tapeEar {
-			result |= 0x40
+		if io.memory != nil && io.memory.isTS2068 {
+			// TS2068: legacy behaviour, deliberately unchanged (bit 6
+			// tape-driven, bit 7 high); its real idle levels are
+			// unverified here (FUSE uses a fixed 0x5F for Timex).
+			if io.tapeEar {
+				result |= 0x40
+			}
+			return result | 0x80
 		}
-		
-		// Bit 7 is always 1
-		result |= 0x80
+
+		// Bits 5 and 7 read high on real Spectrums. Bit 6 (EAR): the
+		// tape drives it while playing; otherwise it presents the idle
+		// level fed back from the last ULA OUT -- Issue 3: OUT bit 4;
+		// Issue 2: OUT bits 4|3; +2A/+3: no feedback, always low.
+		// Returning a frozen last-tape-level here is not just
+		// imprecise: Speedlock-class hardware checks detect it.
+		result |= 0xA0
+		if io.tapePlayingFn != nil && io.tapePlayingFn() {
+			if io.tapeEar {
+				result |= 0x40
+			}
+		} else if io.memory == nil || !io.memory.isPlus3 {
+			feedback := io.ulaLastOut & 0x10
+			if io.issue2 {
+				feedback = io.ulaLastOut & 0x18
+			}
+			if feedback != 0 {
+				result |= 0x40
+			}
+		}
 
 		return result
 	}
 
-	// Kempston joystick
+	// AMX mouse X/Y (session work, T-14): interrupt-driven, not a
+	// position register -- ports return whatever queueAMXInterrupt's
+	// last popped request left in amxPortValue (bit0 = direction),
+	// current only immediately after the corresponding interrupt has
+	// been delivered, exactly matching real hardware's own handlers
+	// (which only ever read the port from inside their own ISR).
+	// Takes priority over Kempston joystick on 0x1F when AMX mode is
+	// active -- real hardware has the same port conflict; ZenZX wiring
+	// rejects selecting both simultaneously at startup.
+	if io.mouseMode == MouseAMX {
+		if port&0xFF == 0x1F {
+			return io.amxPortValue
+		}
+		if port&0xFF == 0x3F {
+			return io.amxPortValue
+		}
+		if port&0xFF == 0xDF {
+			return io.amxMouseButtons
+		}
+	}
+
+	// Kempston joystick (first port)
 	if port&0xFF == 0x1F {
-		return 0x00
+		return io.kempstonState
+	}
+
+	// Second Kempston port (0x37) -- confirmed against the ZX Spectrum
+	// Next's own I/O port register documentation and cross-checked
+	// against the "KEMPSTON_MAX 2" hobbyist interface's own port
+	// numbering (joystick.go). No classic-era hardware has this; only
+	// relevant when JoystickKempston2/JoystickKempstonBoth is explicitly
+	// configured, in which case io.kempston2State holds real data --
+	// otherwise it's simply always zero, indistinguishable from "nothing
+	// connected here."
+	if port&0xFF == 0x37 {
+		return io.kempston2State
+	}
+
+	// Kempston mouse (0xFADF/0xFBDF/0xFFDF -- upper 4 address bits are
+	// don't-care on real hardware, matched here via a 12-bit mask, per
+	// the partial-decode table documented at spectrumcomputing.co.uk)
+	if port&0x0FFF == 0x0BDF {
+		return io.kempstonMouseX
+	}
+	if port&0x0FFF == 0x0FDF {
+		return io.kempstonMouseY
+	}
+	if port&0x0FFF == 0x0ADF {
+		return io.kempstonMouseButtons
 	}
 
 	// +3 FDC ports
@@ -181,22 +307,36 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 		return 0xFF
 	}
 
+	// Unattached port: the 48K/128K data bus floats to whatever byte
+	// the ULA is fetching at this T-state (idle 0xFF outside fetch
+	// cycles). Ocean-era code polls this for raster sync.
+	if io.floatingBusFn != nil {
+		return io.floatingBusFn()
+	}
 	return 0xFF
 }
 
 func (io *SpectrumIO) WritePort(port uint16, value uint8) {
+	// TS2068 HSR (F4H) and display-enhancement-control (FFH) -- same
+	// ordering reason as ReadPort above: F4H is even and must not be
+	// swallowed by the ULA border/speaker catch-all.
+	if io.ts2068WritePort(port, value) {
+		return
+	}
+
 	// ULA port (0xFE) - border and speaker
 	if port&0x01 == 0 {
+		io.ulaLastOut = value // idle EAR feedback source (see In)
 		newBorderColor := value & 0x07
 		newSpeaker := (value & 0x10) != 0
-		
+
 		// Track border color change
 		if newBorderColor != io.borderColor && io.cpu != nil {
 			io.borderHistory.Record(io.cpu.GetCycles(), newBorderColor)
 		}
-		
+
 		io.borderColor = newBorderColor
-		
+
 		// Update speaker state with cycle-accurate timing
 		if newSpeaker != io.speaker {
 			io.speaker = newSpeaker
@@ -299,7 +439,7 @@ func (io *SpectrumIO) GetAYRegisters() [16]uint8 {
 // SetAYRegisters restores AY registers from a snapshot
 func (io *SpectrumIO) SetAYRegisters(registers [16]uint8) {
 	io.ayRegisters = registers
-	
+
 	// Update the actual AY chip if available via wrapper
 	if io.audio != nil {
 		for i := 0; i < 16; i++ {

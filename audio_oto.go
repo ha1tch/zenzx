@@ -68,9 +68,9 @@ type AudioManagerOto struct {
 	// removing the residual high-frequency aliasing that the boxcar
 	// (per-sample duty cycle) averaging leaves behind -- the "jagged" edge of
 	// the square wave.
-	dcBlocker  *DCBlocker
-	outputLP   *BiquadFilter
-	filterOn   bool
+	dcBlocker *DCBlocker
+	outputLP  *BiquadFilter
+	filterOn  bool
 
 	// History cleanup
 	lastCleanupCycle uint64

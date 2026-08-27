@@ -1,0 +1,97 @@
+{
+  "version_targets": [
+    {
+      "file": "pkg/version/version.go",
+      "match": "const Version = \"([^\"]+)\""
+    },
+    {
+      "file": "docs/TRACKING.md",
+      "match": "^Version: (\\S+)"
+    },
+    {
+      "file": "docs/KNOWN_ISSUES.md",
+      "match": "^Version: (\\S+)"
+    }
+  ],
+  "release": {
+    "steps": [
+      {
+        "name": "sync",
+        "builtin": "syncver",
+        "always": true
+      },
+      {
+        "name": "changelog",
+        "run": "sh ./check_changelog.sh",
+        "always": true
+      },
+      {
+        "name": "register",
+        "run": "python3 repoman/register.py check",
+        "always": true
+      },
+      {
+        "name": "go-sanity",
+        "run": "python3 repoman/gomod.py check",
+        "always": true
+      },
+      {
+        "name": "gui-check",
+        "run": "sh ./check_gui.sh",
+        "resumable": true,
+        "timeout": 900
+      },
+      {
+        "name": "build",
+        "run": "sh ./build_headless.sh zenzx-headless",
+        "resumable": true,
+        "timeout": 900
+      },
+      {
+        "name": "test",
+        "run": "CGO_ENABLED=0 go test -count=1 ./pkg/... && CGO_ENABLED=0 go test -tags headless -count=1 -skip 'TestBatchThreeModeCompare' .",
+        "resumable": true,
+        "timeout": 900
+      },
+      {
+        "name": "smoke",
+        "run": "sh ./smoke_headless.sh",
+        "resumable": true,
+        "timeout": 300
+      },
+      {
+        "name": "archive",
+        "builtin": "archive",
+        "always": true
+      }
+    ],
+    "archive": {
+      "name": "{repo}-v{version}-checkpoint.zip",
+      "sources": [
+        "."
+      ],
+      "exclude": [
+        ".git/*",
+        "__pycache__/*",
+        "*.pyc",
+        "zenzx",
+        "zenzx-headless",
+        "zenzx_linux",
+        "zenzx_windows*",
+        "zenzx_darwin*",
+        "*.exe",
+        "*.zip",
+        "*.out",
+        "*.log",
+        "test-errors.txt",
+        "test-output.json",
+        "cover-summary.txt",
+        "*.test",
+        "*.png",
+        ".DS_Store",
+        "*.swp"
+      ],
+      "size_warn_mb": 4
+    }
+  }
+}

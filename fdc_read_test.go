@@ -53,10 +53,16 @@ func TestFDCReadMatchesDisk(t *testing.T) {
 
 	// Multi-sector read: R=1, EOT=4 should yield 4 sectors back-to-back.
 	cmd := []uint8{0x46, 0, 5, 0, 1, 0x02, 4, 0x2A, 0xFF} // track 5, R=1..4
-	for _, b := range cmd { fdc.WriteData(b) }
+	for _, b := range cmd {
+		fdc.WriteData(b)
+	}
 	var multi []byte
-	for i := 0; i < 4000 && fdc.commandPhase == 1; i++ { multi = append(multi, fdc.ReadData()) }
-	for i := 0; i < 7 && fdc.commandPhase == 2; i++ { fdc.ReadData() }
+	for i := 0; i < 4000 && fdc.commandPhase == 1; i++ {
+		multi = append(multi, fdc.ReadData())
+	}
+	for i := 0; i < 7 && fdc.commandPhase == 2; i++ {
+		fdc.ReadData()
+	}
 	fmt.Printf("multi-sector read returned %d bytes (expected %d)\n", len(multi), 4*512)
 	if len(multi) != 4*512 {
 		t.Errorf("multi-sector: got %d bytes, want %d", len(multi), 4*512)

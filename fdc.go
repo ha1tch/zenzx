@@ -57,17 +57,17 @@ type FDC765 struct {
 
 	// Interrupt status for Sense Interrupt Status command
 	// The +3 ROM expects exactly 4 reset interrupts (one per drive)
-	resetCount int // Number of reset interrupts reported
-	seekEnd    bool
+	resetCount  int // Number of reset interrupts reported
+	seekEnd     bool
 	readIdIndex int // rotating index for Read ID across a track's sectors
 
 	// Auto-commit debounce: lastWriteFrame is the frame at which the disk was
 	// last modified; AutoCommit flushes once the disk has been quiet long
 	// enough and the controller is idle.
-	currentFrame    int // updated each frame by the front-end via Tick
-	lastWriteFrame  int // frame of the most recent disk modification
-	currentR    uint8 // sector ID (R) currently being transferred in a read
-	eotSector   uint8 // EOT: last sector ID to transfer in a multi-sector read
+	currentFrame   int   // updated each frame by the front-end via Tick
+	lastWriteFrame int   // frame of the most recent disk modification
+	currentR       uint8 // sector ID (R) currently being transferred in a read
+	eotSector      uint8 // EOT: last sector ID to transfer in a multi-sector read
 
 	// Format Track state.
 	fmtSizeCode  uint8 // N: sector size code for the track being formatted

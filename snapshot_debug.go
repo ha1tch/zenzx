@@ -66,7 +66,7 @@ func (ds *DebugSnapshot) AnalyzeCPUState() {
 	fmt.Printf("\nTiming:\n")
 	fmt.Printf("  Total Cycles: %d\n", ds.zx.cpu.Cycles)
 	fmt.Printf("  Frame Count: %d\n", ds.zx.frameCount)
-	fmt.Printf("  Cycle in Frame: %d / %d\n", ds.zx.cycleCount, CyclesPerFrame)
+	fmt.Printf("  Cycle in Frame: %d / %d\n", ds.zx.cycleCount, ds.zx.cyclesPerFrame)
 }
 
 // AnalyzeMemoryState prints memory configuration analysis

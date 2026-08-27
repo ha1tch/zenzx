@@ -392,7 +392,8 @@ func loadCPUChunk(zx *ZenZX, r io.Reader) error {
 	zx.cpu.NMI = false
 
 	// Also restore the cycle/frame counters in the main emulator
-	zx.cycleCount = int(state.Cycles % uint64(CyclesPerFrame))
+	zx.cycleCount = int(state.Cycles % uint64(zx.cyclesPerFrame))
+	zx.frameOrigin = state.Cycles - uint64(zx.cycleCount) // best-effort origin at restore; exact again from the next RunFrame
 
 	return nil
 }

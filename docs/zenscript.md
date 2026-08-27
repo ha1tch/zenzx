@@ -85,6 +85,7 @@ partitions.
 | `snapshot` | `<path> [format]` | Load a snapshot (`.sna`, `.z80`, `.zxs`). Format defaults to auto-detection. |
 | `snapshot-save` | `<path> [format]` | Save the current machine state to a snapshot. Format defaults to the path extension, or `zxs`. |
 | `bin` | `<path> [loadAddr] [startAddr]` | Load a raw binary blob into memory. `loadAddr` defaults to `0x8000`; `startAddr` defaults to the load address. Addresses accept `0x` hex or decimal. |
+| `sym` | `<path>` | Load a pasmo/zenas-format `.sym` file, mapping label names to addresses. Loading a second file replaces the table entirely. `wait-mem` and `expect-mem` resolve symbol names against the most recently loaded table; without one loaded, they accept only literal addresses. |
 | `scr` | `<path>` | Load a raw `.scr` screen dump onto the display. |
 | `tape-play` | none | Start tape playback (a tape must be loaded). |
 | `tape-stop` | none | Stop tape playback. |
@@ -101,7 +102,7 @@ partitions.
 
 | Verb | Arguments | Description |
 |------|-----------|-------------|
-| `shot` | `[name]` | Capture the 256x192 display to a PNG. With a name, that filename is used (a `.png` extension is appended if absent). Without one, an auto-generated name is used. |
+| `shot` | `[name] [zoom=N]` | Capture the 256x192 display to a PNG. With a name, that filename is used (a `.png` extension is appended if absent). Without one, an auto-generated name is used. `zoom=N` (1-16, default 1) upscales the capture by an integer factor using nearest-neighbour sampling -- hard pixel edges, no blending -- useful for inspecting sprite/tile detail that's too small to read at native resolution. |
 
 When a script is driving the run, the front-end's own periodic screenshot
 mechanism (`-shot-interval` and final-frame capture in headless) is disabled,
@@ -186,6 +187,51 @@ wait-boot
 10   quit
 ```
 
+### Memory assertions
+
+Screen and attribute recognition cover a lot of ground, but some state simply
+isn't on screen -- a collision flag, an internal counter, a map index. Memory
+assertions read RAM directly, resolved by symbol name against a `.sym` file
+loaded with `sym` (see Media and state above), or by a literal address if no
+table is loaded.
+
+| Verb | Arguments | Description |
+|------|-----------|-------------|
+| `expect-mem` | `<symbol\|addr> <op> <value>` | Assert a byte at the given location satisfies the comparison *at this instant*. Pass/fail is logged; failures are counted and reported, but do not abort the run. Same contract as `expect-screen`. |
+| `wait-mem` | `<symbol\|addr> <op> <value> [timeout=<frames\|Ns\|Nms>]` | Block the timeline until the comparison holds, then rebase. Times out (default 5 s) with a counted failure if it never does. Acts as a timeline barrier like `wait-boot`/`wait-screen`/`wait-attr`. |
+
+`<op>` is one of `= != < > <= >=`. `<value>` accepts `0x` hex or decimal, same
+as addresses elsewhere in zenscript. `<symbol|addr>` is looked up in the
+current symbol table first; if it isn't a known symbol (or no table has been
+loaded), it's parsed as a literal address instead -- so `wait-mem` and
+`expect-mem` work identically with or without a `.sym` file.
+
+This is the tool for driving anything state-machine-shaped that doesn't
+render distinguishable text or colour: waiting for a map transition, a
+collision flag, a health counter, or any other variable a build's `.sym` file
+names.
+
+```
+wait-boot
+0    bin       game.bin   0x8000
+0    sym       game.sym
+10   press     p
+0    wait-mem  cur_map != 0   timeout=10s
+0    shot      crossed
+5    release   p
+10   quit
+```
+
+`expect-mem` is the instant-assertion counterpart, for checking a value at a
+known point rather than waiting on it -- for example, confirming an init
+routine zeroed a counter right after boot:
+
+```
+wait-boot
+5    expect-mem   score = 0
+10   quit
+```
+
 ## Examples
 
 Boot a 48K, type a line of digits, capture it:
@@ -219,6 +265,13 @@ These patterns came out of using scripts to read post-boot system state (for
 example, finding where the +3 BASIC program area lands) rather than just driving
 the display. They are reliable because they let the ROM finish its own
 initialisation before anything is read or patched.
+
+If you have a `.sym` file, or just know the address, `wait-mem`/`expect-mem`
+(see Memory assertions above) check a single value directly and live, with no
+snapshot round-trip: `expect-mem 0x5C53 = 0` reads `PROG` in one line. The
+snapshot recipe below is still the right tool for the other case -- inspecting
+or archiving a whole region of memory at once, rather than checking one named
+value.
 
 ### Read a system variable after boot
 

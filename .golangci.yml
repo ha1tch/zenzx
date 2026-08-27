@@ -1,0 +1,32 @@
+# golangci-lint configuration for zenzx (schema v2).
+#
+# Policy (same as this project's ha1tch siblings, e.g. xolu):
+#   - The substantive correctness/hygiene linters run everywhere: staticcheck,
+#     govet, ineffassign, unused, errcheck.
+#   - errcheck is relaxed only for test files, where an unchecked error in
+#     setup or assertion helpers surfaces as a test failure anyway. Production
+#     unchecked-error findings (Close, writes, etc.) are real and are fixed in
+#     code, not suppressed.
+#
+# The intent is that `golangci-lint run` (via `make lint`) reports only
+# findings worth acting on, so it stays a gate worth running rather than
+# noise worth ignoring.
+
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  exclusions:
+    rules:
+      # Test files: unchecked errors in setup/assert helpers are acceptable
+      # (a failing setup surfaces as a test failure anyway).
+      - path: _test\.go
+        linters:
+          - errcheck

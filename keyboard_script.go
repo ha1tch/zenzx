@@ -77,10 +77,10 @@ type keyStep struct {
 // frame per Tick via Step, which applies the current hold to the matrix.
 type KeyQueue struct {
 	steps     []keyStep
-	idx       int // current step
-	remaining int // frames left in the current step
-	hold      int // configured hold frames
-	gap       int // configured gap frames
+	idx       int         // current step
+	remaining int         // frames left in the current step
+	hold      int         // configured hold frames
+	gap       int         // configured gap frames
 	lastKeys  []matrixPos // previous chord, for detecting repeated keys
 }
 
@@ -134,31 +134,98 @@ func sameChord(a, b []matrixPos) bool {
 // for consecutive shifted keys (e.g. typing two quotes) where pressing and
 // releasing shift in lockstep with the key can merge into a single event.
 func (q *KeyQueue) enqueueShiftedChord(shift, key matrixPos) {
-	q.steps = append(q.steps, keyStep{keys: []matrixPos{shift}, frames: q.hold})       // shift settles
-	q.steps = append(q.steps, keyStep{keys: []matrixPos{shift, key}, frames: q.hold})  // add key, hold shift
-	q.steps = append(q.steps, keyStep{keys: nil, frames: q.gap})                        // release + gap
+	q.steps = append(q.steps, keyStep{keys: []matrixPos{shift}, frames: q.hold})      // shift settles
+	q.steps = append(q.steps, keyStep{keys: []matrixPos{shift, key}, frames: q.hold}) // add key, hold shift
+	q.steps = append(q.steps, keyStep{keys: nil, frames: q.gap})                      // release + gap
 	q.lastKeys = []matrixPos{shift, key}
 }
 
-// EnqueueText expands a string into key chords. Unmappable characters are
-// skipped and their count returned so the caller can warn.
+// keywordKeys maps a 48K BASIC keyword to the single key that enters it in
+// K mode, pressed alone with no shift.
+var keywordKeys = map[string]matrixPos{
+	"LOAD": {6, 3}, // J
+}
+
+// EnqueueText expands a string into key chords, tracking BASIC's K/L editor
+// mode as it goes. A fresh command line starts in K mode, where the next
+// keypress selects a whole keyword (LOAD, PRINT, GOTO, ...) rather than a
+// letter; after a keyword, the editor is in L mode for the rest of the
+// line. Only "LOAD" is recognised as a keyword for now (see keywordKeys
+// above); anything else is typed letter-by-letter, which is correct for
+// program lines, variable names, and text following a keyword's own
+// arguments.
 func (q *KeyQueue) EnqueueText(text string) (skipped int) {
-	for _, r := range text {
+	kMode := true // a fresh line starts in K mode
+
+	runes := []rune(text)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+
+		// While still in K mode, check whether the text from here starts
+		// with a recognised keyword as a whole word (not a prefix of a
+		// longer identifier).
+		if kMode {
+			if kw, pos, ok := matchKeyword(runes[i:], keywordKeys); ok {
+				q.enqueueChord([]matrixPos{pos})
+				i += len(kw) - 1 // -1: the loop's own i++ advances past the rest
+				kMode = false
+				continue
+			}
+		}
+
 		lower := r
 		if r >= 'A' && r <= 'Z' {
 			lower = r + ('a' - 'A')
 		}
 		if pos, ok := baseKeys[lower]; ok {
 			q.enqueueChord([]matrixPos{pos})
+			if lower != ' ' {
+				kMode = false // any non-space character ends K mode
+			}
 			continue
 		}
 		if pos, ok := symKeys[r]; ok {
 			q.enqueueShiftedChord(symShift, pos)
+			kMode = false
 			continue
 		}
 		skipped++
 	}
 	return skipped
+}
+
+// matchKeyword reports whether runes begins with one of the given
+// keywords as a whole word (followed by end-of-input, a space, or a
+// character that is not itself a letter -- so "LOADER" does not
+// falsely match "LOAD"). Returns the matched keyword text and its key.
+func matchKeyword(runes []rune, table map[string]matrixPos) (string, matrixPos, bool) {
+	for kw, pos := range table {
+		if len(runes) < len(kw) {
+			continue
+		}
+		match := true
+		for j, kr := range []rune(kw) {
+			rr := runes[j]
+			if rr >= 'a' && rr <= 'z' {
+				rr -= 'a' - 'A'
+			}
+			if rr != kr {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+		if len(runes) > len(kw) {
+			next := runes[len(kw)]
+			if (next >= 'A' && next <= 'Z') || (next >= 'a' && next <= 'z') {
+				continue // e.g. "LOADER" -- not a bare LOAD
+			}
+		}
+		return kw, pos, true
+	}
+	return "", matrixPos{}, false
 }
 
 // EnqueueChord adds a single explicit chord. A two-key chord whose first key

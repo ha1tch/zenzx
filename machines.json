@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "items": [
+    {"type": "separator"},
+    {"type": "title", "label": "Sinclair Research Ltd"},
+    {"type": "model", "id": "48k", "label": "ZX Spectrum 48k", "indent": 1},
+    {"type": "model", "id": "128k", "label": "ZX Spectrum 128k", "indent": 1},
+
+    {"type": "separator"},
+    {"type": "title", "label": "Amstrad plc"},
+    {"type": "model", "id": "plus2", "label": "ZX Spectrum +2", "indent": 1},
+    {"type": "model", "id": "plus2a", "label": "ZX Spectrum +2A", "indent": 1},
+    {"type": "model", "id": "plus3", "label": "ZX Spectrum +3", "indent": 1},
+
+    {"type": "separator"},
+    {"type": "title", "label": "En Español"},
+    {"type": "title", "label": "Sinclair", "indent": 1},
+    {"type": "model", "id": "spanish48k", "label": "ZX Spectrum 48k", "indent": 2},
+    {"type": "title", "label": "Investrónica", "indent": 1},
+    {"type": "model", "id": "spanish128k", "label": "ZX Spectrum 128k", "indent": 2},
+    {"type": "title", "label": "Amstrad", "indent": 1},
+    {"type": "model", "id": "spanishplus2", "label": "ZX Spectrum +2", "indent": 2},
+    {"type": "model", "id": "spanishplus3", "label": "ZX Spectrum +3", "indent": 2},
+
+    {"type": "separator"},
+    {"type": "title", "label": "Timex"},
+    {"type": "model", "id": "ts2068", "label": "Timex Sinclair 2068", "indent": 1}
+  ]
+}

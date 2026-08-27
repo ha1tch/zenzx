@@ -44,6 +44,10 @@ func (zx *ZenZX) HandleInput() {
 		zx.handleAltCombinations()
 	}
 
+	zx.handleJoystickInput()
+	zx.handleTS2068JoystickInput()
+	zx.handleMouseInput()
+
 	// Process keyboard input
 	zx.handleKeyboard()
 
@@ -66,6 +70,119 @@ func (zx *ZenZX) HandleInput() {
 	zx.display.SetBorderColor(zx.io.borderColor)
 }
 
+// ============================================================================
+// Joystick Input (joystick.go carries the mode-independent translation
+// logic; this is purely the host-side raylib gamepad read)
+// ============================================================================
+
+// gamepadDirectionThreshold is the analog-stick deflection past which an
+// axis counts as a digital direction press. 0.5 is a common convention
+// (past the stick's centre dead zone, well short of full deflection) --
+// not derived from any Spectrum-hardware source, since this threshold has
+// no real-hardware equivalent.
+const gamepadDirectionThreshold = 0.5
+
+// handleJoystickInput polls gamepad 0 (the first connected controller, if
+// any) and translates it into a JoystickState for whichever hardware
+// mechanism -joystick configured. A no-op, with no raylib calls at all,
+// when no mode is configured -- matches SetJoystickState's own no-op
+// behaviour for JoystickNone (see joystick.go), kept as an explicit early
+// return here too so an idle gamepad poll never runs when it can't matter.
+func (zx *ZenZX) handleJoystickInput() {
+	if zx.io.joystickMode == JoystickNone {
+		return
+	}
+	if zx.io.joystickMode == JoystickSinclairBoth || zx.io.joystickMode == JoystickKempstonBoth {
+		// Two real, simultaneous ports (the +2/+2A/+3's built-in Sinclair
+		// pair, or a neo-Spectrum platform's configured dual Kempston):
+		// gamepad 0 drives port 1, gamepad 1 (if present) drives port 2,
+		// the same convention already established for TS2068's own two
+		// built-in ports below.
+		zx.io.SetJoystickStateBoth(readGamepadState(0), readGamepadState(1))
+		return
+	}
+	zx.io.SetJoystickState(readGamepadState(0))
+}
+
+// readGamepadState polls one raylib gamepad slot (0-based) into a
+// JoystickState. Shared by the canonical Spectrum's Kempston/Sinclair
+// path (handleJoystickInput, always gamepad 0) and TS2068's own
+// built-in dual joystick ports (handleTS2068JoystickInput, one call per
+// port) -- same host-input semantics, different destinations.
+func readGamepadState(gamepadIndex int32) JoystickState {
+	var s JoystickState
+	if !rl.IsGamepadAvailable(gamepadIndex) {
+		// No gamepad connected: stays the zero value (nothing pressed),
+		// same as if a real joystick were unplugged.
+		return s
+	}
+	// D-pad face buttons and the left analog stick both count --
+	// whichever the controller actually reports.
+	s.Up = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonLeftFaceUp) ||
+		rl.GetGamepadAxisMovement(gamepadIndex, rl.GamepadAxisLeftY) < -gamepadDirectionThreshold
+	s.Down = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonLeftFaceDown) ||
+		rl.GetGamepadAxisMovement(gamepadIndex, rl.GamepadAxisLeftY) > gamepadDirectionThreshold
+	s.Left = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonLeftFaceLeft) ||
+		rl.GetGamepadAxisMovement(gamepadIndex, rl.GamepadAxisLeftX) < -gamepadDirectionThreshold
+	s.Right = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonLeftFaceRight) ||
+		rl.GetGamepadAxisMovement(gamepadIndex, rl.GamepadAxisLeftX) > gamepadDirectionThreshold
+	// Single fire button -- Spectrum-family joysticks only ever have
+	// the one, so only one host button is mapped.
+	s.Fire = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonRightFaceDown)
+	return s
+}
+
+// handleTS2068JoystickInput drives TS2068's own built-in joystick ports
+// (Technical Manual 2.1.6.1/2.1.7, Table 2.4.4-1) -- always active for
+// this model, independent of -joystick, since these are the machine's
+// own hardware ports, not an optional add-on peripheral the way
+// Kempston/Sinclair interfaces are for the canonical Spectrum. Gamepad
+// 0 drives port 1, gamepad 1 (if present) drives port 2.
+func (zx *ZenZX) handleTS2068JoystickInput() {
+	if !zx.memory.isTS2068 {
+		return
+	}
+	zx.io.SetTS2068JoystickState(1, readGamepadState(0))
+	zx.io.SetTS2068JoystickState(2, readGamepadState(1))
+}
+
+// handleMouseInput polls raylib's mouse and translates it into a
+// MouseState for whichever hardware mechanism -mouse configured. A no-op
+// when no mode is configured, same pattern as handleJoystickInput.
+//
+// rl.GetMouseDelta() is already in host window-client pixels (raylib's
+// own per-frame movement vector -- no OS-level or window-position
+// translation needed, exactly matching what the person asked to have
+// handled). Border margin does not enter into this at all: Kempston
+// Mouse is a relative device (mouse.go), and a real physical mouse
+// reports ball rotation unconditionally, with no notion of where a
+// cursor is on screen -- there is nothing for border offset to correct
+// for here. What does need correcting is magnification: the same
+// physical mouse movement covers more host pixels at a higher window
+// scale, so the raw delta is divided by the current multiplier before
+// being handed to SetMouseState, which expects native-Spectrum-pixel
+// units.
+func (zx *ZenZX) handleMouseInput() {
+	if zx.io.mouseMode == MouseNone {
+		return
+	}
+
+	mult := float32(zx.screen.GetMultiplier())
+	if mult < 1 {
+		mult = 1
+	}
+	d := rl.GetMouseDelta()
+
+	s := MouseState{
+		DeltaX: d.X / mult,
+		DeltaY: d.Y / mult,
+		Left:   rl.IsMouseButtonDown(rl.MouseButtonLeft),
+		Right:  rl.IsMouseButtonDown(rl.MouseButtonRight),
+		Middle: rl.IsMouseButtonDown(rl.MouseButtonMiddle),
+	}
+	zx.io.SetMouseState(s)
+}
+
 // handleAltCombinations processes Alt+key combinations for system controls
 func (zx *ZenZX) handleAltCombinations() {
 	if rl.IsKeyPressed(rl.KeyF) {
@@ -77,57 +194,96 @@ func (zx *ZenZX) handleAltCombinations() {
 	}
 
 	if rl.IsKeyPressed(rl.KeyT) {
-		// Toggle tape mode (Accurate/Fast)
-		if zx.tape != nil && zx.tape.st != nil && zx.tape.st.Loaded {
-			if zx.tape.st.Mode == TapeAccurate {
-				zx.tape.SetMode(TapeFast)
-				fmt.Println("Tape: Fast mode")
-			} else {
-				zx.tape.SetMode(TapeAccurate)
-				fmt.Println("Tape: Accurate mode")
-			}
-		}
+		zx.ToggleTapeMode()
 	}
 
 	if rl.IsKeyPressed(rl.KeyP) {
-		// Play/Stop tape
-		if zx.tape != nil && zx.tape.st != nil && zx.tape.st.Loaded {
-			if zx.tape.st.Playing {
-				zx.tape.Stop()
-				fmt.Println("Tape: Stopped")
-			} else {
-				zx.tape.Play()
-				modeStr := "Fast"
-				if zx.tape.st.Mode == TapeAccurate {
-					modeStr = "Accurate"
-				}
-				fmt.Printf("Tape: Playing (%s mode)\n", modeStr)
-			}
-		}
+		zx.PlayStopTape()
 	}
 
 	if rl.IsKeyPressed(rl.KeyR) {
-		// Rewind tape
-		if zx.tape != nil && zx.tape.st != nil && zx.tape.st.Loaded {
-			zx.tape.Rewind()
-			fmt.Println("Tape: Rewound")
-		}
+		zx.RewindTape()
 	}
 
 	if rl.IsKeyPressed(rl.KeyI) {
-		// Show tape info
-		if zx.tape != nil && zx.tape.st != nil && zx.tape.st.Loaded {
-			status := zx.tape.GetStatus()
-			fmt.Printf("Tape: %s\n", status)
+		zx.ShowTapeInfo()
+	}
+}
 
-			blocks := zx.tape.GetBlockInfo()
-			if len(blocks) > 0 {
-				fmt.Println("Blocks:")
-				for _, info := range blocks {
-					fmt.Println(info)
-				}
-			}
+// ToggleTapeMode switches between accurate and fast tape loading, a no-op
+// if no tape is loaded. Extracted from handleAltCombinations (Alt+T) so
+// the menu bar's Tape menu can call the identical logic rather than
+// duplicate it.
+func (zx *ZenZX) ToggleTapeMode() {
+	if zx.tape == nil || zx.tape.st == nil || !zx.tape.st.Loaded {
+		return
+	}
+	if zx.tape.st.Mode == TapeAccurate {
+		zx.tape.SetMode(TapeFast)
+		fmt.Println("Tape: Fast mode")
+	} else {
+		zx.tape.SetMode(TapeAccurate)
+		fmt.Println("Tape: Accurate mode")
+	}
+}
+
+// PlayStopTape toggles tape playback, a no-op if no tape is loaded.
+// Extracted from handleAltCombinations (Alt+P); see ToggleTapeMode.
+func (zx *ZenZX) PlayStopTape() {
+	if zx.tape == nil || zx.tape.st == nil || !zx.tape.st.Loaded {
+		return
+	}
+	if zx.tape.st.Playing {
+		zx.tape.Stop()
+		fmt.Println("Tape: Stopped")
+	} else {
+		zx.tape.Play()
+		modeStr := "Fast"
+		if zx.tape.st.Mode == TapeAccurate {
+			modeStr = "Accurate"
 		}
+		fmt.Printf("Tape: Playing (%s mode)\n", modeStr)
+	}
+}
+
+// RewindTape rewinds the loaded tape to its start, a no-op if none is
+// loaded. Extracted from handleAltCombinations (Alt+R); see ToggleTapeMode.
+func (zx *ZenZX) RewindTape() {
+	if zx.tape == nil || zx.tape.st == nil || !zx.tape.st.Loaded {
+		return
+	}
+	zx.tape.Rewind()
+	fmt.Println("Tape: Rewound")
+}
+
+// ShowTapeInfo prints the tape's status and block list, a no-op if none is
+// loaded. Extracted from handleAltCombinations (Alt+I); see
+// ToggleTapeMode.
+func (zx *ZenZX) ShowTapeInfo() {
+	if zx.tape == nil || zx.tape.st == nil || !zx.tape.st.Loaded {
+		return
+	}
+	status := zx.tape.GetStatus()
+	fmt.Printf("Tape: %s\n", status)
+
+	blocks := zx.tape.GetBlockInfo()
+	if len(blocks) > 0 {
+		fmt.Println("Blocks:")
+		for _, info := range blocks {
+			fmt.Println(info)
+		}
+	}
+}
+
+// TogglePause flips the emulator's paused state. Extracted from
+// handleFunctionKeys (F2) so the menu bar's Machine menu can call the
+// identical logic rather than duplicate it.
+func (zx *ZenZX) TogglePause() {
+	zx.paused = !zx.paused
+	if zx.paused {
+		fmt.Println("Paused")
+	} else {
+		fmt.Println("Resumed")
 	}
 }
 
@@ -297,12 +453,7 @@ func (zx *ZenZX) handleFunctionKeys() {
 
 	// F2 - Pause/Resume
 	if rl.IsKeyPressed(rl.KeyF2) {
-		zx.paused = !zx.paused
-		if zx.paused {
-			fmt.Println("Paused")
-		} else {
-			fmt.Println("Resumed")
-		}
+		zx.TogglePause()
 	}
 
 	// F3 - Show status

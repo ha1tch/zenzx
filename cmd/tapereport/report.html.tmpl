@@ -1,0 +1,319 @@
+{{- /* zenzx tape compatibility report -- design system: zsp (Zen Spectrum
+       Project). Palette, type, and component patterns (project-hero,
+       stat-grid, blockquote, table, status-* colours) are reused directly
+       from zsp's own shared stylesheet, not a new design invented for this
+       report. zenzx's own assigned accent within that system is magenta. */ -}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tape loading compatibility report</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600&display=swap');
+
+@font-face {
+  font-family: 'ZXSpectrum';
+  src: url(data:font/ttf;base64,{{.FontBase64}}) format('truetype');
+  font-display: swap;
+}
+
+:root {
+  --bg:        #09090b;
+  --surface:   #131316;
+  --surface-2: #1b1b1f;
+  --border:    #29292e;
+  --border-2:  #3a3a40;
+
+  --text:       #eceef0;
+  --text-muted: #8d8d96;
+  --text-dim:   #55555d;
+
+  --zx-blue:    #4655ff;
+  --zx-red:     #ff4d4d;
+  --zx-magenta: #ff4dff;
+  --zx-green:   #3ee06a;
+  --zx-cyan:    #3fe8ff;
+  --zx-yellow:  #ffd83f;
+  --zx-white:   #f2f2ee;
+
+  --accent: var(--zx-magenta);
+
+  --radius: 6px;
+  --mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --zx:   'ZXSpectrum', var(--mono);
+}
+
+* { box-sizing: border-box; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--zx-cyan); }
+a:focus-visible { outline: 2px solid var(--zx-cyan); outline-offset: 2px; }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+
+.zx-subtitle {
+  font-family: var(--zx);
+  -webkit-font-smoothing: none;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0.5rem 0 0;
+}
+
+.project-hero {
+  padding: 3.5rem 0 2.5rem;
+  border-bottom: 1px solid var(--border);
+  border-top: 4px solid var(--accent);
+}
+.hero-eyebrow {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 1rem;
+}
+.project-hero h1 {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.project-hero h1 .accent { color: var(--accent); }
+.project-hero .meta-row {
+  display: flex; gap: 1.25rem; margin-top: 1.75rem; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 0.82rem; color: var(--text-dim);
+}
+.project-hero .meta-row strong { color: var(--text); font-weight: 600; }
+
+.section { padding: 3rem 0; border-bottom: 1px solid var(--border); }
+.section:last-of-type { border-bottom: none; }
+.section-label {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 1.5rem;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.stat { background: var(--surface); padding: 1.5rem; }
+.stat .num {
+  font-family: var(--mono);
+  font-size: 2.1rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+.stat .num.accent { color: var(--accent); }
+.stat .label {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+}
+
+blockquote {
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+blockquote p { margin: 0; }
+blockquote cite {
+  font-family: var(--zx);
+  -webkit-font-smoothing: none;
+  display: block;
+  margin-top: 0.85rem;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+table { border-collapse: collapse; width: 100%; margin: 0; font-size: 0.88rem; }
+th, td { border: 1px solid var(--border); padding: 0.55rem 0.85rem; text-align: left; }
+th { background: var(--surface); font-family: var(--mono); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+td.num { text-align: right; }
+td.mono { font-family: var(--mono); }
+tr:hover td { background: var(--surface-2); }
+
+.status-fixed   { color: var(--zx-green); }
+.status-open    { color: var(--zx-yellow); }
+.status-decided { color: var(--zx-cyan); }
+
+.note {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 1rem;
+}
+
+footer {
+  padding: 2.5rem 0 3.5rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+footer a { color: var(--text-muted); }
+footer a:hover { color: var(--text); }
+
+@media (max-width: 640px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  table { font-size: 0.78rem; }
+  th, td { padding: 0.4rem 0.5rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="project-hero">
+  <div class="wrap">
+    <p class="hero-eyebrow">zenzx &middot; tape loading</p>
+    <h1>{{.TZXFiles}} real tapes decoded.<br><span class="accent">{{.FilesWithUnwiredDataBlock}} unwired data blocks.</span></h1>
+    <p class="zx-subtitle">measured against tapes that actually shipped on cassette</p>
+    <div class="meta-row">
+      <span><strong>{{.Games}}</strong> games</span>
+      <span><strong>{{.TZXFiles}}</strong> .tzx files</span>
+      <span><strong>{{.TAPFiles}}</strong> .tap files</span>
+      <span><strong>{{printf "%.1f" .TotalMB}} MB</strong> total</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="section">
+    <p class="section-label">Decode quality</p>
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="num accent">{{.TZXPctStr}}</div>
+        <div class="label">.tzx decoded clean<br>({{.TZXOK}} / {{.TZXFiles}})</div>
+      </div>
+      <div class="stat">
+        <div class="num">{{.TAPPctStr}}</div>
+        <div class="label">.tap decoded clean<br>({{.TAPOK}} / {{.TAPFiles}})</div>
+      </div>
+      <div class="stat">
+        <div class="num accent">{{.FilesWithUnwiredDataBlock}}</div>
+        <div class="label">data-bearing blocks<br>left unwired</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="section-label">Practical compatibility &mdash; whole files, not block types</p>
+    <p class="note" style="margin-top: 0; margin-bottom: 1.5rem;">The table below shows coverage
+      per block <em>type</em>. This is the question that actually matters: of the real files in
+      this corpus, how many will genuinely work in each mode right now. A file with no
+      pulse-relevant content at all (pure metadata) counts toward none of these three.</p>
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="num {{if eq .NonPlayableFiles 0}}accent{{end}}">{{.NonPlayableFiles}}</div>
+        <div class="label">non-playable, as-is<br>({{printf "%.1f" .NonPlayablePct}}%) &mdash; work in neither mode</div>
+      </div>
+      <div class="stat">
+        <div class="num accent">{{printf "%.1f" .PlayablePct}}%</div>
+        <div class="label">fully playable<br>(accurate mode)<br>({{.PlayableFiles}} files)</div>
+      </div>
+      <div class="stat">
+        <div class="num accent">{{printf "%.1f" .FastLoadablePct}}%</div>
+        <div class="label">fully fast-loadable<br>({{.FastLoadableFiles}} files)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="section-label">Block type usage across the corpus</p>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Block</th>
+          <th class="num">Files</th>
+          <th class="num">%</th>
+          <th class="num">Instances</th>
+          <th>Kind</th>
+          <th>Fast&#8209;load</th>
+          <th>Playback</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Blocks}}
+        <tr>
+          <td class="mono">{{.IDHex}}</td>
+          <td>{{.Name}}</td>
+          <td class="mono num">{{.Files}}</td>
+          <td class="mono num">{{printf "%.1f" .FilePct}}%</td>
+          <td class="mono num">{{commas .Instances}}</td>
+          <td class="mono">{{.Kind}}</td>
+          <td class="mono {{statusClass .FastLoad}}">{{statusLabel .FastLoad}}</td>
+          <td class="mono {{statusClass .Playback}}">{{statusLabel .Playback}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    <p class="note">&ldquo;Kind&rdquo; distinguishes loadable data blocks from organisational or
+      metadata-only ones, which never need pulse output by design &mdash; not a gap when marked
+      n/a.</p>
+  </div>
+
+  {{if .Highlight}}
+  <div class="section" style="border-bottom: none;">
+    <p class="section-label">Reading this</p>
+    <p style="color: #d7d8db; max-width: 640px;">
+      {{.Highlight.Files}} of these {{.Games}} games ({{printf "%.0f" .Highlight.FilePct}}%) use
+      <span class="mono">{{.Highlight.IDHex}}</span> {{.Highlight.Name}} &mdash; not the standard
+      block &mdash; for at least part of their data ({{commas .Highlight.Instances}} block
+      instances across the corpus).
+      {{if .HighlightOK}}
+      That block type is fully wired: both fast-load and accurate-mode playback.
+      {{else}}
+      That block type is not yet fully wired (fast-load: {{statusLabel .Highlight.FastLoad}},
+      playback: {{statusLabel .Highlight.Playback}}) &mdash; the highest-value remaining gap this
+      corpus points at.
+      {{end}}
+    </p>
+  </div>
+  {{end}}
+
+</div>
+
+<footer>
+  <div class="wrap">
+    Generated by <span style="color: var(--text-muted);">cmd/tapereport</span> from a real,
+    third-party corpus &mdash; not a synthetic test set. Decoding via
+    <span style="color: var(--text-muted);">zentools/pkg/tzx</span> and
+    <span style="color: var(--text-muted);">zentools/pkg/tap</span>; wiring and playback via
+    <span style="color: var(--text-muted);">zenzx</span>.
+  </div>
+</footer>
+
+</body>
+</html>

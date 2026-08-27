@@ -21,6 +21,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -46,19 +47,19 @@ type ScheduleConfig struct {
 
 // Scheduler holds a script and the run-time state needed to drive it.
 type Scheduler struct {
-	script   *Script
-	cfg      ScheduleConfig
-	frame    int  // monotonic frame counter, incremented each Tick
-	rebase   int  // frame offset subtracted to give the effective clock
-	next     int  // index of the next un-fired action in script.Actions
-	quit     bool // set true by the 'quit' action
-	shotSeq    int  // sequence number for auto-named screenshots
-	shotsTaken int  // total successful screenshots taken by the script
-	expectFailures int // count of failed expect-screen assertions
-	waiting  *BootDetector // non-nil while a wait-boot action is blocking
-	keys     *KeyQueue     // non-nil while scripted keys are being injected
-	keyHold  int           // configured key hold frames
-	keyGap   int           // configured key gap frames
+	script         *Script
+	cfg            ScheduleConfig
+	frame          int           // monotonic frame counter, incremented each Tick
+	rebase         int           // frame offset subtracted to give the effective clock
+	next           int           // index of the next un-fired action in script.Actions
+	quit           bool          // set true by the 'quit' action
+	shotSeq        int           // sequence number for auto-named screenshots
+	shotsTaken     int           // total successful screenshots taken by the script
+	expectFailures int           // count of failed expect-screen assertions
+	waiting        *BootDetector // non-nil while a wait-boot action is blocking
+	keys           *KeyQueue     // non-nil while scripted keys are being injected
+	keyHold        int           // configured key hold frames
+	keyGap         int           // configured key gap frames
 
 	// wait-screen blocking state, active while waitScreenActive is true.
 	waitScreenActive  bool
@@ -79,6 +80,32 @@ type Scheduler struct {
 	waitAttrLine     int
 	waitAttrDesc     string
 
+	// wait-mem blocking state, active while waitMemActive is true.
+	waitMemActive  bool
+	waitMemAddr    uint16
+	waitMemOp      string
+	waitMemValue   uint16
+	waitMemElapsed int
+	waitMemTimeout int
+	waitMemLine    int
+	waitMemDesc    string
+
+	// wait-tape-done blocking state, active while waitTapeDoneActive is
+	// true. Blocks until the currently-loaded tape genuinely finishes --
+	// Playing goes false (natural end, or a StopPoints/StopPointsIf48K
+	// halt) or Position reaches the end of Blocks -- or the timeout
+	// elapses. Exists specifically so a driven headless run can wait for
+	// real completion instead of guessing a fixed frame count, which
+	// varies enormously by how many blocks a given tape actually has.
+	waitTapeDoneActive  bool
+	waitTapeDoneElapsed int
+	waitTapeDoneTimeout int
+	waitTapeDoneLine    int
+
+	// symtab holds the symbol table loaded by the sym verb, or nil if none
+	// has run yet. wait-mem/expect-mem resolve names against it.
+	symtab SymbolTable
+
 	handlers map[string]actionHandler
 }
 
@@ -86,17 +113,21 @@ type Scheduler struct {
 func NewScheduler(script *Script, cfg ScheduleConfig) *Scheduler {
 	s := &Scheduler{script: script, cfg: cfg, keyHold: defaultKeyHoldFrames, keyGap: defaultKeyGapFrames}
 	s.handlers = map[string]actionHandler{
-		"shot":      (*Scheduler).doShot,
-		"reset":     (*Scheduler).doReset,
-		"tape-play": (*Scheduler).doTapePlay,
-		"tape-stop": (*Scheduler).doTapeStop,
-		"snapshot":  (*Scheduler).doSnapshot,
+		"shot":          (*Scheduler).doShot,
+		"reset":         (*Scheduler).doReset,
+		"tape-play":     (*Scheduler).doTapePlay,
+		"tape-stop":     (*Scheduler).doTapeStop,
+		"snapshot":      (*Scheduler).doSnapshot,
 		"snapshot-save": (*Scheduler).doSnapshotSave,
-		"bin":       (*Scheduler).doBin,
-		"scr":       (*Scheduler).doScr,
-		"quit":      (*Scheduler).doQuit,
+		"bin":           (*Scheduler).doBin,
+		"bin-safe":      (*Scheduler).doBinSafe,
+		"scr":           (*Scheduler).doScr,
+		"quit":          (*Scheduler).doQuit,
 		"dump-screen":   (*Scheduler).doDumpScreen,
 		"expect-screen": (*Scheduler).doExpectScreen,
+		"sym":           (*Scheduler).doSym,
+		"expect-mem":    (*Scheduler).doExpectMem,
+		"dump-mem":      (*Scheduler).doDumpMem,
 		// Keyboard injection (Phase 2).
 		"type":    (*Scheduler).doType,
 		"key":     (*Scheduler).doKey,
@@ -109,6 +140,16 @@ func NewScheduler(script *Script, cfg ScheduleConfig) *Scheduler {
 // QuitRequested reports whether a 'quit' action has fired. The headless loop
 // checks this to break early; the GUI loop may ignore it or use it to close.
 func (s *Scheduler) QuitRequested() bool { return s.quit }
+
+// BlockingOnRealMemory reports whether a barrier that reads real screen or
+// memory content (wait-boot, wait-screen, wait-attr, wait-mem) is
+// currently active. Turbo mode (turbo.go) checks this to stay inactive
+// during these windows -- a barrier like wait-boot has no way to observe
+// progress being written to Turbo mode's own flat, unsynced scratch
+// memory instead of the real SpectrumMemory/screen it actually reads.
+func (s *Scheduler) BlockingOnRealMemory() bool {
+	return s.waiting != nil || s.waitScreenActive || s.waitAttrActive || s.waitMemActive
+}
 
 // ShotsTaken returns the number of screenshots the script has captured.
 func (s *Scheduler) ShotsTaken() int { return s.shotsTaken }
@@ -255,6 +296,83 @@ func (s *Scheduler) Tick(zx *ZenZX) {
 		return
 	}
 
+	// Handle a blocking wait-mem at the head of the queue: pause until the
+	// memory location (symbol name or literal address) satisfies the
+	// comparison, or the timeout elapses. Same block-and-rebase semantics as
+	// wait-screen/wait-attr.
+	if !s.waitMemActive && s.next < len(s.script.Actions) && s.script.Actions[s.next].Verb == "wait-mem" {
+		a := s.script.Actions[s.next]
+		if err := s.beginWaitMem(a); err != nil {
+			s.warnf("line %d: wait-mem: %v", a.Line, err)
+			s.next++
+		}
+	}
+	if s.waitMemActive {
+		got := uint16(zx.memory.Read(s.waitMemAddr))
+		if memCompare(got, s.waitMemOp, s.waitMemValue) {
+			s.logf("script: wait-mem matched %s (got %d) at frame %d; rebasing timeline",
+				s.waitMemDesc, got, s.frame)
+			s.waitMemActive = false
+			s.rebase = s.frame
+			s.next++
+			s.frame++
+			return
+		}
+		s.waitMemElapsed++
+		if s.waitMemElapsed >= s.waitMemTimeout {
+			s.expectFailures++
+			s.warnf("line %d: wait-mem TIMED OUT after %d frames waiting for %s (got %d)",
+				s.waitMemLine, s.waitMemTimeout, s.waitMemDesc, got)
+			s.waitMemActive = false
+			s.rebase = s.frame
+			s.next++
+			s.frame++
+			return
+		}
+		s.frame++
+		return
+	}
+
+	// Handle a blocking wait-tape-done at the head of the queue: pause
+	// until the currently-loaded tape genuinely stops -- Playing goes
+	// false for any reason (natural end via trapLoad/Tick's own end-of-
+	// tape check, or a StopPoints/StopPointsIf48K halt) -- or the
+	// timeout elapses. A game with a fully custom loader that never
+	// calls the standard ROM's LD-BYTES at all (so trapLoad never fires,
+	// and Playing never goes false on its own) correctly times out here
+	// rather than blocking forever -- that is exactly what the timeout
+	// is for.
+	if !s.waitTapeDoneActive && s.next < len(s.script.Actions) && s.script.Actions[s.next].Verb == "wait-tape-done" {
+		a := s.script.Actions[s.next]
+		if err := s.beginWaitTapeDone(a); err != nil {
+			s.warnf("line %d: wait-tape-done: %v", a.Line, err)
+			s.next++
+		}
+	}
+	if s.waitTapeDoneActive {
+		done := zx.tape == nil || zx.tape.st == nil || !zx.tape.st.Playing
+		if done {
+			s.logf("script: wait-tape-done satisfied at frame %d; rebasing timeline", s.frame)
+			s.waitTapeDoneActive = false
+			s.rebase = s.frame
+			s.next++
+			s.frame++
+			return
+		}
+		s.waitTapeDoneElapsed++
+		if s.waitTapeDoneElapsed >= s.waitTapeDoneTimeout {
+			s.expectFailures++
+			s.warnf("line %d: wait-tape-done TIMED OUT after %d frames", s.waitTapeDoneLine, s.waitTapeDoneTimeout)
+			s.waitTapeDoneActive = false
+			s.rebase = s.frame
+			s.next++
+			s.frame++
+			return
+		}
+		s.frame++
+		return
+	}
+
 	eff := s.frame - s.rebase
 
 	// Count how many actions are due on this effective frame, for collision
@@ -314,9 +432,24 @@ func (s *Scheduler) warnf(format string, args ...any) {
 // configured shot directory. Without an argument, an auto-incrementing name
 // based on the prefix and current frame is used.
 func (s *Scheduler) doShot(zx *ZenZX, a Action) error {
+	args := a.Args
+	zoom := 1
+	if len(args) > 0 {
+		if last := args[len(args)-1]; strings.HasPrefix(last, "zoom=") {
+			n, err := strconv.Atoi(strings.TrimPrefix(last, "zoom="))
+			if err != nil || n < 1 {
+				return fmt.Errorf("invalid zoom %q: must be a positive integer", last)
+			}
+			if n > maxShotZoom {
+				return fmt.Errorf("zoom=%d exceeds the maximum of %d", n, maxShotZoom)
+			}
+			zoom = n
+			args = args[:len(args)-1]
+		}
+	}
 	var name string
-	if len(a.Args) > 0 {
-		name = a.Args[0]
+	if len(args) > 0 {
+		name = args[0]
 		if !strings.HasSuffix(strings.ToLower(name), ".png") {
 			name += ".png"
 		}
@@ -325,13 +458,23 @@ func (s *Scheduler) doShot(zx *ZenZX, a Action) error {
 		name = fmt.Sprintf("%s-frame%06d.png", s.cfg.ShotPrefix, s.frame)
 	}
 	path := filepath.Join(s.cfg.ShotDir, name)
-	if err := writeScreenPNG(path, zx.screen); err != nil {
+	if err := writeScreenPNG(path, zx, zoom); err != nil {
 		return err
 	}
 	s.shotsTaken++
-	s.logf("script: frame %d -> %s", s.frame, path)
+	if zoom > 1 {
+		s.logf("script: frame %d -> %s (zoom=%d)", s.frame, path, zoom)
+	} else {
+		s.logf("script: frame %d -> %s", s.frame, path)
+	}
 	return nil
 }
+
+// maxShotZoom caps the zoom= argument to shot. 256x192 at 16x is a
+// 4096x3072 PNG (~12MB uncompressed RGBA before encoding) -- generous for
+// inspecting fine sprite/tile detail without letting a typo produce a
+// runaway allocation.
+const maxShotZoom = 16
 
 // doReset resets the CPU.
 func (s *Scheduler) doReset(zx *ZenZX, _ Action) error {
@@ -406,6 +549,7 @@ func (s *Scheduler) doSnapshotSave(zx *ZenZX, a Action) error {
 	s.logf("script: frame %d -> snapshot-save %s (%s)", s.frame, path, strings.ToUpper(format))
 	return nil
 }
+
 // loadAddr defaults to 0x8000; startAddr defaults to the load address.
 func (s *Scheduler) doBin(zx *ZenZX, a Action) error {
 	if len(a.Args) < 1 {
@@ -438,6 +582,45 @@ func (s *Scheduler) doBin(zx *ZenZX, a Action) error {
 		s.logf("script: frame %d -> bin %s at 0x%04X, PC=0x%04X", s.frame, path, addr, start)
 	} else {
 		s.logf("script: frame %d -> bin %s at 0x%04X (PC unchanged)", s.frame, path, addr)
+	}
+	return nil
+}
+
+// doBinSafe is doBin, but loads through LoadBINWithSafeReturn instead of
+// LoadBIN: the loaded code gets a safe self-loop to RET into rather than
+// whatever the stack already contained. Same usage and argument parsing as
+// bin; see LoadBINWithSafeReturn's own doc comment for why this exists.
+func (s *Scheduler) doBinSafe(zx *ZenZX, a Action) error {
+	if len(a.Args) < 1 {
+		return fmt.Errorf("usage: bin-safe <path> [loadAddr] [startAddr]")
+	}
+	path := a.Args[0]
+
+	addr := uint16(0x8000)
+	if len(a.Args) >= 2 {
+		v, err := ParseAddr(a.Args[1])
+		if err != nil {
+			return fmt.Errorf("invalid load address %q: %v", a.Args[1], err)
+		}
+		addr = v
+	}
+
+	start := int(addr)
+	if len(a.Args) >= 3 {
+		v, err := ParseAddrSigned(a.Args[2])
+		if err != nil {
+			return fmt.Errorf("invalid start address %q: %v", a.Args[2], err)
+		}
+		start = v
+	}
+
+	if err := zx.LoadBINWithSafeReturn(path, addr, start); err != nil {
+		return err
+	}
+	if start >= 0 {
+		s.logf("script: frame %d -> bin-safe %s at 0x%04X, PC=0x%04X (safe return armed)", s.frame, path, addr, start)
+	} else {
+		s.logf("script: frame %d -> bin-safe %s at 0x%04X (PC unchanged)", s.frame, path, addr)
 	}
 	return nil
 }
@@ -612,7 +795,196 @@ func (s *Scheduler) beginWaitAttr(a Action) error {
 	return nil
 }
 
-// parseRowSpec parses "10", "8-12", or "all" into an inclusive row range.
+// doSym loads a symbol table from a pasmo/zenas .sym file, for wait-mem and
+// expect-mem to resolve names against. Usage: sym <path>. Loading a second
+// file replaces the table entirely (not merged).
+func (s *Scheduler) doSym(_ *ZenZX, a Action) error {
+	if len(a.Args) < 1 {
+		return fmt.Errorf("usage: sym <path>")
+	}
+	tab, err := LoadSymbolTable(a.Args[0])
+	if err != nil {
+		return err
+	}
+	s.symtab = tab
+	s.logf("script: frame %d -> sym %s (%d symbols)", s.frame, a.Args[0], len(tab))
+	return nil
+}
+
+// memCompare evaluates "got <op> want" for wait-mem/expect-mem. Supported
+// operators: = != < > <= >=.
+func memCompare(got uint16, op string, want uint16) bool {
+	switch op {
+	case "=", "==":
+		return got == want
+	case "!=":
+		return got != want
+	case "<":
+		return got < want
+	case ">":
+		return got > want
+	case "<=":
+		return got <= want
+	case ">=":
+		return got >= want
+	}
+	return false
+}
+
+// validMemOps lists the operators memCompare accepts, for error messages.
+var validMemOps = []string{"=", "!=", "<", ">", "<=", ">="}
+
+// parseMemCondition parses the shared "<symbol|addr> <op> <value>" shape used
+// by both wait-mem and expect-mem, resolving the symbol/address against the
+// scheduler's current table (which may be nil -- Resolve falls back to a
+// literal address in that case).
+func (s *Scheduler) parseMemCondition(args []string) (addr uint16, op string, value uint16, desc string, err error) {
+	if len(args) < 3 {
+		return 0, "", 0, "", fmt.Errorf("usage: <symbol|addr> <op> <value>")
+	}
+	addr, err = s.symtab.Resolve(args[0])
+	if err != nil {
+		return 0, "", 0, "", err
+	}
+	op = args[1]
+	valid := false
+	for _, o := range validMemOps {
+		if op == o {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return 0, "", 0, "", fmt.Errorf("unknown operator %q (want one of %v)", op, validMemOps)
+	}
+	v, err := ParseAddr(args[2])
+	if err != nil {
+		return 0, "", 0, "", fmt.Errorf("invalid value %q: %v", args[2], err)
+	}
+	desc = fmt.Sprintf("%s (0x%04X) %s %d", args[0], addr, op, v)
+	return addr, op, v, desc, nil
+}
+
+// defaultWaitMemTimeout mirrors defaultWaitScreenTimeout: 5s at 50fps.
+const defaultWaitMemTimeout = 250
+
+// beginWaitMem parses a wait-mem action and arms the blocking state. Usage:
+// wait-mem <symbol|addr> <op> <value> [timeout=<frames|Ns|Nms>].
+// beginWaitTapeDone arms the wait-tape-done barrier. Usage: wait-tape-done
+// [timeout=<frames>]. Unlike wait-mem, there is no condition to parse --
+// just an optional timeout, defaulting to defaultWaitMemTimeout (the same
+// generous default wait-mem itself uses, since both are "block until
+// something we can't precisely predict the timing of finishes").
+func (s *Scheduler) beginWaitTapeDone(a Action) error {
+	timeout := defaultWaitMemTimeout
+	if len(a.Args) > 0 {
+		if strings.HasPrefix(a.Args[0], "timeout=") {
+			v := strings.TrimPrefix(a.Args[0], "timeout=")
+			t, err := parseOffset(v)
+			if err != nil {
+				return fmt.Errorf("invalid timeout %q: %v", v, err)
+			}
+			timeout = t
+		} else {
+			return fmt.Errorf("usage: wait-tape-done [timeout=<frames>]")
+		}
+	}
+	s.waitTapeDoneActive = true
+	s.waitTapeDoneElapsed = 0
+	s.waitTapeDoneTimeout = timeout
+	s.waitTapeDoneLine = a.Line
+	return nil
+}
+
+func (s *Scheduler) beginWaitMem(a Action) error {
+	args := a.Args
+	timeout := defaultWaitMemTimeout
+	if len(args) > 0 {
+		if last := args[len(args)-1]; strings.HasPrefix(last, "timeout=") {
+			v := strings.TrimPrefix(last, "timeout=")
+			t, err := parseOffset(v)
+			if err != nil {
+				return fmt.Errorf("invalid timeout %q: %v", v, err)
+			}
+			timeout = t
+			args = args[:len(args)-1]
+		}
+	}
+	addr, op, value, desc, err := s.parseMemCondition(args)
+	if err != nil {
+		return fmt.Errorf("usage: wait-mem <symbol|addr> <op> <value> [timeout=<frames>]: %v", err)
+	}
+
+	s.waitMemActive = true
+	s.waitMemAddr = addr
+	s.waitMemOp = op
+	s.waitMemValue = value
+	s.waitMemElapsed = 0
+	s.waitMemTimeout = timeout
+	s.waitMemLine = a.Line
+	s.waitMemDesc = desc
+	s.logf("script: waiting for %s (timeout %d frames)", desc, timeout)
+	return nil
+}
+
+// doExpectMem asserts a memory condition at this instant, without blocking.
+// Usage: expect-mem <symbol|addr> <op> <value>. A failure is logged and
+// counted (see ExpectFailures) but does not abort the run -- same contract
+// as expect-screen.
+func (s *Scheduler) doExpectMem(zx *ZenZX, a Action) error {
+	addr, op, value, desc, err := s.parseMemCondition(a.Args)
+	if err != nil {
+		return fmt.Errorf("usage: expect-mem <symbol|addr> <op> <value>: %v", err)
+	}
+	got := uint16(zx.memory.Read(addr))
+	if memCompare(got, op, value) {
+		s.logf("script: frame %d -> expect-mem %s: PASS (got %d)", s.frame, desc, got)
+	} else {
+		s.expectFailures++
+		s.warnf("frame %d: expect-mem %s FAILED (got %d)", s.frame, desc, got)
+	}
+	return nil
+}
+
+// doDumpMem prints a memory value as text: <label>=<value>, unconditionally
+// (unlike expect-mem/wait-mem's own logf/warnf, which are suppressed by
+// -quiet -- dump-mem's whole purpose is being the actual result a caller
+// reads, not diagnostic noise, so it always prints regardless of -quiet).
+//
+// Usage: dump-mem <symbol|addr> <size> <label>, where size is 8 or 16 (the
+// same convention used throughout the CSpect oracle's own gentest tool, so
+// a test's variable list reads the same way on both sides): an 8-bit read
+// is a single byte at the address; a 16-bit read is little-endian, low
+// byte at addr, high byte at addr+1 -- ordinary Z80/Sinclair BASIC PEEK
+// convention, matching what "PEEK addr+256*PEEK (addr+1)" would compute by
+// hand in a comparable BASIC program.
+func (s *Scheduler) doDumpMem(zx *ZenZX, a Action) error {
+	if len(a.Args) != 3 {
+		return fmt.Errorf("usage: dump-mem <symbol|addr> <size> <label>")
+	}
+	addr, err := s.symtab.Resolve(a.Args[0])
+	if err != nil {
+		return err
+	}
+	size, err := strconv.Atoi(a.Args[1])
+	if err != nil || (size != 8 && size != 16) {
+		return fmt.Errorf("size must be 8 or 16, got %q", a.Args[1])
+	}
+	label := a.Args[2]
+
+	switch size {
+	case 8:
+		v := zx.memory.Read(addr)
+		fmt.Printf("%s=%d\n", label, v)
+	case 16:
+		lo := uint16(zx.memory.Read(addr))
+		hi := uint16(zx.memory.Read(addr + 1))
+		fmt.Printf("%s=%d\n", label, hi*256+lo)
+	}
+	return nil
+}
+
+// parseRowSpec parses "10", "8-12", or "all" into an inclusive row range. "10", "8-12", or "all" into an inclusive row range.
 func parseRowSpec(spec string) (int, int, error) {
 	if spec == "all" {
 		return 0, screenRows - 1, nil
@@ -750,14 +1122,43 @@ func unquote(s string) string {
 // Shared screenshot helper
 // ----------------------------------------------------------------------------
 
-// writeScreenPNG encodes the current Spectrum framebuffer to a PNG file. It is
-// shared by the scheduler's shot handler across both front-ends.
-func writeScreenPNG(path string, screen *SpectrumScreen) error {
-	img := screen.DecodeRGBA()
+// writeScreenPNG encodes the current Spectrum framebuffer to a PNG file via
+// the active video renderer (zx.DecodeDisplay). Shared by the scheduler's
+// shot handler and both mains' own screenshot capture -- there was a
+// near-identical writePNG in zenzx_headless.go before this refactor;
+// consolidated to the one function so both call sites go through the same
+// renderer selection.
+func writeScreenPNG(path string, zx *ZenZX, zoom int) error {
+	img := zx.DecodeDisplay()
+	if zoom > 1 {
+		img = nearestNeighborScale(img, zoom)
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	return png.Encode(f, img)
+}
+
+// nearestNeighborScale upscales img by an integer factor using nearest-
+// neighbour sampling -- each output pixel copies its source pixel exactly,
+// with no blending. This keeps the Spectrum's hard 1-bit-per-pixel edges
+// sharp rather than smearing them, which is what a zoomed screenshot of
+// blocky, low-resolution guest graphics should look like.
+func nearestNeighborScale(src *image.RGBA, factor int) *image.RGBA {
+	b := src.Bounds()
+	w, h := b.Dx(), b.Dy()
+	dst := image.NewRGBA(image.Rect(0, 0, w*factor, h*factor))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			c := src.RGBAAt(b.Min.X+x, b.Min.Y+y)
+			for dy := 0; dy < factor; dy++ {
+				for dx := 0; dx < factor; dx++ {
+					dst.SetRGBA(x*factor+dx, y*factor+dy, c)
+				}
+			}
+		}
+	}
+	return dst
 }

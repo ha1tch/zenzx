@@ -10,11 +10,11 @@ import (
 
 // SincFilter provides high-quality audio resampling using windowed sinc interpolation
 type SincFilter struct {
-	taps       int       // Number of filter taps (must be even)
-	kernel     []float32 // Pre-computed sinc kernel
-	buffer     []float32 // Circular buffer for input samples
-	bufferPos  int       // Current position in buffer
-	cutoff     float32   // Normalized cutoff frequency (0-1)
+	taps      int       // Number of filter taps (must be even)
+	kernel    []float32 // Pre-computed sinc kernel
+	buffer    []float32 // Circular buffer for input samples
+	bufferPos int       // Current position in buffer
+	cutoff    float32   // Normalized cutoff frequency (0-1)
 }
 
 // NewSincFilter creates a new windowed sinc filter
@@ -24,16 +24,16 @@ func NewSincFilter(taps int, cutoff float32) *SincFilter {
 	if taps%2 != 0 {
 		taps++ // Ensure even number of taps
 	}
-	
+
 	sf := &SincFilter{
 		taps:   taps,
 		buffer: make([]float32, taps),
 		cutoff: cutoff,
 	}
-	
+
 	// Generate windowed sinc kernel
 	sf.kernel = sf.generateKernel()
-	
+
 	return sf
 }
 
@@ -42,10 +42,10 @@ func (sf *SincFilter) generateKernel() []float32 {
 	kernel := make([]float32, sf.taps)
 	center := float32(sf.taps-1) / 2.0
 	sum := float32(0.0)
-	
+
 	for i := 0; i < sf.taps; i++ {
 		x := float32(i) - center
-		
+
 		// Sinc function
 		var sincVal float32
 		if x == 0 {
@@ -53,19 +53,19 @@ func (sf *SincFilter) generateKernel() []float32 {
 		} else {
 			sincVal = float32(math.Sin(2.0*math.Pi*float64(sf.cutoff*x)) / (math.Pi * float64(x)))
 		}
-		
+
 		// Apply Blackman window for better stopband attenuation
 		window := blackmanWindow(i, sf.taps)
-		
+
 		kernel[i] = sincVal * window
 		sum += kernel[i]
 	}
-	
+
 	// Normalize kernel
 	for i := range kernel {
 		kernel[i] /= sum
 	}
-	
+
 	return kernel
 }
 
@@ -74,11 +74,11 @@ func blackmanWindow(n, N int) float32 {
 	a0 := float64(0.42)
 	a1 := float64(0.5)
 	a2 := float64(0.08)
-	
+
 	term1 := a0
 	term2 := a1 * math.Cos(2.0*math.Pi*float64(n)/float64(N-1))
 	term3 := a2 * math.Cos(4.0*math.Pi*float64(n)/float64(N-1))
-	
+
 	return float32(term1 - term2 + term3)
 }
 
@@ -87,25 +87,25 @@ func (sf *SincFilter) Process(input float32) float32 {
 	// Add sample to circular buffer
 	sf.buffer[sf.bufferPos] = input
 	sf.bufferPos = (sf.bufferPos + 1) % sf.taps
-	
+
 	// Convolve with kernel
 	output := float32(0.0)
 	for i := 0; i < sf.taps; i++ {
 		bufIdx := (sf.bufferPos + i) % sf.taps
 		output += sf.buffer[bufIdx] * sf.kernel[i]
 	}
-	
+
 	return output
 }
 
 // ProcessBatch processes multiple samples at once (more efficient)
 func (sf *SincFilter) ProcessBatch(input []float32) []float32 {
 	output := make([]float32, len(input))
-	
+
 	for i, sample := range input {
 		output[i] = sf.Process(sample)
 	}
-	
+
 	return output
 }
 
@@ -138,21 +138,21 @@ func NewBandLimitedInterpolator(oversampleFactor, sincTaps int) *BandLimitedInte
 		sincTaps:         sincTaps,
 		lutSize:          oversampleFactor * sincTaps,
 	}
-	
+
 	// Generate lookup table
 	bli.lut = bli.generateLUT()
-	
+
 	return bli
 }
 
 // generateLUT creates a sinc interpolation lookup table
 func (bli *BandLimitedInterpolator) generateLUT() []float32 {
 	lut := make([]float32, bli.lutSize)
-	
+
 	for i := 0; i < bli.lutSize; i++ {
 		// Position in the sinc function
 		x := (float64(i)/float64(bli.oversampleFactor) - float64(bli.sincTaps)/2.0)
-		
+
 		// Windowed sinc
 		var val float64
 		if x == 0 {
@@ -160,14 +160,14 @@ func (bli *BandLimitedInterpolator) generateLUT() []float32 {
 		} else {
 			val = math.Sin(math.Pi*x) / (math.Pi * x)
 		}
-		
+
 		// Apply Kaiser window
 		windowPos := float64(i) / float64(bli.lutSize-1)
 		window := kaiserWindow(windowPos, 8.0) // Beta = 8.0 for good stopband
-		
+
 		lut[i] = float32(val * window)
 	}
-	
+
 	return lut
 }
 
@@ -175,7 +175,7 @@ func (bli *BandLimitedInterpolator) generateLUT() []float32 {
 func kaiserWindow(x, beta float64) float64 {
 	// Simplified Kaiser window (normally uses Bessel function)
 	// This is an approximation for performance
-	term := 1.0 - (2.0*x - 1.0)*(2.0*x - 1.0)
+	term := 1.0 - (2.0*x-1.0)*(2.0*x-1.0)
 	if term < 0 {
 		term = 0
 	}
@@ -193,10 +193,10 @@ func (bli *BandLimitedInterpolator) Interpolate(samples []float32, fraction floa
 		}
 		return 0
 	}
-	
+
 	// Find position in LUT
 	lutOffset := int(fraction * float32(bli.oversampleFactor))
-	
+
 	// Convolve with sinc kernel from LUT
 	output := float32(0.0)
 	for i := 0; i < bli.sincTaps; i++ {
@@ -205,7 +205,7 @@ func (bli *BandLimitedInterpolator) Interpolate(samples []float32, fraction floa
 			output += samples[i] * bli.lut[lutIdx]
 		}
 	}
-	
+
 	return output
 }
 
@@ -230,14 +230,14 @@ func NewLowpassBiquad(sampleRate, cutoff, q float32) *BiquadFilter {
 	sinOmega := math.Sin(omega)
 	cosOmega := math.Cos(omega)
 	alpha := sinOmega / (2.0 * float64(q))
-	
+
 	b0 := (1.0 - cosOmega) / 2.0
 	b1 := 1.0 - cosOmega
 	b2 := (1.0 - cosOmega) / 2.0
 	a0 := 1.0 + alpha
 	a1 := -2.0 * cosOmega
 	a2 := 1.0 - alpha
-	
+
 	// Normalize coefficients
 	return &BiquadFilter{
 		b0: float32(b0 / a0),
@@ -252,13 +252,13 @@ func NewLowpassBiquad(sampleRate, cutoff, q float32) *BiquadFilter {
 func (bf *BiquadFilter) Process(input float32) float32 {
 	// Direct Form II
 	output := bf.b0*input + bf.b1*bf.x1 + bf.b2*bf.x2 - bf.a1*bf.y1 - bf.a2*bf.y2
-	
+
 	// Update delay lines
 	bf.x2 = bf.x1
 	bf.x1 = input
 	bf.y2 = bf.y1
 	bf.y1 = output
-	
+
 	return output
 }
 
@@ -287,7 +287,7 @@ func NewDCBlocker(cutoff, sampleRate float32) *DCBlocker {
 	rc := 1.0 / (2.0 * math.Pi * float64(cutoff))
 	dt := 1.0 / float64(sampleRate)
 	alpha := float32(rc / (rc + dt))
-	
+
 	return &DCBlocker{
 		alpha: alpha,
 	}

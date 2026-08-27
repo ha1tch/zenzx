@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  core:
+    # Cgo-free core: gofmt, vet, the headless build, and the full test
+    # suite. This is the fast, cheap job -- it gates everything else.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: gofmt check
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "gofmt would change:"; echo "$out"; exit 1; fi
+          echo "gofmt clean"
+
+      - name: Vet (headless tags, cgo-free)
+        env:
+          CGO_ENABLED: '0'
+        run: go vet -tags headless ./...
+
+      - name: Build headless
+        env:
+          CGO_ENABLED: '0'
+        run: go build -tags headless -o /dev/null .
+
+      - name: Test
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          go test -count=1 ./pkg/...
+          go test -tags headless -count=1 .
+
+      - name: Register consistency
+        run: python3 repoman/register.py check
+
+  gui-cross:
+    # Cross-compiled, cgo-free GUI targets. raylib-go's purego backend
+    # embeds a prebuilt native library per GOOS/GOARCH and oto has no cgo
+    # dependency on these platforms, so CGO_ENABLED=0 produces a real,
+    # complete, self-contained binary from a single Linux runner -- not
+    # just a type-check. Linux is deliberately absent here: oto's Linux
+    # backend requires cgo + ALSA with no purego alternative in the
+    # pinned version, so it is covered by the gui-linux jobs below.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build GUI (cgo-free, purego)
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -o /dev/null .
+
+  gui-linux-amd64:
+    # Native cgo build on the standard x64 runner. Needs the same
+    # ALSA/X11/Wayland/OpenGL dev headers build_linux.sh installs in
+    # Docker; here they go straight on the runner.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install GUI dev libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            build-essential pkg-config \
+            libgl1-mesa-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libasound2-dev libwayland-dev \
+            libxkbcommon-dev wayland-protocols
+
+      - name: Vet (cgo)
+        run: go vet .
+
+      - name: Build GUI (cgo, real link)
+        env:
+          CGO_ENABLED: '1'
+        run: go build -o /dev/null .
+
+  gui-linux-arm64:
+    # Native cgo build on GitHub's arm64-hosted runner (GA, free on
+    # public repositories; on a private repository this label needs a
+    # plan with arm64 minutes -- see GitHub's runner documentation).
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install GUI dev libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            build-essential pkg-config \
+            libgl1-mesa-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libasound2-dev libwayland-dev \
+            libxkbcommon-dev wayland-protocols
+
+      - name: Build GUI (cgo, real link)
+        env:
+          CGO_ENABLED: '1'
+        run: go build -o /dev/null .
