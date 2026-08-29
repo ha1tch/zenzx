@@ -109,7 +109,7 @@ func TestTS2068Stage3DynamicVideoMode(t *testing.T) {
 	}
 
 	// Fill the hi-colour attribute plane with garbage *before* running
-	// the test program, matching the real scenario Horacio described:
+	// the test program, matching the real hardware scenario:
 	// whatever was in RAM stays there until software clears it itself.
 	// If our own clearing code is missing or wrong, this garbage will
 	// leak into the rendered stripes and the colour-check below will

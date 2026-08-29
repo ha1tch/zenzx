@@ -4,6 +4,111 @@ All notable changes to ZenZX are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.11] - 2026-08-29
+
+### Changed
+
+- **Repository tooling migrated from vendored Python `repoman` to
+  `gorepoman`** (github.com/ha1tch/gorepoman v0.13.4): all twelve
+  `repoman/*.py` entry points (`ed.py`, `register.py`, `relcore.py`,
+  `guards.py`, `syncver.py`, `roles.py`, `str_replace_extended.py`,
+  `selftest.py`, `gomod.py`, `add_wave.py`, `wave_progress.py`,
+  `doctor.py`) replaced with thin shims forwarding to the `repoman`
+  binary (`$REPOMAN_BIN` or `$PATH`); every existing invocation
+  (`Makefile` targets, `.repoman.json` release steps) verified working
+  unchanged, both directly and through `make check-register`/`make
+  check-gomod`. `config.py` left in place as intentional dead code (no
+  CLI equivalent; nothing imports it once every script above it is a
+  shim). Binary checksum-verified against the published
+  `checksums.txt` before use; `repoman selftest` green (130/135, 5
+  deferred -- no live Go toolchain in this environment).
+  `README.md` and `docs/MANUAL.md`'s "Versioning and releases"
+  sections updated to describe the shim-forwards-to-gorepoman shape
+  instead of the retired vendored-Python description.
+
+## [0.6.10] - 2026-08-29
+
+### Fixed
+
+- **T-26 closed** (see RESOLVED.md): zen80 v0.5.5 confirmed pushed and
+  tagged on GitHub -- checked directly (`git ls-remote`) and via the
+  real Go module proxy (`.../@v/v0.5.5.info`), not taken on report.
+  `go.mod`'s local `replace github.com/ha1tch/zen80 => <local path>`
+  (0.6.9's known limitation) removed; the dependency was re-pulled from
+  a clean module cache with a real `go.sum` checksum, and the
+  memory-read/port-write/watchpoint behavior it gates (Wave 1 items 4
+  and 9) was re-verified against the published module rather than
+  assumed identical to the local dev copy that originally proved it.
+  `repoman/gomod.py check` now clean. Wave 1 is genuinely 100% (10/10),
+  not the 8/10-plus-two-pending-external it was at 0.6.9.
+
+## [0.6.9] - 2026-08-28 (interim)
+
+### Added
+
+- **Trace harness generalization, Wave 1 (T-26)**: `zzz_trace_harness_test.go`
+  restructured around `ZTRACE_SETUP` (`tape`/`snapshot`/`bin`/`boot-only`)
+  and `ZTRACE_MODEL`, instead of the single hardcoded boot+tape-load
+  path. New: `ZTRACE_FROM_RESET` (trace from the reset vector -- default
+  step budget for this mode, 1,000,000, is a measured number, not a
+  guess: 48K boot-to-ready is 768,551 steps over 87 frames per
+  `BootDetector`); `ZTRACE_M1LOG`/`M` lines and `ZTRACE_CALLSTACK`/`S`
+  lines (new `zzz_trace_callstack_test.go`, CALL/RST/RET/RETN/RETI
+  classification with real conditional-call/ret evaluation, not just
+  opcode matching); `ZTRACE_READS`/`R` lines and `ZTRACE_OLOG`/`O`
+  lines (memory reads and port writes -- see caveat below);
+  `ZTRACE_STOP_A/BC/DE/HL/SP` and `ZTRACE_STOP_WADDR` stop/watchpoint
+  conditions; `ZTRACE_COVERAGE_OUT`; `ZTRACE_SNAPSHOT_OUT` (`.zxs` via
+  `SaveSnapshot`, `.z80`/`.sna` via `SaveZ80`/`SaveSNA`, centralized in
+  a `disarm()` helper so every stop path triggers it consistently);
+  `ZTRACE_SYMFILE` (new `zzz_trace_symbols_test.go`, pasmo-format
+  parser confirmed against a real `zenas --sym` build, annotates P/W/R/S
+  address fields without replacing the raw hex).
+- Every new piece verified with real data this session, not just
+  build-clean: hand-checked port encoding, CALL/RET stack round-trips,
+  a stop condition firing at the exact expected step, a coverage count
+  matching a manual trace count exactly, a real zenas-assembled program
+  annotated with its own labels. Two bugs caught by this testing and
+  fixed before release: `ZTRACE_BINSTART` was silently misparsed as
+  decimal (now reuses the CLI's own `ParseAddr`/`ParseAddrSigned`, hex
+  or decimal, matching `-binaddr`/`-binstart` exactly); non-tape setups
+  defaulted `ZTRACE_ENTRY` to a tape-specific address that never
+  matched anything, so `ZTRACE_SETUP=snapshot` never armed at all
+  until fixed to default to wherever the loaded state left PC.
+
+### Known limitation
+
+- Memory-read/port-write tracing (and the watchpoints depending on it)
+  need zen80's new `DebugMemReadHook`/`DebugIOOutHook`
+  (`docs/proposals/zen80-tracing-hooks.md`), not yet a tagged zen80
+  release -- `go.mod` currently points at a local, unpushed zen80
+  checkout via `replace` (same pattern as the existing 0.6.7 entry for
+  an earlier unpushed dependency). `repoman/gomod.py check` correctly
+  flags this (`ERROR replace-absolute-path`); this release accepts
+  that known-red gate rather than shipping without the feature or
+  faking the check. Resolve by pushing/tagging zen80 v0.5.5 and
+  removing the `replace`.
+
+## [0.6.8] - 2026-08-28
+
+### Fixed
+
+- **T-05 -- `fdc_read_test.go` depended on a sandbox-only absolute path**
+  (see RESOLVED.md): the FDC controller regression test (`TestFDCReadMatchesDisk`)
+  loaded `/mnt/user-data/uploads/artist.dsk` and silently skipped when
+  absent, so it never ran outside the specific sandbox session that had
+  that file -- including in CI, where the skip looked indistinguishable
+  from a pass. Replaced with a checked-in fixture, `testdata/synthetic.dsk`,
+  built by a new `TestGenerateSyntheticDSK` (skipped by default; opt in
+  with `ZENZX_REGEN_TESTDATA=1`) that drives the fixture's SEEK, FORMAT
+  TRACK, and WRITE DATA sequence through the FDC765 controller's own
+  command interface -- the same path real +3DOS format/write software
+  exercises -- rather than assembling DSK bytes by hand. The test now
+  runs unconditionally as part of the default suite; `ZENZX_TEST_DSK`
+  still allows pointing it at a real captured image locally. G-02, the
+  dormant guard tracking this test's coverage, is retired as a result
+  (see KNOWN_ISSUES.md) -- the check is no longer dormant.
+
 ## [0.6.7] - 2026-08-27
 
 ### Fixed

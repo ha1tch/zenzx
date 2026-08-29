@@ -5,6 +5,37 @@ text verbatim as at closure, stamped with the closing version and date.
 The changelog says what shipped; this record says what was wrong and
 how it was resolved. Append-only.
 
+## [0.6.10] T-26 — Trace harness (zzz_trace_harness_test.go) is hardwired to one boot+tape-load scenario; can't trace arbitrary code, memory reads, or port writes (v0.6.10, 2026-08-29)
+
+Theme: tooling · closed 0.6.10 · 2026-08-29
+
+
+Resolved (2026-08-29): Wave 1 (`docs/WAVE_TRACKING.md`) complete, 10/10
+items, all verified with real data (hand-checked expected values, or
+cross-checked against `zenas`/`BootDetector` directly). Items 4/9 were
+briefly ◐ pending zen80 v0.5.5 landing as a real tag; confirmed pushed
+and live 2026-08-29 (`git ls-remote`, and the real Go module proxy),
+`go.mod`'s local `replace` removed, dependency re-pulled clean with a
+real `go.sum` checksum, both re-verified against the published module.
+See `docs/TRACE_GENERALIZATION_TRACKING.md` for full per-stage detail.
+Wave 2 (disassembly, multi-window tracing, conditional-breakpoint
+expressions, a live debugger, etc.) remains priced but unscheduled --
+separately-scoped future work, not part of what this item required.
+
+Trigger: session review 2026-08-28, following up on the T-16/T-22 trace instrumentation added in 0.6.1. TestTraceHarness only reaches a traceable state via boot-48K-then-type-LOAD""; hooks install after that setup, so nothing before a LOAD command is observable regardless of config. zen80 v0.5.1 exposes only three debug hooks (DebugPCHook/DebugMemWriteHook/DebugIOInHook) plus an existing but unused M1Hook (interrupt/prefix-fetch context, already sufficient for interrupt tracing -- no zen80 change needed there). Missing: memory-read and port-write hooks (need zen80-side additions, see docs/proposals/zen80-tracing-hooks.md), pluggable non-tape setup, model selection, pre-setup hook installation, opcode disassembly, conditional stops, coverage aggregation. See docs/TRACE_GENERALIZATION_DEVELOPMENT_PLAN.md / docs/TRACE_GENERALIZATION_TRACKING.md for the staged plan. Supports T-22 and T-24's continued investigation, not required by them.
+
+Cross-ref: CHANGELOG 0.6.10.
+
+## [0.6.8] T-05 — fdc_read_test.go depends on a sandbox-only absolute path (v0.6.8, 2026-08-28)
+
+Theme: test · closed 0.6.8 · 2026-08-28
+
+
+- **Trigger:** session review 2026-08-17. The test opens `/mnt/user-data/uploads/artist.dsk` and skips when absent, so it can never run on any other machine and is invisible to CI.
+- **Fix:** take the image path from an environment variable (e.g. `ZENZX_TEST_DSK`) or ship a small redistributable DSK under `testdata/`; update G-02's invocation accordingly.
+
+Cross-ref: CHANGELOG 0.6.8.
+
 ## [0.6.6] T-25 — GUI build's -tapemode flag never gained a turbo case; passing -tapemode=turbo to the GUI silently falls back to fast instead of erroring or working (v0.6.6, 2026-08-27)
 
 Theme: tape · closed 0.6.6 · 2026-08-27

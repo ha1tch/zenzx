@@ -486,8 +486,9 @@ Audio issues do not affect the headless build, which produces no audio.
 ## Versioning and releases
 
 `VERSION` is canonical; `pkg/version/version.go` is a synced stamp. Tooling
-lives in `repoman/` (the [repoman](https://github.com/ha1tch/repoman)
-toolset, driven by `.repoman.json`):
+lives in `repoman/` (thin shims forwarding to the [gorepoman](https://github.com/ha1tch/gorepoman)
+binary, migrated from the vendored [python-repoman](https://github.com/ha1tch/repoman);
+driven by `.repoman.json`):
 
 ```
 python3 repoman/syncver.py show

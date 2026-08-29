@@ -6,10 +6,8 @@ github.com/gen2brain/raylib-go/raylib v0.60.0 h1:KsP7W3EMkmb9zztivdgbh1bXR78pEuq
 github.com/gen2brain/raylib-go/raylib v0.60.0/go.mod h1:puAMU7Zcx6VJ6pcZSSs3gGFPyFvJuTwQlfm4KzeoXy8=
 github.com/ha1tch/queryfy v0.3.2 h1:+72HrKkiXpjUmSgxut9ZWvF1JSxxBu7ugclmImbxDk4=
 github.com/ha1tch/queryfy v0.3.2/go.mod h1:xqT2tuNRzXL+dmYO/BxkwEB23ufzF188NJIf44+605o=
-github.com/ha1tch/zen80 v0.5.1 h1:ZJR4KPQqniv4NowYIHvCmBHlLTBgyQFV8STs0DDnyWA=
-github.com/ha1tch/zen80 v0.5.1/go.mod h1:Mj5UUcXYb71y+t7rPY7Vs1/oBB3eN8yzwvQg+vLjoiU=
-github.com/ha1tch/zentools v0.2.0 h1:yx0GBrG/oysIa3DjileiqVDvmocKbHqpDoPdSPN1w6E=
-github.com/ha1tch/zentools v0.2.0/go.mod h1:LHsdG9KLRmmQSTniIvN0wGCZ5twRtKDqqax62gmfw0c=
+github.com/ha1tch/zen80 v0.5.5 h1:3u5/crTUsQQ/1qmgL7hxkY7t+cEDulrDbPWxfRm50cI=
+github.com/ha1tch/zen80 v0.5.5/go.mod h1:Mj5UUcXYb71y+t7rPY7Vs1/oBB3eN8yzwvQg+vLjoiU=
 github.com/ha1tch/zentools v0.6.0 h1:m9SFWKZUnujAVkvOZz4Oh6Lw9MIq0IjWS6d9+zGsGu4=
 github.com/ha1tch/zentools v0.6.0/go.mod h1:LHsdG9KLRmmQSTniIvN0wGCZ5twRtKDqqax62gmfw0c=
 github.com/jupiterrider/ffi v0.7.0 h1:RKsl6Ascal+3kyAqR5Qcbp83LceQMLc1VZbPfHWoNzs=

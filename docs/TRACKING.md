@@ -1,7 +1,7 @@
 # ZenZX — live register
 
-Version: 0.6.7
-Last reviewed: 2026-08-24
+Version: 0.6.11
+Last reviewed: 2026-08-29
 
 Open, actionable items only. Closed items move verbatim to
 `RESOLVED.md` (see `repoman/register.py close`); a closed item still
@@ -17,7 +17,6 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 
 | T-03 | CPU clock modelled as 3.5 MHz; real 48K is 3.5469 MHz (~1.3 % pitch/timing error) | timing | P3 | ☐ | — |
 | T-04 | AY-3-8912 residual aliasing beyond the 0.3.4 area-sampling baseline | audio | P3 | ☐ | — |
-| T-05 | fdc_read_test.go depends on a sandbox-only absolute path | test | P2 | ☐ | G-02 |
 | T-06 | 15 Go files are not gofmt-clean | hygiene | P3 | ☐ | — |
 | T-07 | Dockerfile and build_bsd.sh are broken (unresolved template variables) | ci | P3 | ☐ | — |
 | T-08 | GUI cross-platform CI depends on raylib-go/oto staying cgo-free on darwin+windows | ci | P3 | ☐ | — |
@@ -56,16 +55,6 @@ Theme: audio · Priority: P3 · Status: ☐
 
 - **Trigger:** 0.3.4 cycle. Area-sampling (accumulate `mixOutput()` per AY clock, average per output sample) cut HF energy ~40x. A polyBLEP attempt was abandoned because the measurement harness could not be trusted (contradictory metrics; the big-edge acceptance metric was wrong for band-limited signals).
 - **Fix:** build a trustworthy inharmonic-energy metric first, then evaluate polyBLEP or a proper decimating lowpass against it. Do not touch the synthesis path until the metric is validated on a known signal.
-
-
-## test
-
-### T-05. fdc_read_test.go depends on a sandbox-only absolute path
-
-Theme: test · Priority: P2 · Status: ☐ · Blocks/after: G-02
-
-- **Trigger:** session review 2026-08-17. The test opens `/mnt/user-data/uploads/artist.dsk` and skips when absent, so it can never run on any other machine and is invisible to CI.
-- **Fix:** take the image path from an environment variable (e.g. `ZENZX_TEST_DSK`) or ship a small redistributable DSK under `testdata/`; update G-02's invocation accordingly.
 
 
 ## hygiene

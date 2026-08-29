@@ -1,0 +1,7 @@
+# Wave plan
+
+**Wave 1 — trace harness generalization (≈ 8.0d, added 2026-08-28).** Ten items generalizing zenzx's trace harness (zzz_trace_harness_test.go) beyond its current single scenario -- boot 48K, load one tape, type LOAD"", trace what happens after -- into something that can trace arbitrary code, memory reads, port writes, call structure, and symbolic addresses, with a way to capture the paused state for interactive inspection. All ten priced Low individually (2026-08-28); item 4 depends on docs/proposals/zen80-tracing-hooks.md landing in a tagged zen80 release, everything else has no external dependency. Full detail, dependencies, and Done-when criteria per item: docs/TRACE_GENERALIZATION_DEVELOPMENT_PLAN.md. Tracked under T-26.
+
+
+**Wave 2 — advanced tracing features (priced, unscheduled) (≈ 35.0d, added 2026-08-28).** Six tracing features priced 2026-08-28 but not scheduled -- real costs, not rejections. Ranges from Moderate (multi-window tracing, conditional-breakpoint expressions, ring-buffer crash logs) through High (a standalone disassembler, zendis -- inverting zenas's mnemonic-keyed encoder doesn't work, checked directly) to Very High (a live/interactive debugger, reverse/step-back execution) -- the last two are a different order of magnitude from wave 1: closer to a new tool than an extension of this one. None currently has a filed register item. Full pricing and reasoning per item: docs/TRACE_GENERALIZATION_DEVELOPMENT_PLAN.md, Backlog section.
+

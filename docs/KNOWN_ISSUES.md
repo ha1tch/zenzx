@@ -1,7 +1,7 @@
 # ZenZX — known limits and dormant guards
 
-Version: 0.6.7
-Last reviewed: 2026-08-17
+Version: 0.6.11
+Last reviewed: 2026-08-28
 
 Intentional limits, invariant boundaries, and recorded decisions. Defects
 and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
@@ -93,8 +93,10 @@ skip is recorded in the release's changelog entry.
 - **Invocation:** `./build.sh` (or `./build_linux.sh`) then launch the binary and load a snapshot
 - **Last exercised:** 2026-08-27 env:sandbox — exercised via check_gui.sh during the -tapemode=turbo GUI wiring change (T-25) -- GUI build linked, system libs present Previous: 2026-08-25 env:sandbox — exercised by the v0.6.0 release's gui-check step (relcore, 6s, green)
 
-### G-02. FDC read against a real DSK image (`fdc_read_test.go`)
-
-- **Gate:** skips unless `/mnt/user-data/uploads/artist.dsk` is present (see T-05)
-- **Invocation:** `go test -tags headless -run 'FDC' -count=1 -v .` with the image present
-- **Last exercised:** 2026-06-27 env:sandbox, during the 0.3.x floppy work
+**G-02 retired, 2026-08-28 (T-05 closed at v0.6.8):** `TestFDCReadMatchesDisk`
+(`fdc_read_test.go`) now runs unconditionally against a checked-in fixture
+(`testdata/synthetic.dsk`), built through the FDC765 controller's own
+SEEK/FORMAT TRACK/WRITE DATA command interface by `TestGenerateSyntheticDSK`
+in the same file. It is part of the default `go test -tags headless .`
+invocation and is no longer a dormant guard. `ZENZX_TEST_DSK` still allows
+pointing the test at a real captured image locally.

@@ -89,9 +89,20 @@
         "*.test",
         "*.png",
         ".DS_Store",
-        "*.swp"
+        "*.swp",
+        ".ed-journal.json",
+        ".release-state.json",
+        "repoman/__pycache__/*"
       ],
       "size_warn_mb": 4
     }
+  },
+  "wave_short_names": {
+    "1": "trace harness generalization",
+    "2": "advanced tracing features (priced, unscheduled)"
+  },
+  "wave_visibility": {
+    "1": true,
+    "2": true
   }
 }

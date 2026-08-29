@@ -412,8 +412,9 @@ Other subsystem-specific documents: [`docs/video-architecture.md`](video-archite
 ## Versioning and releases
 
 `VERSION` is canonical; `pkg/version/version.go` is a synced stamp.
-Release tooling lives in `repoman/` (the
-[repoman](https://github.com/ha1tch/repoman) toolset, driven by
+Release tooling lives in `repoman/` (thin shims forwarding to the
+[gorepoman](https://github.com/ha1tch/gorepoman) binary, migrated from the
+vendored [python-repoman](https://github.com/ha1tch/repoman); driven by
 `.repoman.json`):
 
 ```
