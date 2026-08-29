@@ -17,6 +17,12 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
       - name: gofmt check
         run: |
           out=$(gofmt -l .)

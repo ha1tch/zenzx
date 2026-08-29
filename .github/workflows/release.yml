@@ -31,6 +31,12 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
       - name: Derive version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
@@ -106,6 +112,12 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
       - name: Derive version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
@@ -169,6 +181,12 @@ jobs:
         with:
           go-version: '1.25'
 
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
       - name: Install GUI dev libraries
         run: |
           sudo apt-get update -qq
@@ -230,6 +248,12 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-arm64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
 
       - name: Install GUI dev libraries
         run: |
