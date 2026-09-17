@@ -35,7 +35,8 @@ func NewDisplayManager(screen *SpectrumScreen) *DisplayManager {
 
 // Render is a no-op in the headless build. Screenshot capture is driven
 // explicitly by the headless main and scheduler via zx.DecodeDisplay().
-func (dm *DisplayManager) Render(paused bool, mem *SpectrumMemory, screen *SpectrumScreen) {}
+func (dm *DisplayManager) Render(paused bool, mem *SpectrumMemory, screen *SpectrumScreen, io *SpectrumIO) {
+}
 
 // SetBorderChanges records the frame's border history. Retained for parity
 // with the GUI manager; the headless build does not draw the border.
@@ -59,3 +60,9 @@ func (dm *DisplayManager) SetAudioManager(audio *AudioWrapper) {}
 // texture to resize. zx.DecodeDisplay() already calls the active renderer
 // directly regardless of what DisplayManager knows.
 func (dm *DisplayManager) SetVideoRenderer(r VideoRenderer) {}
+
+// SetSpectrumIO is a no-op in the headless build (2026-09-15, T-29
+// GUI-wiring pass): the GUI manager's copy exists only to gate the 640x256
+// Layer 2 mode's minimum window zoom, which has no meaning without a
+// window.
+func (dm *DisplayManager) SetSpectrumIO(io *SpectrumIO) {}

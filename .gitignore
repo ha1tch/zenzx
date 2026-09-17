@@ -30,4 +30,3 @@ test-errors.txt
 .release-state.json
 .ed-journal.json
 release-*.log
-repoman/__pycache__/

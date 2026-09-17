@@ -139,6 +139,11 @@ func NewZenZX(audioBackend AudioBackend) *ZenZX {
 	// Pass audio reference to display for debug overlay
 	display.SetAudioManager(audio) // Pass wrapper
 
+	// Pass io reference to display for the 640x256 Layer 2 mode's
+	// minimum-zoom clamp (2026-09-15, T-29 GUI-wiring pass -- see
+	// DisplayManager.io's own doc comment).
+	display.SetSpectrumIO(io)
+
 	// Set CPU reference in IO for cycle tracking
 	io.SetCPU(&CPUWrapper{cpu: cpu})
 
@@ -212,6 +217,11 @@ func NewZenZX(audioBackend AudioBackend) *ZenZX {
 // GUI entry points.
 func (zx *ZenZX) EnableZ80N() {
 	zx.cpu.Z80N = true
+	// T-33: NEXTREG (ED 91/92) must write straight into the register
+	// file without touching the port-0x243B select latch -- see
+	// nextRegOpcodeWrite's doc comment in nextreg.go for why (real
+	// hardware behaviour, and a real jnext bug/fix, GH #54).
+	zx.cpu.NextregWrite = zx.io.nextRegOpcodeWrite
 }
 
 // LoadROMBytes is LoadROM's byte-data equivalent, used when the caller
@@ -535,7 +545,7 @@ func (zx *ZenZX) checkAMXInterrupt() {
 
 func (zx *ZenZX) Render() {
 	zx.display.UpdateWindowSize()
-	zx.display.Render(zx.paused, zx.memory, zx.screen)
+	zx.display.Render(zx.paused, zx.memory, zx.screen, zx.io)
 }
 
 // SelectVideoRenderer resolves and activates the renderer for a
@@ -556,7 +566,28 @@ func (zx *ZenZX) SelectVideoRenderer(graphicsMode string) error {
 // the GUI to upload a texture each frame, headless to encode a PNG -- so
 // neither needs to know which renderer is active.
 func (zx *ZenZX) DecodeDisplay() *image.RGBA {
-	return zx.videoRenderer.Decode(zx.memory, zx.screen)
+	ula := zx.videoRenderer.Decode(zx.memory, zx.screen)
+	// T-29 (wave ti0.r3) / T-30 (wave ti0.r4): composite Layer 2 and
+	// sprites over/under the ULA image per NR 0x15's real three-layer
+	// order (CompositeNextLayers/nextLayerOrder, layer2.go) when Next mode
+	// has either active. DecodeLayer2/DecodeSprites each return nil on
+	// every classic 48K/128K/+3/TS2068 machine and on a Next machine that
+	// hasn't enabled Layer 2/sprites (see layer2Enabled/spriteEnabled), so
+	// when BOTH are nil this is a pure no-op -- byte-identical to the
+	// pre-T-29 return -- for every existing call site and every
+	// non-Next-mode test/regression already passing. Only a machine with
+	// at least one of the two layers active ever takes the composite path
+	// at all; CompositeNextLayers itself treats a nil layer as fully
+	// transparent, so passing one of l2/sprites as nil while the other is
+	// real (e.g. Layer 2 active, sprites not yet enabled) composites
+	// correctly without either layer needing to know about the other's
+	// state.
+	l2 := zx.io.DecodeLayer2()
+	sprites := zx.io.DecodeSprites()
+	if l2 == nil && sprites == nil {
+		return ula
+	}
+	return CompositeNextLayers(ula, l2, sprites, zx.io.GetNextRegister(0x15))
 }
 
 // ============================================================================

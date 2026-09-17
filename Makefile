@@ -144,17 +144,17 @@ check-gui:
 ## check-register: verify the work register is internally consistent
 .PHONY: check-register
 check-register:
-	python3 repoman/register.py check
+	repoman register check
 
 ## check-gomod: verify go.mod carries no local-path replace directives
 .PHONY: check-gomod
 check-gomod:
-	python3 repoman/gomod.py check
+	repoman gomod check
 
 ## sync: propagate VERSION into pkg/version and the tracking docs
 .PHONY: sync
 sync:
-	python3 repoman/syncver.py set $(VERSION)
+	repoman syncver set $(VERSION)
 
 ## check: the full local pre-commit gate
 .PHONY: check
@@ -165,13 +165,13 @@ check: fmt-check vet check-gomod check-register cross test
 .PHONY: release
 release:
 	@if [ -z "$(RELEASE_VERSION)" ]; then echo "Usage: make release RELEASE_VERSION=<version>"; exit 1; fi
-	python3 repoman/relcore.py $(RELEASE_VERSION)
+	repoman relcore $(RELEASE_VERSION)
 
 ## release-resume: resume an interrupted release
 .PHONY: release-resume
 release-resume:
 	@if [ -z "$(RELEASE_VERSION)" ]; then echo "Usage: make release-resume RELEASE_VERSION=<version>"; exit 1; fi
-	python3 repoman/relcore.py $(RELEASE_VERSION) --resume
+	repoman relcore $(RELEASE_VERSION) --resume
 
 # =============================================================================
 # Documentation

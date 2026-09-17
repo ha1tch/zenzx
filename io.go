@@ -114,6 +114,62 @@ type SpectrumIO struct {
 	// ts2068Joy1/Joy2 hold the current state of TS2068's own built-in
 	// joystick ports, read via AY register 14 (ts2068.go).
 	ts2068Joy1, ts2068Joy2 JoystickState
+
+	// ZX Spectrum Next NextREG register bus (nextreg.go, T-27/ti0.r1).
+	// Present on every SpectrumIO regardless of the active machine
+	// model -- there is no separate "next" machine type yet (that is
+	// ti0.r0, deliberately sequenced outside this dependency chain) --
+	// so the register file is reachable via 0x243B/0x253B the same way
+	// on any model, matching how the wave item itself is scoped
+	// (the port handler, not machine-type gating).
+	nextRegs       *NextRegisterFile
+	nextRegClipWin *nextRegClip
+
+	// sprites is T-30 (wave ti0.r4)'s attribute table and pattern memory
+	// (sprite.go), constructed alongside nextRegs/nextRegClipWin by
+	// NewSpectrumIO -- never nil on a SpectrumIO built that way. Present
+	// unconditionally, the same as nextRegs, since there is no separate
+	// Next machine type gating registers themselves (see nextRegs' own
+	// doc comment above).
+	sprites *spriteSystem
+
+	// nextPalette is T-31 (wave ti0.r5)'s full 8-palette, 256-entry-each
+	// Next colour storage (nextpalette.go), constructed alongside
+	// nextRegs/nextRegClipWin/sprites by NewSpectrumIO -- never nil on a
+	// SpectrumIO built that way, same convention as those.
+	nextPalette *nextPaletteSystem
+
+	// layer2Access is IO port 0x123B's decoded state (layer2accessport.go,
+	// T-29 completion pass): CPU-side memory paging into Layer 2 memory,
+	// entirely separate from which bank is displayed (always NR 0x12).
+	// Zero-value on construction means both readEnabled/writeEnabled are
+	// false, matching real hardware's power-on state of not intercepting
+	// the normal memory map until this port is explicitly written.
+	layer2Access layer2AccessPort
+
+	// nextPaletteVersion is the GPU-cache-invalidation hook proposed in
+	// docs/proposals/next-gpu-compositing-seam.md: incremented on every
+	// write that could change what a resolved Next-mode pixel colour
+	// means, so a GPU texture cache keyed on resolved colour (Layer 2's
+	// renderLayer2GPU today, a future sprite pattern cache) can compare
+	// its own baked-against version against this live value and rebake
+	// only when they diverge, rather than every frame regardless of
+	// whether anything changed. Two register groups bump it: NR 0x70
+	// (the Layer 2 palette offset -- see resolveNextPixelIndex and
+	// nextRegWriteDirect/SetNextRegister's own handling of 0x70, since a
+	// fixed raw byte resolves to a different index once the offset
+	// changes), and, as of T-31 (wave ti0.r5), NR 0x41/0x43/0x44 (a
+	// genuine palette-entry write, or a change of which palette a layer
+	// displays via 0x43's display-select bits -- see
+	// nextRegWriteDirect/SetNextRegister's own 0x40/0x41/0x43/0x44
+	// handling in nextreg.go). NR 0x40 (index select alone) and a
+	// buffered, non-completing first byte of an NR 0x44 pair do NOT bump
+	// this -- see nextRegWriteDirect's own 0x44 handling for why only the
+	// completing write counts. renderLayer2GPU (videorender_gpu.go) is
+	// the first real consumer: its layer2ColourGPUVersion field compares
+	// against this live value and rebakes only when they diverge, rather
+	// than every frame regardless of whether anything changed.
+	nextPaletteVersion uint32
 }
 
 // Z80CPU interface to avoid circular dependency
@@ -123,17 +179,44 @@ type Z80CPU interface {
 
 func NewSpectrumIO(memory *SpectrumMemory, audio *AudioWrapper) *SpectrumIO {
 	io := &SpectrumIO{
-		memory:        memory,
-		audio:         audio, // Initialize audio reference (can be nil)
-		hasFDC:        false,
-		fdc:           nil,
-		fdcDebug:      false,
-		borderHistory: NewBorderHistory(),
+		memory:         memory,
+		audio:          audio, // Initialize audio reference (can be nil)
+		hasFDC:         false,
+		fdc:            nil,
+		fdcDebug:       false,
+		borderHistory:  NewBorderHistory(),
+		nextRegs:       newNextRegisterFile(),
+		nextRegClipWin: newNextRegClip(),
+		sprites:        newSpriteSystem(),
+		nextPalette:    newNextPaletteSystem(),
 	}
 	for i := range io.keyboard {
 		io.keyboard[i] = 0x1F // No keys pressed
 	}
 	io.kempstonMouseButtons = 0xFF // Active low: no buttons pressed
+	// T-28 item #26: newNextRegisterFile's mmuBootDefaults seed
+	// io.nextRegs.mmuSlots directly (no *SpectrumMemory reference exists
+	// inside that standalone constructor), so without this the paging
+	// model's nextSlots would sit at its own zero-value default -- all
+	// slots pointing at page 0 -- silently disagreeing with the register
+	// file's real boot defaults (ROM sentinel in slots 0/1, classic
+	// 128K-layout mirror in slots 2-7) until the first NR 0x50-0x57
+	// write. Push the already-computed defaults into memory here so the
+	// two stay in sync from construction, the same way every later
+	// write does via nextRegWriteDirect/SetNextRegister.
+	if memory != nil {
+		for i, page := range io.nextRegs.mmuSlots {
+			memory.SetNextSlot(i, page)
+		}
+		// Layer 2 Access Port (T-29 completion pass): wire memory's
+		// readNext/writeNext hook back to this io, the same
+		// closure-injection direction memory.go's own field comment
+		// describes. See layer2AccessPortRead/Write's own doc comments
+		// (layer2accessport.go) for the ok/handled contract these
+		// closures must honour.
+		memory.layer2AccessReadFn = io.layer2AccessPortRead
+		memory.layer2AccessWriteFn = io.layer2AccessPortWrite
+	}
 	return io
 }
 
@@ -159,6 +242,27 @@ func (io *SpectrumIO) Out(port uint16, value uint8) {
 // ============================================================================
 
 func (io *SpectrumIO) ReadPort(port uint16) uint8 {
+	// ZX Spectrum Next NextREG ports (0x243B/0x253B, nextreg.go): fully
+	// 16-bit decoded on real hardware, checked first so no partial-decode
+	// branch below (which only matches a handful of address bits) can
+	// ever shadow them -- both port values are odd, so they don't
+	// collide with the ULA's even-port branch either way, but matching
+	// exactly first keeps this correct regardless of decode order.
+	if port == nextRegSelectPort {
+		return io.nextRegSelected()
+	}
+	if port == nextRegDataPort {
+		return io.nextRegReadSelected()
+	}
+	if port == layer2AccessPortAddr {
+		// Read-back of the port's own last-written control byte -- no
+		// source consulted documents this port returning anything other
+		// than its own stored value on a read (unlike, say, NR 0x41's
+		// documented "current entry" read-back semantics), so this is
+		// the plain, unsurprising choice.
+		return io.layer2Access.raw
+	}
+
 	// TS2068 HSR (F4H) and display-enhancement-control (FFH) -- must be
 	// checked before the ULA keyboard branch below: F4H is even (bit0=0)
 	// and would otherwise be swallowed by the "any even port = keyboard"
@@ -317,6 +421,21 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 }
 
 func (io *SpectrumIO) WritePort(port uint16, value uint8) {
+	// ZX Spectrum Next NextREG ports: see the matching comment in
+	// ReadPort above.
+	if port == nextRegSelectPort {
+		io.nextRegSelect(value)
+		return
+	}
+	if port == nextRegDataPort {
+		io.nextRegWriteSelected(value)
+		return
+	}
+	if port == layer2AccessPortAddr {
+		io.layer2Access.raw = value
+		return
+	}
+
 	// TS2068 HSR (F4H) and display-enhancement-control (FFH) -- same
 	// ordering reason as ReadPort above: F4H is even and must not be
 	// swallowed by the ULA border/speaker catch-all.
@@ -350,11 +469,27 @@ func (io *SpectrumIO) WritePort(port uint16, value uint8) {
 	// Memory paging port (128K/+2) - 0x7FFD
 	if port&0xC002 == 0x4000 {
 		io.memory.SetPaging(value)
+		// T-28 item #27: on a genuine Next machine, this same physical
+		// port also recomposes the Next MMU's own slots 6/7 -- see
+		// SetNextLegacyBank7FFD's doc comment (memory.go). A no-op
+		// (isNext gate inside the method) on every classic
+		// 48K/128K/+3/TS2068 machine; does not read or affect anything
+		// SetPaging just did above.
+		io.memory.SetNextLegacyBank7FFD(value)
 	}
 
 	// +3 memory paging port - 0x1FFD
 	if port&0xF002 == 0x1000 {
 		io.memory.SetPlus3Paging(value)
+	}
+
+	// Next/Profi extended paging port - 0xDFFD (T-28 item #27). Decode
+	// per jnext's own VHDL citation (src/memory/mmu.h, zxnext.vhd:2596):
+	// A15:12="1101" AND A1:0="01". Has no defined role on any non-Next
+	// machine this emulator models -- SetNextLegacyPortDFFD is a no-op
+	// unless isNext (memory.go).
+	if port&0xF003 == 0xD001 {
+		io.memory.SetNextLegacyPortDFFD(value)
 	}
 
 	// +3 FDC control ports
@@ -369,8 +504,19 @@ func (io *SpectrumIO) WritePort(port uint16, value uint8) {
 		}
 	}
 
-	// AY-3-8912 sound chip register select (128K) - 0xFFFD
-	if port&0xC002 == 0xC000 {
+	// AY-3-8912 sound chip register select (128K) - 0xFFFD. T-28 item
+	// #27: this coarse address-line decode (A15:14="11", A1="1",
+	// A0="0") also matches the literal address 0xDFFD
+	// (0xDFFD&0xC002==0xC000), which is now a genuine, separately
+	// decoded Next/Profi extended-paging port (see the 0xDFFD block
+	// above). Without the exclusion below, a Next-mode 0xDFFD write
+	// would ALSO be misread here as an AY register-select write,
+	// silently corrupting io.ayRegister. The exclusion is exact-address
+	// and isNext-gated, so it is provably a no-op on every classic
+	// 48K/128K/+3/TS2068 machine: isNext is always false there, making
+	// `!(false && ...)` unconditionally true and leaving this condition
+	// identical to its pre-existing form.
+	if port&0xC002 == 0xC000 && !(io.memory.isNext && port == 0xDFFD) {
 		io.ayRegister = value & 0x0F
 	}
 

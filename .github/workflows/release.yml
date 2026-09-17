@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$VERSION" > VERSION
-          python3 repoman/syncver.py set "$VERSION"
+          repoman syncver set "$VERSION"
 
       - name: Build
         env:
@@ -128,7 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$VERSION" > VERSION
-          python3 repoman/syncver.py set "$VERSION"
+          repoman syncver set "$VERSION"
 
       - name: Build the GUI
         env:
@@ -206,7 +206,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$VERSION" > VERSION
-          python3 repoman/syncver.py set "$VERSION"
+          repoman syncver set "$VERSION"
 
       - name: Build the GUI
         env:
@@ -274,7 +274,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$VERSION" > VERSION
-          python3 repoman/syncver.py set "$VERSION"
+          repoman syncver set "$VERSION"
 
       - name: Build the GUI
         env:

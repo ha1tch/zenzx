@@ -4,6 +4,247 @@ All notable changes to ZenZX are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] - 2026-09-15
+
+### Added
+
+- **Layer 2 wider resolution modes (320x256x8bpp, 640x256x4bpp) and the Layer 2 Access Port, completing T-29's remaining Tier 0 scope.** layer2.go's layer2CurrentMode/layer2FramebufferDimensions/layer2Pixel now decode and address both wider modes, with the wider modes' column-major (X-then-Y) addressing confirmed against wiki.specnext.dev/Layer_2 and cross-checked numerically against the page's own worked examples. New layer2accessport.go implements IO port 0x123B (confirmed via the wiki to be a pure CPU memory-paging feature, independent of which bank is displayed), requiring a new closure-hook pair on SpectrumMemory (layer2AccessReadFn/WriteFn) since readNext/writeNext previously had no route back to SpectrumIO's own NR 0x12/0x13 state.
+
+- **Sprite attribute 4, scaling, rotation, mirroring, composite/unified relative sprites, and a configurable transparency index, completing most of T-30's remaining Tier 0 scope.** sprite.go was rewritten to store raw attribute bytes (attr0-attr4) rather than a pre-decoded subset, since several bits carry different meanings for anchor versus relative sprites. Scaling (x1/x2/x4/x8 per axis) and rotation/mirroring render as GPU draw-call geometry via rl.DrawTexturePro's source/dest rectangles rather than baked texture variants, once raylib's real capabilities were confirmed against vendored source; both composite and unified ("big sprite") relative sprite modes are implemented, with sequential anchor-dependency tracking matching real hardware's own index-order semantics. NR 0x4B (transparency index) is now a real, configurable register rather than a fixed stand-in.
+
+- **The GUI window now correctly displays every Layer 2 resolution mode.** DisplayManager's window sizing previously assumed the classic 256x192 canvas unconditionally, so the wider Layer 2 modes above -- though correctly addressed in memory -- had no reserved viewport space and were not visible end-to-end. The window's client area is now a fixed reference canvas (320x256) that never resizes on its own; Layer 2's own viewport centres within it, with 640x256x4bpp mode's pixels drawn at half the normal screen width (confirmed against an exact wiki.specnext.dev/Layer_2_Control_Register quote: "every byte is displayed as two half-width paired pixels") so that mode occupies the identical footprint as 320x256 mode at any given zoom, matching real hardware's own double-density (not double-width) behaviour.
+
+### Fixed
+
+- **Sprite transparency check compared the palette-offset-resolved colour index instead of the raw pattern byte.** Found while wiring NR 0x4B into a real register; the real hardware (and this emulator's own resolveNextPixelIndex convention elsewhere) compares the raw byte. Caught by a dedicated regression test before shipping.
+
+- **A GPU rendering regression introduced, then caught and fixed, during the Layer 2 GUI-wiring work above.** renderLayer2GPU's per-pixel draw technique deliberately splats each pixel wider than its own column spacing (relying on left-to-right draw order to overwrite the overlap), previously contained by a scissor rect sized to the classic 256x192 screen. Removing that scissor -- necessary so wider Layer 2 modes could draw outside the classic screen's own narrower bounds -- would have let each row's rightmost pixel bleed into the border uncontained; fixed by scissoring to each mode's own real displayed footprint instead.## [0.8.0] - 2026-09-15
+
+### Added
+
+- **Hardware sprites: 128 sprites, 16x16 pixels, 8-bit colour, unscaled (T-30, wave 7).** New sprite.go implements the base sprite system per NEXT_SUPPORT_DEVELOPMENT_PLAN.md's ti0.r4 minimum scope: an attribute table (position, palette offset, visibility, pattern index) and 64-slot pattern memory, both reachable via NextREG 0x34 (sprite select) and 0x35-0x38 (attribute writes), with sprite pixel colour resolved through the same resolveNextPixel seam Layer 2 uses (T-29's own compositing-seam extraction) rather than a second, independent colour mapping. Compositing replaces the previous two-layer ULA/Layer2 boolean with a genuine three-layer decode of NR 0x15's bit-4:2 priority field (nextLayerOrder/layersAboveULA, layer2.go), covering all 6 real hardware orderings. In the live GUI, sprites render through a capped, LRU-evicted GPU texture cache (spriteGPUCache, videorender_gpu.go) keyed by (pattern, palette offset) rather than pattern alone, since a palette offset is per-sprite; a stale or missing entry is rebaked on demand, so a program's actual working set of sprite appearances becomes GPU-resident after its first few frames. Scaling, rotation, mirroring, 4-bit colour patterns, composite (anchor+relative) sprites, and several NextREG-adjacent registers (NR 0x19 clip window, 0x43 palette selection, 0x4B transparency index) are explicitly deferred, per the plan's own "Deferred within Tier 0" list -- see docs/TRACKING.md's T-30 entry for the full breakdown of what shipped versus what remains.
+
+- **The real 9-bit/512-colour Next palette, replacing the 16-colour interim mapping (T-31, wave 8).** New nextpalette.go and pkg/zxpalette/nextpalette.go implement all 8 real hardware palettes (ULA/Layer2/Sprites/Tilemap x first/second, 256 entries each) and the full NextREG palette protocol: NR 0x40 (index select), NR 0x41 (8-bit RRRGGGBB write/read, auto-incrementing), NR 0x43 (read/write-target select plus independent per-layer display-palette select), and NR 0x44 (two-write 9-bit colour, the true third blue bit no longer synthesised). Layer 2 and Sprites now resolve pixels through their real, runtime-writable palettes instead of collapsing down to the classic 16-colour zxPalette; the GPU fast path gained a dedicated 256-entry texture cache (layer2ColourGPU) that rebakes whenever the palette actually changes, since Layer 2's old cache-reuse trick relied on the palette being immutable. ULA and Tilemap palettes are stored and correctly readable back but not yet wired into any renderer (both are separate, larger features outside this wave). The palette's power-on default is documented as an open gap (all-black, not an approximation of the classic 16 colours) rather than an invented accuracy claim -- see docs/TRACKING.md's T-31 entry for the full breakdown.
+
+### Fixed
+
+- **Layer 2/ULA priority: NR 0x15's %010 ordering (S U L) was composited as Layer2-on-top instead of ULA-on-top.** layer2ULAOnTop's switch statement grouped %010 into the wrong branch, contradicting its own doc comment's stated rule that ULA is on top whenever U precedes L in the ordering -- and U does precede L in "S U L". Since NR 0x15's construction/power-on default is 0x08 (bits 4-2 = %010), every Next-mode session that never explicitly wrote NR 0x15 was affected. Found while building T-30's three-layer priority decode; fixed alongside a related test bug (TestT29NextModeLayer2EndToEnd wrongly assumed a 0x00 construction default for NR 0x15 rather than the real 0x08).
+
+## [0.7.1] - 2026-09-15
+
+### Added
+
+- **Next-mode Layer 2 graphics: 256x192 8-bit-colour framebuffer,
+  composited against the ULA layer (T-29, wave 6, partial).** New
+  layer2.go implements the base Layer 2 mode per
+  NEXT_SUPPORT_DEVELOPMENT_PLAN.md's ti0.r3 scope: NextREG 0x12/0x13
+  select the visible/shadow framebuffer base bank (a corrected reading
+  of the SpecNext wiki -- these are base-bank registers, not clip-window
+  registers as this repository's own earlier T-29 note had it), the
+  already-implemented NR 0x18 clip window (T-27) is now genuinely
+  consumed rather than just stored, and NR 0x70 controls a palette
+  offset. Compositing decodes NR 0x15's real bit-4:2 six-way priority
+  table and reduces it correctly to a two-layer ULA/Layer2 ordering
+  question in the absence of a sprite layer. `DecodeDisplay` -- the one
+  call site both the GUI and headless front ends already use -- now
+  composites Layer 2 in automatically when Next mode has it active, and
+  is provably byte-identical to its pre-T-29 form on every classic
+  48K/128K/+3/TS2068 machine and on a Next machine that hasn't enabled
+  Layer 2. Deferred, and not part of this change: the 320x256/640x256
+  colour modes, a real 256-entry 9-bit Next palette (T-31 -- Layer 2
+  pixels currently map down to the existing 16-colour palette as a
+  documented interim measure), and IO port 0x123B (CPU-address-space
+  Layer 2 paging and the shadow/visible select bit).
+- **Layer 2 GPU fast path for the GUI's live rendering.** `renderLayer2GPU`
+  (videorender_gpu.go) draws Layer 2 directly via raylib texture blits,
+  restricted to the NR 0x18 clip rectangle, reusing the existing
+  16-entry `paperColourGPU` texture cache rather than baking a new one
+  keyed on Layer 2's raw pixel bytes -- the palette-offset register (NR
+  0x70) can change which colour a raw byte resolves to at runtime, so a
+  bake-once cache keyed on the raw byte would go stale, while keying on
+  the already-resolved colour index doesn't. This is an additional pass
+  after whichever path already drew the ULA layer, not a replacement for
+  it, and it skips drawing entirely (zero extra GPU calls) whenever
+  Layer 2 is disabled or NR 0x15 puts the ULA layer on top. The portable
+  `DecodeLayer2`/`CompositeLayer2` CPU path is unchanged and still used
+  by headless screenshot capture and as the GUI's own fallback before
+  its texture cache is ready.
+- **Shared colour-resolution seam and a palette-version counter, ahead of
+  T-30 sprite work.** Per docs/proposals/next-gpu-compositing-seam.md's
+  Phase 1: `layer2Pixel`'s inline raw-byte-to-colour arithmetic is now a
+  standalone `resolveNextPixel(raw, paletteOffset)` function so T-30's
+  sprite pixel path can call the same seam instead of inventing its own
+  copy, and a new `nextPaletteVersion` counter on `SpectrumIO` increments
+  on every NR 0x70 write (both the live-write path and the
+  snapshot-restore path), giving future GPU texture caches keyed on
+  resolved colour a cheap staleness check once one actually needs it. No
+  behaviour changes from this refactor alone -- verified by a dedicated
+  test confirming only NR 0x70 writes bump the counter, and by the full
+  existing Layer 2 test suite passing unchanged.
+
+### Fixed
+
+- **A comment in nextreg.go describing NR 0x15's stored default value
+  incorrectly.** The line documenting register 0x15's power-on default
+  (0x08) claimed it decoded to the priority ordering "S L U"; direct bit
+  arithmetic (0x08's bits 4-2 = %010) actually decodes to "S U L" per
+  the wiki's own priority table. The stored default value itself is
+  unchanged -- only the comment describing what it means was wrong, now
+  corrected, and the discrepancy between this stored default and the
+  wiki's documented real-hardware reset value (0x00) is flagged rather
+  than silently resolved.
+
+## [0.7.0] - 2026-09-15
+
+### Added
+
+- **Next-mode Extended MMU: NextREG- and legacy-port-driven 8K-page
+  paging now actually pages memory (T-28).** NextREG registers
+  0x50-0x57 (via both a raw port write and the NEXTREG opcode) now
+  genuinely drive which of the 224 available 8K pages each of the 8
+  Next MMU slots serves, rather than only updating a readback mirror
+  with no effect on memory access. On a genuine Next-mode machine, the
+  classic 128K/+3 paging ports (0x7FFD, plus the new 0xDFFD extended
+  bank port) also recompose the Next MMU's slots 6/7 to match, mirroring
+  real hardware's own "the legacy ports have no map of their own, they
+  recompose the same eight slots" behaviour. Slots 0/1 additionally
+  reproduce a real-hardware special case: a reserved-range page number
+  there re-engages the classic ROM selection instead of going inactive,
+  matching how slots 2-7 behave differently from slots 0/1 on real
+  Next hardware. All of this is new, additive code with zero effect on
+  any classic 48K/128K/+3/TS2068 machine -- Next mode is not yet
+  reachable from any `-model` option, so nothing user-facing changes
+  yet; this closes out the memory-model groundwork the eventual Next
+  machine mode will build on.
+
+### Fixed
+
+- **A latent port-decode collision between the new 0xDFFD support and
+  the existing AY-3-8912 register-select port.** 0xDFFD's coarse
+  address-line decode happens to match the AY register-select mask
+  (normally targeting 0xFFFD). Harmless before this release since
+  nothing gave 0xDFFD any meaning, but would have made a Next-mode
+  0xDFFD write also silently corrupt the currently-selected AY
+  register. Fixed with a narrow, address-exact exclusion that is a
+  provable no-op on every classic machine.
+
+## [0.6.15] - 2026-09-15
+
+### Fixed
+
+- **Next-mode MMU RAM capacity corrected from 768K to the real 1792K
+  ceiling (T-28, part 1 follow-up).** The initial T-28 implementation
+  capped `nextTotalPages` at 96 (768K), wrongly treating T-28's own
+  "at least the 768K-1MB unexpanded-machine tier" wording as a target
+  ceiling rather than the floor it actually is. Confirmed directly
+  against jnext's `Mmu::rebuild_ptr` (`src/memory/mmu.cpp`) that real
+  hardware's NR 0x50-0x57 registers reserve values 0xE0-0xFF (32 of
+  256) as a sentinel range gated before any RAM lookup -- never
+  ordinary addressable RAM regardless of how much physical RAM is
+  fitted -- leaving 224 ordinary page values (0x00-0xDF) as the true
+  ceiling: 1792K, not a flat 2048K. `nextTotalPages` raised from 96 to
+  224, `nextExtraRAM` from 80 to 208 pages (1664K of new backing
+  store, plus the existing 128K of aliased classic-bank storage). Added
+  `nextReservedPageBase = 0xE0` and a new `nextPageIsReserved` helper
+  so the 0xE0-0xFF reserved range is checked explicitly in
+  `nextPageRead`/`nextPageWrite`, rather than merely falling outside
+  `nextTotalPages` by accident of array bounds -- correct regardless
+  of any future change to `nextTotalPages`. `memory_test.go`'s
+  `TestNextMMUOutOfRangePage` extended to assert the ordinary/reserved
+  boundary directly (the last ordinary page, `nextTotalPages-1` =
+  0xDF, is real working storage; `nextReservedPageBase` and above is
+  not). No behavioural change to any existing 48K/128K/+3/TS2068 code
+  path -- `isNext` still gates the entire Next-mode addressing path,
+  defaulting false.
+
+## [0.6.14] - 2026-09-15
+
+### Fixed
+
+- **NEXTREG opcode no longer routed through the port-0x243B select
+  latch (T-33, in progress).** `EnableZ80N()` now wires zen80's new
+  `Z80.NextregWrite` hook to a new `nextRegOpcodeWrite(reg, value)` in
+  `nextreg.go`, which writes the named register directly via a shared
+  `nextRegWriteDirect` helper -- the same helper `nextRegWriteSelected`
+  now calls after reading `selected` first. Previously the `NEXTREG`
+  opcode (`ED 91`/`ED 92`) was indistinguishable from a raw port `OUT`
+  sequence and silently clobbered whatever register a prior port-based
+  select had latched; on real hardware, and per jnext's own fix
+  history (GH #54), the opcode never touches that latch. Regression
+  coverage: `TestNextRegRawPortAndInstructionAgree` split into
+  `TestNextRegRawPortAndInstructionAgreeOnValue` (keeps the
+  still-true "both paths write the same value" assertion) plus a new
+  `TestNextRegOpcodeDoesNotTouchSelectedReg`, which exercises the
+  opcode path directly and asserts the port-0x243B selected register
+  is unchanged afterwards. Requires zen80 v0.5.7 (adds the
+  `NextregWrite` hook); T-33 stays open at partial completion until
+  that zen80 version is reachable via `go get` from its own origin and
+  the full suite is re-verified against the real published module
+  rather than a local development checkout.
+
+- **NextREG 0x00 (machine ID) default corrected from `0x00` to `0x0A`
+  (T-34).** The read-only machine-identification register's reset
+  value now matches the VHDL `g_machine_id` board-generic default
+  documented for ZX Spectrum Next hardware, rather than an
+  uninitialised-looking `0x00`. No behavioural change beyond the
+  single default byte; access mode (read-only) and every other
+  register default are unchanged.
+
+## [0.6.13] - 2026-09-15
+
+### Added
+
+- **ZX Spectrum Next: NextREG port handler (T-27, wave `ti0.r1`).**
+  `nextreg.go` adds a real register file behind the two fully-decoded
+  NextREG ports, `0x243B` (select) and `0x253B` (data), reachable
+  identically via a raw port `OUT` and via zen80's `NEXTREG`
+  instruction (`ED 91`/`ED 92`) -- confirmed by a regression that
+  exercises both paths against the same register and checks they
+  agree, rather than assuming correctness from reading `z80n.go` alone.
+  Covers machine identification (`0x00`/`0x01`, read-only), reset
+  (`0x02`), machine type (`0x03`), CPU speed (`0x07`), two peripheral
+  configuration registers (`0x08`/`0x09`), the sprite/layer priority
+  register (`0x15`, defaulting to the documented "S L U" ordering),
+  the Layer 2 clip window (`0x18`, its own four-value X1/X2/Y1/Y2
+  write sequence), and all eight MMU slot registers (`0x50`-`0x57`,
+  stored and read back correctly; not yet wired to actual paging --
+  that lands with `ti0.r2`/T-28). Registers outside this set
+  store-and-ignore rather than erroring, so coverage can grow
+  incrementally in later waves without a behavioural cliff. Per-register
+  access modes (R/W, read-only, write-only) taken from the SpecNext
+  wiki's I/O port documentation and cross-checked against a second
+  independent source; the one behaviour not directly documented
+  anywhere consulted (whether the register-select port reads back the
+  currently selected register number) is implemented as the common,
+  widely-adopted behaviour and flagged as such in the code comments.
+  Wave `ti0.r1` (`docs/WAVE_TRACKING.md`) now 3/3, done; T-27 closed
+  (see RESOLVED.md).
+
+## [0.6.12] - 2026-09-14
+
+### Changed
+
+- **Repository tooling: gorepoman shim directory removed.** The
+  `repoman/*.py` shims introduced in 0.6.11 (thin forwarders to the
+  `gorepoman` binary) are gone entirely -- `Makefile`, `.repoman.json`,
+  both GitHub Actions workflows, `pkg/version/version.go`, and the docs
+  (README/MANUAL/TRACKING/KNOWN_ISSUES) now call the `repoman` binary
+  directly. Verified identical behaviour on every call site before
+  removal (`make check-register`, `make check-gomod`, `make sync`,
+  plus `go build`/`go vet`/`go test` on the cgo-free headless path).
+
+### Added
+
+- **ZX Spectrum Next support: Tier 0 planning.**
+  `docs/NEXT_SUPPORT_DEVELOPMENT_PLAN.md` documents the seven floor
+  requirements for reasonably claiming Next emulation (Z80N as a real
+  machine mode, NextREG port handler, extended MMU, Layer 2, hardware
+  sprites, Next palette, NEX file loading), plus a separate technical
+  description of the Tier 1 and Tier 2 feature sets beyond that floor.
+  No functional emulation code changed -- planning and tracking only:
+  register items T-27 through T-32 and waves `ti0.r0` through `ti0.r6`
+  (19 items total) in `docs/TRACKING.md` / `docs/WAVE_TRACKING.md`.
+
 ## [0.6.11] - 2026-08-29
 
 ### Changed

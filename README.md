@@ -486,20 +486,20 @@ Audio issues do not affect the headless build, which produces no audio.
 ## Versioning and releases
 
 `VERSION` is canonical; `pkg/version/version.go` is a synced stamp. Tooling
-lives in `repoman/` (thin shims forwarding to the [gorepoman](https://github.com/ha1tch/gorepoman)
-binary, migrated from the vendored [python-repoman](https://github.com/ha1tch/repoman);
-driven by `.repoman.json`):
+is the [gorepoman](https://github.com/ha1tch/gorepoman) binary (migrated from the
+vendored [python-repoman](https://github.com/ha1tch/repoman)), driven by
+`.repoman.json`):
 
 ```
-python3 repoman/syncver.py show
-python3 repoman/register.py list         # open work
-python3 repoman/guards.py stale          # dormant guards not run since the last release
-python3 repoman/relcore.py <version>     # sync, gates, build, test, smoke, checkpoint zip
+repoman syncver show
+repoman register list         # open work
+repoman guards stale          # dormant guards not run since the last release
+repoman relcore <version>     # sync, gates, build, test, smoke, checkpoint zip
 ```
 
-`relcore.py` journals each step in `.release-state.json` and resumes with
+`repoman relcore` journals each step in `.release-state.json` and resumes with
 `--resume`; full output goes to `release-<version>.log`. Before a release, every
-stale dormant guard is run, handed off (`guards.py handoff`), or its skip is
+stale dormant guard is run, handed off (`repoman guards handoff`), or its skip is
 recorded in the changelog entry.
 
 ## Continuous integration and cross-platform builds
@@ -514,7 +514,7 @@ builds") for why the split falls where it does, and why BSD isn't in it.
 Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds and
 publishes prebuilt archives (headless and GUI, all platforms above, plus
 headless-only for freebsd/amd64) as GitHub release assets. This is
-separate from `relcore.py`'s local checkpoint: run the local release
+separate from `repoman relcore`'s local checkpoint: run the local release
 first to gate and verify, then tag once it's green.
 
 ## Project layout

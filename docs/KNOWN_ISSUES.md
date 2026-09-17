@@ -1,7 +1,7 @@
 # ZenZX — known limits and dormant guards
 
-Version: 0.6.11
-Last reviewed: 2026-08-28
+Version: 0.9.0
+Last reviewed: 2026-09-15
 
 Intentional limits, invariant boundaries, and recorded decisions. Defects
 and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
@@ -83,8 +83,8 @@ before assuming it still holds.
 
 Verification that does not run in the default `go test -tags headless`
 invocation. A guard's existence is not evidence; only its execution
-record is. `repoman/guards.py stale` lists guards not exercised since the
-previous release; each is run, handed off (`guards.py handoff`), or its
+record is. `repoman guards stale` lists guards not exercised since the
+previous release; each is run, handed off (`repoman guards handoff`), or its
 skip is recorded in the release's changelog entry.
 
 ### G-01. GUI link build (`build.sh`, `build_linux.sh`)
@@ -100,3 +100,9 @@ SEEK/FORMAT TRACK/WRITE DATA command interface by `TestGenerateSyntheticDSK`
 in the same file. It is part of the default `go test -tags headless .`
 invocation and is no longer a dormant guard. `ZENZX_TEST_DSK` still allows
 pointing the test at a real captured image locally.
+
+### G-03. Layer 2 GPU-baked palette texture matches the 9-bit colour table
+
+- **Gate:** host with raylib system libraries and a live GL context (`rl.InitWindow`); not runnable in the sandbox -- confirmed this session that any raylib GPU call, including `rl.UnloadTexture`/`rl.LoadTextureFromImage` on a harmless zero-value input, segfaults without a prior `rl.InitWindow`
+- **Invocation:** launch the GUI build in Next mode, write a known 9-bit palette entry via NEXTREG 0x40/0x43/0x44 (matching nextpalette_test.go's `TestT31NextModePaletteEndToEnd`), read back `dm.layer2ColourGPU[idx]`'s actual uploaded pixel data (e.g. `rl.LoadImageFromTexture` + inspect), and compare it against `io.nextColourFor(nextLayerLayer2, idx)`'s CPU-side value
+- **Last exercised:** never -- T-31 (wave 8, v0.8.0) added `bakeLayer2ColourGPU` (videorender_gpu.go) and its own 256-entry `layer2ColourGPU` cache; only the CPU-side path (`DecodeLayer2`/`image.RGBA`) is covered by a running test (`nextpalette_test.go`), and only the cache's early-return gates are covered on the GPU side (`layer2_gui_test.go`) -- the bake itself, and whether the GPU-uploaded texture's actual pixel data agrees with the 9-bit table it's baked from, has no test evidence either way

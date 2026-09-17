@@ -1,8 +1,8 @@
 {
   "version": 1,
   "theme": "Spectrum",
-  "font": "Spleen",
-  "fontZoom": 2,
-  "displayScale": 2,
+  "font": "Sinclair",
+  "fontZoom": 3,
+  "displayScale": 3,
   "fixedMenuBar": true
 }

@@ -412,26 +412,26 @@ Other subsystem-specific documents: [`docs/video-architecture.md`](video-archite
 ## Versioning and releases
 
 `VERSION` is canonical; `pkg/version/version.go` is a synced stamp.
-Release tooling lives in `repoman/` (thin shims forwarding to the
-[gorepoman](https://github.com/ha1tch/gorepoman) binary, migrated from the
-vendored [python-repoman](https://github.com/ha1tch/repoman); driven by
+Release tooling is the
+[gorepoman](https://github.com/ha1tch/gorepoman) binary (migrated from the
+vendored [python-repoman](https://github.com/ha1tch/repoman)), driven by
 `.repoman.json`):
 
 ```
-python3 repoman/syncver.py show
-python3 repoman/register.py list         # open work
-python3 repoman/guards.py stale          # dormant guards not run since the last release
-python3 repoman/relcore.py <version>     # sync, gates, build, test, smoke, checkpoint zip
+repoman syncver show
+repoman register list         # open work
+repoman guards stale          # dormant guards not run since the last release
+repoman relcore <version>     # sync, gates, build, test, smoke, checkpoint zip
 ```
 
-`relcore.py` journals each step in `.release-state.json` and resumes with
+`repoman relcore` journals each step in `.release-state.json` and resumes with
 `--resume`; full output goes to `release-<version>.log`. Before a
 release, every stale dormant guard is run, handed off, or its skip is
 recorded in the changelog entry.
 
 `.github/workflows/ci.yml` builds and tests every push; pushing a `v*`
 tag runs `.github/workflows/release.yml`, publishing prebuilt archives as
-GitHub release assets. This is separate from `relcore.py`'s local
+GitHub release assets. This is separate from `repoman relcore`'s local
 checkpoint -- run the local release first to gate and verify, then tag
 once it's green.
 

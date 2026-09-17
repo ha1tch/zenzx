@@ -1,75 +1,6 @@
 {
-  "version_targets": [
-    {
-      "file": "pkg/version/version.go",
-      "match": "const Version = \"([^\"]+)\""
-    },
-    {
-      "file": "docs/TRACKING.md",
-      "match": "^Version: (\\S+)"
-    },
-    {
-      "file": "docs/KNOWN_ISSUES.md",
-      "match": "^Version: (\\S+)"
-    }
-  ],
   "release": {
-    "steps": [
-      {
-        "name": "sync",
-        "builtin": "syncver",
-        "always": true
-      },
-      {
-        "name": "changelog",
-        "run": "sh ./check_changelog.sh",
-        "always": true
-      },
-      {
-        "name": "register",
-        "run": "python3 repoman/register.py check",
-        "always": true
-      },
-      {
-        "name": "go-sanity",
-        "run": "python3 repoman/gomod.py check",
-        "always": true
-      },
-      {
-        "name": "gui-check",
-        "run": "sh ./check_gui.sh",
-        "resumable": true,
-        "timeout": 900
-      },
-      {
-        "name": "build",
-        "run": "sh ./build_headless.sh zenzx-headless",
-        "resumable": true,
-        "timeout": 900
-      },
-      {
-        "name": "test",
-        "run": "CGO_ENABLED=0 go test -count=1 ./pkg/... && CGO_ENABLED=0 go test -tags headless -count=1 -skip 'TestBatchThreeModeCompare' .",
-        "resumable": true,
-        "timeout": 900
-      },
-      {
-        "name": "smoke",
-        "run": "sh ./smoke_headless.sh",
-        "resumable": true,
-        "timeout": 300
-      },
-      {
-        "name": "archive",
-        "builtin": "archive",
-        "always": true
-      }
-    ],
     "archive": {
-      "name": "{repo}-v{version}-checkpoint.zip",
-      "sources": [
-        "."
-      ],
       "exclude": [
         ".git/*",
         "__pycache__/*",
@@ -92,17 +23,101 @@
         "*.swp",
         ".ed-journal.json",
         ".release-state.json",
-        "repoman/__pycache__/*"
+    "go.work",
+    "go.work.sum"
       ],
-      "size_warn_mb": 4
-    }
+      "name": "{repo}-v{version}-checkpoint.zip",
+      "size_warn_mb": 4,
+      "sources": [
+        "."
+      ]
+    },
+    "steps": [
+      {
+        "always": true,
+        "builtin": "syncver",
+        "name": "sync"
+      },
+      {
+        "always": true,
+        "name": "changelog",
+        "run": "sh ./check_changelog.sh"
+      },
+      {
+        "always": true,
+        "name": "register",
+        "run": "repoman register check"
+      },
+      {
+        "always": true,
+        "name": "go-sanity",
+        "run": "repoman gomod check"
+      },
+      {
+        "name": "gui-check",
+        "resumable": true,
+        "run": "sh ./check_gui.sh",
+        "timeout": 900
+      },
+      {
+        "name": "build",
+        "resumable": true,
+        "run": "sh ./build_headless.sh zenzx-headless",
+        "timeout": 900
+      },
+      {
+        "name": "test",
+        "resumable": true,
+        "run": "CGO_ENABLED=0 go test -count=1 ./pkg/... \u0026\u0026 CGO_ENABLED=0 go test -tags headless -count=1 -skip 'TestBatchThreeModeCompare' .",
+        "timeout": 900
+      },
+      {
+        "name": "smoke",
+        "resumable": true,
+        "run": "sh ./smoke_headless.sh",
+        "timeout": 300
+      },
+      {
+        "always": true,
+        "builtin": "archive",
+        "name": "archive"
+      }
+    ]
   },
+  "version_targets": [
+    {
+      "file": "pkg/version/version.go",
+      "match": "const Version = \"([^\"]+)\""
+    },
+    {
+      "file": "docs/TRACKING.md",
+      "match": "^Version: (\\S+)"
+    },
+    {
+      "file": "docs/KNOWN_ISSUES.md",
+      "match": "^Version: (\\S+)"
+    }
+  ],
   "wave_short_names": {
     "1": "trace harness generalization",
-    "2": "advanced tracing features (priced, unscheduled)"
+    "2": "advanced tracing features (priced, unscheduled)",
+    "3": "ti0.r0 — Z80N CPU support (adjustments)",
+    "4": "ti0.r1 — NextREG port handler",
+    "5": "ti0.r2 — Extended MMU",
+    "6": "ti0.r3 — Layer 2 graphics",
+    "7": "ti0.r4 — Hardware sprites",
+    "8": "ti0.r5 — Next palette",
+    "9": "ti0.r6 — NEX file loading"
   },
   "wave_visibility": {
     "1": true,
-    "2": true
+    "2": true,
+    "3": true,
+    "4": true,
+    "5": true,
+    "6": true,
+    "7": true,
+    "8": true,
+    "9": true
   }
 }

@@ -47,7 +47,7 @@ jobs:
           go test -tags headless -count=1 .
 
       - name: Register consistency
-        run: python3 repoman/register.py check
+        run: repoman register check
 
   gui-cross:
     # Cross-compiled, cgo-free GUI targets. raylib-go's purego backend

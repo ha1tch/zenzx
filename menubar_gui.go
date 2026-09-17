@@ -760,13 +760,19 @@ func (b *appMenuBar) refreshViewItems(zx *ZenZX) {
 		{Separator: true},
 	}
 	limit := zx.display.maxMultiplierThatFits()
+	// min (2026-09-15, T-29 GUI-wiring pass): Layer 2's 640x256x4bpp mode
+	// gates out 1x (see DisplayManager.minMultiplierForMode's own
+	// comment) -- the X1 item is disabled the same way an X-item above
+	// the monitor-fit limit already is, rather than silently doing
+	// nothing when clicked.
+	min := zx.display.MinMultiplierForMode()
 	for n := 1; n <= 3; n++ {
 		checked := zx.display.screen.multiplier == n
 		b.displayScaleChecked[n] = &checked
 		items = append(items, zenui.Item{
 			Label:    fmt.Sprintf("X %d", n),
 			Checked:  b.displayScaleChecked[n],
-			Disabled: n > limit,
+			Disabled: n > limit || n < min,
 		})
 	}
 	b.widget.SetItems(barView, items)
