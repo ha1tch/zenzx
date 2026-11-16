@@ -279,7 +279,7 @@ func (dm *DisplayManager) SetSpectrumIO(io *SpectrumIO) {
 // claimed 640-mode's 640 real columns "exceed the fixed 320-column
 // reference canvas at 1x" and would force cropping or window growth --
 // wrong, and contradicted by an exact wiki.specnext.dev/
-// Layer_2_Control_Register quote found while double-checking Horacio's
+// Layer_2_Control_Register quote found while double-checking the tech team's
 // own stated design against it: "every byte is displayed as two
 // half-width paired pixels". 640-mode's pixels are HALF the physical
 // width of a normal pixel, so 640 of them occupy exactly the SAME
@@ -424,7 +424,7 @@ func (dm *DisplayManager) updateTargetSize() {
 // classicScreenExtraTopMargin is how much of RefHeight's extra 8px over
 // TotalHeight (display_constants.go) is added to the classic 256x192
 // picture's OWN top margin, on top of BorderTop -- 4px, split evenly with
-// classicScreenExtraBottomMargin, per Horacio's own choice (2026-09-15,
+// classicScreenExtraBottomMargin, per the tech team's own choice (2026-09-15,
 // T-29 GUI-wiring pass) over an asymmetric split or growing the window.
 // Zero for any renderer other than the standard one (totalSize() doesn't
 // use RefHeight for those, so there is no extra margin to distribute).

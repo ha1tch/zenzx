@@ -30,8 +30,17 @@ func TestLayer2EnabledOnceNextModeEnabled(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
+	if io.layer2Enabled() {
+		t.Fatalf("layer2Enabled() = true straight after EnableNext(); Layer 2 is off until port 0x123B bit 1 or NR 0x69 bit 7 turns it on")
+	}
+	io.nextRegWriteDirect(0x69, 0x80)
 	if !io.layer2Enabled() {
-		t.Fatalf("layer2Enabled() = false after EnableNext(), want true")
+		t.Fatalf("layer2Enabled() = false after NR 0x69 bit 7 was set, want true")
+	}
+	io.nextRegWriteDirect(0x69, 0x00)
+	io.layer2Access.raw = 0x02
+	if !io.layer2Enabled() {
+		t.Fatalf("layer2Enabled() = false after port 0x123B bit 1 was set, want true")
 	}
 	img := io.DecodeLayer2()
 	if img == nil {
@@ -281,6 +290,7 @@ func TestLayer2ClipWindowMasksOutsidePixels(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
+	io.nextRegWriteDirect(0x69, 0x80) // Layer 2 on
 	// Fill the whole framebuffer with a bright, non-zero pixel value so a
 	// transparent (clipped) pixel is unambiguous from an opaque one.
 	for page := uint8(16); page < 16+layer2PageCount; page++ {
@@ -411,6 +421,7 @@ func TestT29NextModeLayer2EndToEnd(t *testing.T) {
 	}
 	zx.cpu.Reset()
 	zx.memory.EnableNext()
+	zx.io.nextRegWriteDirect(0x69, 0x80) // Layer 2 on
 	zx.EnableZ80N()
 
 	run := func(addr uint16, prog []uint8) {

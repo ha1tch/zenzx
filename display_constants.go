@@ -24,7 +24,7 @@ const (
 	// video renderer is active, REPLACING TotalWidth/TotalHeight for
 	// window-sizing purposes (TotalWidth/TotalHeight above are kept as
 	// pure documentation of the classic screen+border geometry, still
-	// read by nothing else in this codebase). The goal, per Horacio's own
+	// read by nothing else in this codebase). The goal, per the tech team's own
 	// framing: the window must never shapeshift just because a Next
 	// program switches Layer 2 resolution mode at runtime -- only an
 	// explicit user zoom (ScaleUp/ScaleDown/SetScale) changes the window

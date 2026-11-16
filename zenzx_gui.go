@@ -39,7 +39,7 @@ func resolveExplicitOrPersistedInt(explicitFlags map[string]bool, flagName strin
 
 func main() {
 	// Command line flags
-	model := flag.String("model", "48k", "Spectrum model: 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3, ts2068")
+	model := flag.String("model", "48k", "Spectrum model: 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3, ts2068, next")
 	romPath := flag.String("rom", "", "Custom ROM bank(s), comma-separated, positionally mapped to bank 0,1,2,3 (up to the model's own bank count); applied on top of -model's standard set, not instead of it")
 	rom0 := flag.String("rom0", "", "Override just ROM bank 0, leaving the rest of -model's standard set intact")
 	rom1 := flag.String("rom1", "", "Override just ROM bank 1, leaving the rest of -model's standard set intact")
@@ -54,9 +54,13 @@ func main() {
 	noEsc := flag.Bool("noesc", false, "Disable ESC key (prevent accidental exit)")
 	noFdc := flag.Bool("nofdc", false, "Disable FDC emulation for +3")
 	disk := flag.String("disk", "", "Path to +3 disk image (.dsk)")
+	sdCard := flag.String("sdcard", "", "Path to a raw FAT16/FAT32 SD card image, attached via DivMMC (T-36, docs/TRACKING.md) -- requires -divmmc-rom too. Pages in via automap at the usual RST-vector entry points on ANY model, not just -model=next; does not by itself model the Next's own separate config-mode boot ROM (item 6)")
+	divMMCROM := flag.String("divmmc-rom", "", "Path to the DivMMC/ESXDOS boot ROM image (8K) that -sdcard pages in -- a real ESXDOS build, not sourced or embedded by zenzx itself")
+	bootROM := flag.String("bootrom", "", "Path to the FPGA config-mode boot ROM image (8K, e.g. nextboot.rom) -- a real, separate first-stage ROM, not enNxtmmc.rom/-divmmc-rom; runs SD init/FAT32/TBBLUE.FW loading before NextREG 0x03 disables it (T-36)")
+	divMMCDebug := flag.Bool("divmmc-debug", false, "Log DivMMC automap transitions and SD card command/response frames to stderr")
 	debugFdc := flag.Bool("debugfdc", false, "Enable FDC debug output")
 	snapshot := flag.String("snapshot", "", "Load snapshot on startup")
-	snapshotFormat := flag.String("format", "auto", "Snapshot format: auto, zxs, sna, z80")
+	snapshotFormat := flag.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only)")
 	tapeFile := flag.String("tape", "", "Load tape file (.tap or .tzx)")
 	tapeMode := flag.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
 	noAudio := flag.Bool("noaudio", false, "Disable audio")
@@ -350,6 +354,48 @@ func main() {
 			}
 		}
 
+	case "next":
+		if data, err := loadPlus3Bytes(guiROMDir, "plus3-0.rom", "plus3-1.rom", "plus3-2.rom", "plus3-3.rom"); err == nil {
+			if zx.LoadPlus3ROMBytes(data[0], data[1], data[2], data[3]) == nil {
+				fmt.Println("Loaded ZX Spectrum Next (+3 ROM base, matching real hardware's classic-compatible boot personality -- no NextZXOS boot chain yet, see T-32)")
+				zx.EnableZ80N()
+				zx.memory.EnableNext()
+				zx.memory.SetNextSlot(0, 0xFF) // ROM low half -- defers to legacy ROM (readNext)
+				zx.memory.SetNextSlot(1, 0xFF) // ROM high half -- ditto
+				zx.memory.SetNextSlot(2, 10)   // bank 5 low half (screen) -- classic reset default
+				zx.memory.SetNextSlot(3, 11)   // bank 5 high half
+				zx.memory.SetNextSlot(4, 4)    // bank 2 low half
+				zx.memory.SetNextSlot(5, 5)    // bank 2 high half
+				zx.memory.SetNextSlot(6, 0)    // bank 0 low half -- reset default before any 7FFD write
+				zx.memory.SetNextSlot(7, 1)    // bank 0 high half
+				fmt.Println("Z80N CPU + Next extended MMU enabled")
+				romLoaded = true
+				// This model shares the +3 ROM base, and T-36 debugging
+				// against real ESXDOS/DivMMC firmware found its boot
+				// code -- when it can't get anywhere over SD -- falls
+				// through to the same +3DOS disk-boot ROM -model=plus3
+				// uses. That ROM needs a real drive-status answer, not
+				// just an enabled-but-empty controller (Sense Drive
+				// Status reports "not ready" with no disk loaded, and
+				// +3DOS hangs waiting for that to change); see the
+				// headless entry point's identical comment for the
+				// full explanation.
+				if !*noFdc {
+					zx.io.EnableFDC()
+					if *disk != "" {
+						if err := zx.io.LoadDisk(*disk); err != nil {
+							fmt.Printf("Error loading disk %s: %v\n", *disk, err)
+						} else {
+							fmt.Printf("Loaded disk: %s\n", *disk)
+						}
+					} else if zx.io.fdc != nil {
+						zx.io.fdc.CreateBlankDisk()
+						fmt.Println("No -disk given: created a blank formatted disk so +3DOS's drive detection doesn't hang")
+					}
+				}
+			}
+		}
+
 	case "ts2068":
 		if home, err := resolveROMBytes("ts2068-0.rom", guiROMDir); err == nil {
 			if ext, err := resolveROMBytes("ts2068-1.rom", guiROMDir); err == nil {
@@ -362,7 +408,7 @@ func main() {
 
 	default:
 		fmt.Printf("Unknown model: %s\n", *model)
-		fmt.Println("Valid models: 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3, ts2068")
+		fmt.Println("Valid models: 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3, ts2068, next")
 	}
 
 	// If still no ROM loaded, try defaults
@@ -491,6 +537,48 @@ func main() {
 				}
 			}
 		}
+	}
+
+	// FPGA config-mode boot ROM (T-36, docs/TRACKING.md)
+	if *bootROM != "" {
+		data, err := os.ReadFile(*bootROM)
+		if err != nil {
+			fmt.Printf("Error reading -bootrom %s: %v\n", *bootROM, err)
+			os.Exit(1)
+		}
+		zx.memory.SetBootROM(data)
+		fmt.Printf("Boot ROM attached: %s (%d bytes, overlay enabled -- disabled by the first NextREG 0x03 write)\n", *bootROM, len(data))
+	}
+
+	// DivMMC / SD card (T-36, docs/TRACKING.md)
+	if *sdCard != "" || *divMMCROM != "" {
+		if *sdCard == "" || *divMMCROM == "" {
+			fmt.Println("Error: -sdcard and -divmmc-rom must both be given together")
+			os.Exit(1)
+		}
+		romBytes, err := os.ReadFile(*divMMCROM)
+		if err != nil {
+			fmt.Printf("Error reading -divmmc-rom %s: %v\n", *divMMCROM, err)
+			os.Exit(1)
+		}
+		// Left open for the process's lifetime -- see the headless
+		// entry point's identical comment for why.
+		sdFile, err := os.Open(*sdCard)
+		if err != nil {
+			fmt.Printf("Error opening -sdcard %s: %v\n", *sdCard, err)
+			os.Exit(1)
+		}
+		info, err := sdFile.Stat()
+		if err != nil {
+			fmt.Printf("Error stat'ing -sdcard %s: %v\n", *sdCard, err)
+			os.Exit(1)
+		}
+		zx.EnableDivMMC(sdFile, info.Size(), romBytes)
+		if *divMMCDebug {
+			zx.io.divMMC.Debug = true
+			zx.io.divMMC.SD().Debug = true
+		}
+		fmt.Printf("DivMMC attached: rom=%s sdcard=%s (%d bytes)\n", *divMMCROM, *sdCard, info.Size())
 	}
 
 	// Load raw binary directly into memory if specified

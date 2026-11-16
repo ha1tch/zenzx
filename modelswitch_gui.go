@@ -97,6 +97,24 @@ func switchModelLive(zx *ZenZX, model, romDir string) {
 		}
 		label = "Spanish Spectrum +3"
 
+	case "next":
+		if data, err := loadPlus3Bytes(romDir, "plus3-0.rom", "plus3-1.rom", "plus3-2.rom", "plus3-3.rom"); err == nil {
+			loaded = zx.LoadPlus3ROMBytes(data[0], data[1], data[2], data[3]) == nil
+			if loaded {
+				zx.EnableZ80N()
+				zx.memory.EnableNext()
+				zx.memory.SetNextSlot(0, 0xFF) // ROM low half -- defers to legacy ROM (readNext)
+				zx.memory.SetNextSlot(1, 0xFF) // ROM high half -- ditto
+				zx.memory.SetNextSlot(2, 10)   // bank 5 low half (screen) -- classic reset default
+				zx.memory.SetNextSlot(3, 11)   // bank 5 high half
+				zx.memory.SetNextSlot(4, 4)    // bank 2 low half
+				zx.memory.SetNextSlot(5, 5)    // bank 2 high half
+				zx.memory.SetNextSlot(6, 0)    // bank 0 low half -- reset default before any 7FFD write
+				zx.memory.SetNextSlot(7, 1)    // bank 0 high half
+			}
+		}
+		label = "ZX Spectrum Next (+3 ROM base)"
+
 	case "ts2068":
 		if home, err := resolveROMBytes("ts2068-0.rom", romDir); err == nil {
 			if ext, err := resolveROMBytes("ts2068-1.rom", romDir); err == nil {

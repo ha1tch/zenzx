@@ -23,9 +23,9 @@ package main
 //   Fractional results are rounded to the nearest frame.
 //
 // Verbs are validated at parse time. An unknown verb is a hard error and the
-// script is refused. Verbs that are known but not yet wired (the Phase 2
-// keyboard verbs) parse successfully and fail at dispatch with a clear
-// message, so that forward-looking scripts remain loadable.
+// script is refused. A verb that is known but not yet wired would parse successfully and fail
+// at dispatch with a clear message, so that forward-looking scripts remain
+// loadable; at present every verb is wired.
 // ============================================================================
 
 import (

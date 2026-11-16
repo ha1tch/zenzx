@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ha1tch/zentools/pkg/snapshot"
+	"github.com/ha1tch/zentools/pkg/szx"
 )
 
 // ============================================================================
@@ -59,6 +60,22 @@ func (zx *ZenZX) LoadSNA(filename string) error {
 	return nil
 }
 
+// LoadSZX loads a .szx (ZX-State) snapshot, delegating to zentools/pkg/szx.
+// Saving to .szx is not supported.
+func (zx *ZenZX) LoadSZX(filename string) error {
+	image, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	s, err := szx.Decode(image)
+	if err != nil {
+		return fmt.Errorf("decode .szx: %w", err)
+	}
+	zx.fromMachineState(s)
+	zx.resyncAfterLoad()
+	return nil
+}
+
 // SaveZ80 saves the current state in .z80 format (version 3, 128K-capable),
 // delegating to zentools/pkg/snapshot.
 func (zx *ZenZX) SaveZ80(filename string) error {
@@ -106,6 +123,8 @@ func DetectSnapshotFormat(filename string) string {
 		return "z80"
 	} else if strings.HasSuffix(lower, ".zxs") {
 		return "zxs"
+	} else if strings.HasSuffix(lower, ".szx") {
+		return "szx"
 	}
 
 	// Try to detect by content
@@ -119,6 +138,11 @@ func DetectSnapshotFormat(filename string) string {
 	header := make([]byte, 10)
 	if _, err := file.Read(header); err != nil {
 		return ""
+	}
+
+	// Check for SZX magic: a .szx always starts with "ZXST"
+	if string(header[:4]) == "ZXST" {
+		return "szx"
 	}
 
 	// Check for ZXS magic
@@ -154,6 +178,10 @@ func (zx *ZenZX) SaveSnapshotFormat(filename string, format string) error {
 		return zx.SaveZ80(filename)
 	case "zxs":
 		return zx.SaveSnapshot(filename) // Original ZXS format
+	case "szx":
+		// Without this case the default branch below would detect "szx" from the
+		// extension and call this function again, for ever.
+		return fmt.Errorf("saving .szx is not supported: use .z80, .sna or .zxs")
 	default:
 		// Auto-detect by extension
 		detected := DetectSnapshotFormat(filename)
@@ -181,6 +209,8 @@ func (zx *ZenZX) LoadSnapshotFormat(filename string, format string) error {
 		return zx.LoadZ80(filename)
 	case "zxs":
 		return zx.LoadSnapshot(filename) // Original ZXS format
+	case "szx":
+		return zx.LoadSZX(filename)
 	default:
 		return fmt.Errorf("unknown snapshot format: %s", format)
 	}

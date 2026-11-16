@@ -8,7 +8,7 @@ import (
 )
 
 // This file tests the GUI window/viewport-sizing logic added 2026-09-15
-// (T-29's post-completion-pass GUI-wiring fix, prompted by Horacio
+// (T-29's post-completion-pass GUI-wiring fix, prompted by the tech team
 // pointing out that the wider Layer 2 modes' data-plane correctness --
 // layer2Pixel addressing the right byte for a given (x,y) -- had never
 // been checked end-to-end through the window/viewport/border machinery,

@@ -4,6 +4,80 @@ All notable changes to ZenZX are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.0] - 2026-11-16
+
+One ZenZX again. Two lines had grown apart from 0.9.0: 0.9.1 and 0.9.2 with the Next boot work, and 0.10.0 with `.szx` loading, the lazy Next page store and AY gating. This release is their merge; everything in the 0.10.0, 0.9.2 and 0.9.1 entries below is in it.
+
+### Added
+
+- **DivMMC and SD card emulation for the Next boot chain (T-36, in progress).** `divmmc.go` models the DivMMC interface (port 0xE3 control, automap entry and exit, CONMEM, MAPRAM, 8K ROM and RAM pages); automap is gated on NextREG 0x0A bit 4 and is off at power-on, as on the hardware. `sdcard.go` models an SD card over SPI (ports 0xE7 chip select and 0xEB data) from a raw image: CMD0, CMD8, CMD9, CMD12, CMD17, CMD18, ACMD41, CMD55 and CMD58, with CRC-16 on data blocks. `pkg/nextdisk` reads named files out of a FAT16 or FAT32 image through blipper's `fatfs`.
+- **Boot ROM overlay.** `-bootrom` maps an 8K first-stage boot ROM (`nextboot.rom`) over the bottom of memory until the firmware turns it off through NextREG 0x03.
+- **New flags** in both binaries: `-bootrom`, `-divmmc-rom`, `-sdcard` and `-divmmc-debug`. `-sdcard` needs `-divmmc-rom`. `run_next_divmmc.sh` starts the whole chain from `thirdparty/` (`nextboot.rom`, `enNxtmmc.rom`, `next-card.img`; `NEXT_FILES` names another folder); `ztrace_next.sh` runs the trace harness over the same files.
+- NextREG power-on values for 0x01 (core version 3.02), 0x0A, 0x0E, 0x0F and 0x10, taken from jnext's VHDL-cited defaults.
+- **Config mode: the firmware can now load the machine's ROMs (`nextconfig.go`).** A Next with a boot ROM powers on in config mode, where NextREG 0x04 maps a 16K SRAM bank at 0x0000-0x3FFF: the four ROM banks, the DivMMC ROM and RAM, the Multiface and alternate ROM banks (stored, not yet used) and every RAM bank. NextREG 0x03 chooses the machine and leaves config mode (111 enters it again; the machine type is accepted only in config mode). NextREG 0x02 resets: bit 0 restarts the CPU and the paging and keeps memory, so the machine starts from the ROM the firmware loaded; bit 1 also brings the boot ROM and config mode back.
+- **NextREG 0x8E** (`nextreg8e.go`): the paging ports 0x7FFD, 0x1FFD and 0xDFFD in one register, effective at once. NextZXOS changes ROM through it in its inter-ROM call.
+- **NextREG 0x1E and 0x1F** read the line the display is drawing (`nextvideoline.go`); the firmware paces its screens with it.
+- **NextREG 0x50-0x57 read back the live mapping**, including what ports 0x7FFD and 0xDFFD and NextREG 0x8E did to slots 6 and 7. NextZXOS saves and restores a slot by reading it.
+- **The DivMMC's programmable entry points** (`divmmc_entries.go`): NextREG 0xB8-0xBB choose which opcode fetches map the interface in, whether only with ROM 3 at 0x0000, and whether at once or after the opcode; 0x1FF8-0x1FFF unmaps after its opcode. The acknowledge cycle of an interrupt is no longer taken for a fetch at 0x0038. NextREG 0x09 bit 3 clears MAPRAM, and port 0xE3 reads back on the Next.
+- **The alternate ROM and ROM lock, NextREG 0x8C** (`nextaltrom.go`): two more ROM images in SRAM banks 6 and 7, written through the ROM's addresses and then run in its place; the lock bits hold a ROM whatever the paging ports say; a soft reset takes bits 3-0 into bits 7-4. NextREG 0x02 reads back the kind of the last reset.
+- **`TestNextZXOSBoots`** (`next_boot_test.go`), the boot chain against the real firmware, and unit tests for config mode, the paging register, the entry points, the alternate ROM and the screen cache that need no third-party files.
+- **`scripts/next_card.py`** makes the SD card from the official emulator distribution (`sn-emulator-26.11.zip`): it formats the card again as a valid FAT32 volume with 4K clusters, copies every file, and sets `timing=0` in `config.ini` so the firmware does not stop at its video-mode test. It also writes out the distribution's `enNxtmmc.rom`. Needs `pip install pyfatfs`.
+
+### Changed
+
+- **Go 1.26.5 or later is now required**: `pkg/nextdisk` depends on blipper v0.9.25, which requires it. `golang.org/x/sys` moves to v0.47.0 with it.
+- **`manifest.sh`** writes and checks `MANIFEST.sha256` (every tracked file, sha256, sorted). The manifests of 0.9.0 to 0.10.0 had been kept by hand and were stale; CI now asks for Go 1.26.
+- **Register IDs.** Both lines had used T-35 and T-36. The 0.9.x numbers stand; the 0.10.0 items T-35, T-36 and T-37 are now T-38, T-39 and T-40 (`docs/TRACKING.md` carries the note).
+
+### Fixed
+
+- **Next: the renderer's screen cache no longer overwrites RAM.** When the displayed bank changed (port 0x7FFD bit 3), the cache was copied back into the bank, as on the classic models where the cache is the displayed bank. On the Next writes go to RAM first, so this overwrote bank 7 with bank 5's picture. The cache now follows RAM on the Next, and only writes to the displayed bank reach it.
+- **Next: Layer 2 is drawn only when it is on.** It was composited over the ULA picture on every Next, from a reading in T-29 that no enable bit was documented. The Next's `ports.txt` gives it: port 0x123B bit 1, alias NextREG 0x69 bit 7, off after a reset. A program that drew Layer 2 without turning it on, which the hardware would not show, is no longer shown.
+- T-41 closed: the boot chain has a repeatable check (see `docs/RESOLVED.md`).
+
+### Known state
+
+- **NextZXOS boots** from the 26.11 card made by `scripts/next_card.py`: the boot ROM loads TBBLUE.FW, the firmware loads the ROMs into SRAM, chooses the machine and resets into it, and NextZXOS starts from the card and shows its welcome screen, its main menu (v2.10, 1792K) and the Browser listing the card. Checked in the headless build; the GUI build has not been run with it. `TestNextZXOSBoots` repeats the boot against the real files (dormant guard G-04, `ZENZX_NEXT_FILES`).
+- Not there yet, each filed: the card is read-only, so nothing can be saved (T-43); the tilemap and the Timex modes are not drawn, so the editor's 64 and 85 column modes and many programs will not display (T-44); NextREG 0x12 and 0x13 are read as 8K pages where the hardware takes 16K banks (T-42). The Multiface and the NMI buttons are not modelled.
+- With the boot ROM and no card the firmware reports "Error initializing SD card!", and with an empty card "Error opening TBBLUE.FW file", as it should.
+
+## [0.10.0] - 2026-11-12
+
+### Added
+
+- **`.szx` snapshots load.** `-snapshot`, the `snapshot` script verb and dropping a file on the window now accept a `.szx`. Before, an `.szx` was taken for a `.z80` and failed with `decompressed RAM is 11632 bytes, want 49152`. `DetectSnapshotFormat` knows the `.szx` extension and the `ZXST` magic, and loading goes through `zentools/pkg/szx`. Saving to `.szx` is not supported and says so; without that case in `SaveSnapshotFormat`, a name ending `.szx` would have called the function again, for ever, once detection returned `szx`. `-format` lists `szx` (load only).
+
+### Changed
+
+- **The Next page store is allocated on its first write instead of inline in every `SpectrumMemory`.** `nextExtraRAM` (208 pages of 8 KiB) made every machine, a plain 48K included, carry about 1.7 MB; it is now a pointer allocated by `nextPageWrite`, and reading an unwritten page still returns 0. `SpectrumMemory` drops from 1,908,792 to 204,864 bytes, guarded by a size test. No behaviour change.
+
+- **The zentools requirement moves from v0.6.0 to v0.8.6**, which provides `pkg/szx`. The in-tree `pkg/bdf` and the rest of `go.mod` are unchanged. The headless suite, the `./pkg/...` suite and a cgo-free windows type-check of every GUI file and test pass with it.
+
+### Fixed
+
+- **The AY-3-8912 ports no longer answer on a 48K (T-17).** 0xFFFD (register select, data read) and 0xBFFD (data write) were decoded on every model. They are now gated by a new `hasAY()`, true for the 128K family and Next. On a 48K a write is ignored and a read of 0xFFFD falls through to the floating bus, like any other unattached port. The TS2068's own AY ports are unaffected. Closes T-17.
+
+- A personal name removed from comments in `display.go`, `display_constants.go`, `layer2.go` and `layer2_viewport_test.go`, and from `docs/TRACKING.md`, which the release gate's forbidden-string scan was already failing on.
+## [0.9.2] - 2026-09-18
+
+### Fixed
+
+- **T-35: `-model=next` booted to a blank screen despite correct ROM/CPU behaviour.** Root-caused by direct comparison against a working `-model=plus3` boot: CPU execution and raw memory content were confirmed byte-for-byte identical between the two, isolating the bug to rendering rather than execution. `writeNext` (the memory-write path used whenever `isNext=true`) wrote screen data correctly into the raw RAM array but never mirrored it into `zx.screen.bitmap`/`.attributes`, the separate cached buffer the video renderer actually reads from -- a mirror step the classic (non-Next) write path has always done for bank 5. Fixed by adding the same mirror to `writeNext`, scoped to bank 5 (page 10) to match the classic path's own address range exactly. `-model=next` now renders a genuine, correct boot screen. This also resolves Wave 3 (`ti0.r0`)'s placeholder scope in full -- auditing Z80N wiring as a real machine mode and confirming (by finding and fixing it) the one gap that existed beyond opcode semantics.
+
+## [0.9.1] - 2026-09-18
+
+### Added
+
+- **`next` is now a selectable machine model** (`-model=next` in both the headless and GUI binaries, plus the GUI's live model-switch menu and a new "Specnext Ltd" section in `machines.json`). Selecting it enables the Z80N CPU and the Next extended MMU together. This is a hardware-level milestone, not a boot-compatible Next yet: booting a classic ROM under `-model=next` still produces a blank screen (root cause not yet found -- classic-ROM boot has a much larger failure surface than the Next hardware model itself and was deliberately not chased this release, see docs/NEXT_BOOT_REFERENCE.md). What *is* now confirmed, end to end through the real CLI binary rather than only at the unit-test level, is that the underlying Next hardware model works correctly when driven directly by a Z80N program: NEXTREG dispatch, the 8-slot MMU (paging a fresh Next-extra-RAM page in via a live NEXTREG write), the Layer 2 framebuffer, the palette system (including the NR 0x43 target-select register, whose ULA-vs-Layer2 default is easy to miss), and the ULA/Layer2/sprite compositor all produced a correct, verified pixel through `DecodeDisplay()` and the final PNG.
+
+- **docs/NEXT_BOOT_REFERENCE.md**, a reference doc on the real ZX Spectrum Next boot sequence (the three-stage boot-ROM to firmware to NextZXOS handoff, with the exact NextREG values at each transition) and where Next firmware is legally sourced from. Notably: real hardware's classic-compatible boot presents itself as NextREG machine-type "+3" (`0xB3`), not "128K" -- a likely lead for the still-open blank-screen issue above, since the current `next` model case loads the 128K ROM set.
+
+### Fixed
+
+- **T-33: NEXTREG-opcode writes bypassing the port-0x243B select latch.** Closed -- `zen80 v0.5.7` is confirmed published and fetchable as a real, hashed module dependency (no `replace` directive), and the full test suite (`./pkg/...` and the headless build, including the two dedicated regression tests) re-runs clean against it.
+- **T-34: NextREG 0x00 (machine ID) default was 0x00; real hardware/VHDL value is 0x0A.** Closed -- already shipped in v0.9.0's tree.
+- Removed a handful of incidental personal-name references from source comments and `docs/TRACKING.md` (no functional change).
+
 ## [0.9.0] - 2026-09-15
 
 ### Added

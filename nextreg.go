@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // ============================================================================
 // ZX Spectrum Next: NextREG port handler (T-27, wave ti0.r1)
 //
@@ -95,7 +97,11 @@ type nextRegDefault struct {
 // documented) behaviour, register-select-port readback.
 var nextRegDefaults = []nextRegDefault{
 	{0x00, 0x0A, nextRegRO, "machine ID -- 0x0A is the VHDL g_machine_id board-generic value (zxnext_top_issue{2,4,5}.vhd); confirmed against jnext (github.com/jorgegv/jnext), whose own history records an 0x08 default breaking NextZXOS boot (wrong ROM1 machine-ID branch, fixed 2026-07-09) -- 0x00 has no basis in any real hardware or firmware and was this file's own pre-T-34 placeholder"},
-	{0x01, 0x00, nextRegRO, "core version: bits 7-4 major, bits 3-0 minor (sub-minor is a separate register, not implemented here)"},
+	{0x01, 0x32, nextRegRO, "core version: bits 7-4 major, bits 3-0 minor; power-on 0x32 = v3.02, the VHDL g_version value jnext (src/port/nextreg.cpp) cites -- was 0x00 before T-36, which real firmware (tbblue.fw) plausibly reads as a bricked/golden core and answers with its Anti-Brick screen (hypothesis, unconfirmed: jnext's docs do not spell out the trigger)"},
+	{0x0E, 0x03, nextRegRO, "core version sub-minor: power-on 0x03 (v3.02.03), per jnext's src/port/nextreg.cpp; read-only, writes ignored (jnext guards 0x01/0x0E/0x0F identically)"},
+	{0x0F, 0x00, nextRegRO, "board issue: VHDL reads back \"0000\" & g_board_issue; 0x00 per jnext's default (Issue-2 style); read-only"},
+	{0x0A, 0x01, nextRegRW, "peripheral 5: bits 7-6 multiface type, bit 5 SD swap, bit 4 DivMMC automap enable, bit 3 mouse button reverse, bits 1-0 mouse DPI; power-on composite 0x01 (mouse_dpi=\"01\") per jnext's VHDL-cited seed, correctly leaving bit 4 (automap enable) clear at reset. Bit 4 is wired to DivMMC.SetAutomapEnabled (nextRegWriteDirect/SetNextRegister, T-36) -- confirmed against jnext, whose own commit history describes a real bug this gate fixes (automap firing unconditionally from PC=0x0000 through the whole boot-ROM phase without it). Bits 7-6/5/3/1-0 remain stored only, no behavioural wiring"},
+	{0x10, 0x04, nextRegRW, "core boot / core id: read = '0' & coreid(5 bits, bits 6-2) & buttons(bits 1-0); power-on coreid=\"00001\" -> 0x04 per jnext (VHDL zxnext.vhd:1133/:5924); real hardware gates writes on config mode, not modelled here; buttons (bits 1-0) read as idle 0"},
 	{0x02, 0x00, nextRegRW, "reset: bit1 hard reset, bit0 soft reset (write-triggered; read reports last power-on-reset cause, not modelled beyond 0x00 here)"},
 	{0x03, 0x00, nextRegRW, "machine type / timing select; real hardware restricts bits 2-0 to config mode only -- not modelled, this emulator has no separate config-mode gate"},
 	{0x07, 0x00, nextRegRW, "CPU speed: bits 1-0, 00=3.5MHz 01=7MHz 10=14MHz (11 reserved); stored only -- ti0.r1 does not yet change actual emulated CPU speed"},
@@ -210,6 +216,24 @@ func (io *SpectrumIO) nextRegWriteSelected(value uint8) {
 // where NextregWrite is wired, and nextreg_test.go for the regression
 // proving the two paths genuinely diverge on `selected` state.
 func (io *SpectrumIO) nextRegWriteDirect(reg uint8, value uint8) {
+	if reg >= 0x02 && reg <= 0x04 {
+		io.nextConfigRegWrite(reg, value) // reset, machine type, config mapping: nextconfig.go
+	}
+	if reg == 0x8E {
+		io.nextReg8EWrite(value) // the classic paging ports in one register: nextreg8e.go
+	}
+	if reg == 0x8C && io.memory != nil {
+		io.memory.nextAltROM = value // alternate ROM and ROM lock: nextaltrom.go
+	}
+	if io.hasDivMMC && io.divMMC != nil {
+		if reg >= 0xB8 && reg <= 0xBB {
+			io.divMMC.setEntryReg(reg, value) // automap entry points: divmmc_entries.go
+		}
+		if reg == 0x09 && value&0x08 != 0 {
+			io.divMMC.clearMapRAM() // bit 3 clears MAPRAM and reads back as 0
+			value &^= 0x08
+		}
+	}
 	if io.nextRegs.access[reg] == nextRegRO {
 		// Read-only registers silently ignore writes -- matches real
 		// hardware behaviour for identification registers (there is no
@@ -223,6 +247,37 @@ func (io *SpectrumIO) nextRegWriteDirect(reg uint8, value uint8) {
 		return
 	}
 	io.nextRegs.regs[reg] = value
+	if reg == 0x03 {
+		// Confirmed against jnext (src/core/emulator.cpp's NR 0x03
+		// write handler, citing VHDL: "bootrom_en <= '0' on any write
+		// to nr_03") -- unconditional on the value written, not a
+		// specific pattern. jnext's own further NR 0x03 semantics
+		// (config_mode transitions, machine_timing, user_dt_lock) are
+		// NOT replicated here; this is scoped to the one trigger this
+		// emulator's boot ROM overlay (T-36) needs.
+		if io.hasDivMMC && io.divMMC != nil && io.divMMC.Debug {
+			fmt.Printf("[nextreg] 0x03 <- 0x%02X (boot ROM overlay now disabled)\n", value)
+		}
+		if io.memory != nil {
+			io.memory.DisableBootROM()
+		}
+	}
+	if reg == 0x0A {
+		// Confirmed against jnext (src/peripheral/divmmc.h/.cpp):
+		// NextREG 0x0A bit 4 is DivMMC's automap-enable gate, OFF at
+		// power-on. jnext's own set_enabled doc comment describes a
+		// real, previously-hit bug of exactly this shape when this
+		// gate is missing: automap firing unconditionally from
+		// PC=0x0000 through the whole boot-ROM phase. See
+		// DivMMC.automapEnabled's own field comment for the matching
+		// real stall this session hit without this gate.
+		if io.hasDivMMC && io.divMMC != nil {
+			if io.divMMC.Debug {
+				fmt.Printf("[nextreg] 0x0A <- 0x%02X (automap enable bit -> %v)\n", value, value&0x10 != 0)
+			}
+			io.divMMC.SetAutomapEnabled(value&0x10 != 0)
+		}
+	}
 	if reg == 0x70 {
 		// Layer 2 palette offset changed -- see nextPaletteVersion's own
 		// doc comment (io.go) and docs/proposals/next-gpu-compositing-seam.md
@@ -323,6 +378,22 @@ func (io *SpectrumIO) nextRegReadSelected() uint8 {
 	if io.nextRegs.access[reg] == nextRegWO {
 		return 0xFF
 	}
+	if reg == 0x8E {
+		return io.nextReg8ERead()
+	}
+	if reg >= 0x50 && reg <= 0x57 && io.memory != nil && io.memory.isNext {
+		// The MMU registers read back what is mapped now. Ports 0x7FFD and 0xDFFD and
+		// NextREG 0x8E change slots 6 and 7 without a write to 0x56 or 0x57, and NextZXOS
+		// saves and restores a slot by reading it first.
+		return io.memory.nextSlots[reg-0x50]
+	}
+	if (reg == 0x1E || reg == 0x1F) && io.nextVideoLineFn != nil {
+		line := io.nextVideoLineFn()
+		if reg == 0x1E {
+			return uint8(line>>8) & 0x01
+		}
+		return uint8(line)
+	}
 	if reg == 0x18 {
 		return io.nextRegClipWin.read()
 	}
@@ -350,6 +421,23 @@ func (io *SpectrumIO) GetNextRegister(reg uint8) uint8 {
 // GetNextRegister bypasses them for reads.
 func (io *SpectrumIO) SetNextRegister(reg uint8, value uint8) {
 	io.nextRegs.regs[reg] = value
+	if reg == 0x03 {
+		// Mirrors nextRegWriteDirect's own handling of 0x03 above, for
+		// the same reason 0x70 and 0x50-0x57 are mirrored here too.
+		// Note: bootROM/bootROMEnabled state itself is not part of any
+		// snapshot yet, so this only has an observable effect if the
+		// caller re-attaches a boot ROM after restoring.
+		if io.memory != nil {
+			io.memory.DisableBootROM()
+		}
+	}
+	if reg == 0x0A {
+		// Mirrors nextRegWriteDirect's own handling of 0x0A above, for
+		// the same reason 0x03/0x70/0x50-0x57 are mirrored here too.
+		if io.hasDivMMC && io.divMMC != nil {
+			io.divMMC.SetAutomapEnabled(value&0x10 != 0)
+		}
+	}
 	if reg == 0x70 {
 		// Layer 2 palette offset changed on snapshot restore too -- mirrors
 		// nextRegWriteDirect's own handling of 0x70 above, for the same

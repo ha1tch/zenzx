@@ -20,7 +20,7 @@ It builds in two variants:
 
 ## Requirements
 
-- Go 1.25 or later
+- Go 1.26.5 or later
 - For the GUI build only: a C toolchain and the raylib/oto system libraries
   (OpenGL, X11 or Wayland, ALSA)
 
@@ -296,6 +296,7 @@ In the GUI build, dropping a file onto the window loads it by extension:
 | `.tap` / `.tzx` | A tape image (loaded, then driven with the `Alt+P/R/T/I` controls). |
 | `.dsk` | A +3 disk image (requires +3 mode with the FDC enabled). |
 | `.sna` / `.z80` | Standard snapshots (48K and 128K), via the shared `zentools` library. |
+| `.szx` | ZX-State snapshots, load only, via the shared `zentools` library. |
 
 A `.scr` can also be loaded headlessly with `-scr` (see above).
 
@@ -372,7 +373,7 @@ This is useful for verifying screen output against reference `.scr` files.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `-model` | `48k` | 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3, ts2068 |
+| `-model` | `48k` | 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3, ts2068, next |
 | `-rom` | | Custom ROM bank(s), comma-separated, positionally mapped to bank 0,1,2,3 (up to the model's own bank count); layers on top of `-model`'s standard set |
 | `-rom0` | | Override just ROM bank 0, leaving the rest of `-model`'s standard set intact |
 | `-rom1` | | Override just ROM bank 1, leaving the rest of `-model`'s standard set intact |
@@ -386,7 +387,7 @@ This is useful for verifying screen output against reference `.scr` files.
 | `-binstart` | | PC after `-bin` (empty = load address, `-1` = unchanged) |
 | `-scr` | | Load a `.scr` screen dump onto the display (still image) |
 | `-snapshot` | | Snapshot to load on startup |
-| `-format` | `auto` | Snapshot format: auto, zxs, sna, z80 |
+| `-format` | `auto` | Snapshot format: auto, zxs, sna, z80, szx (load only) |
 | `-tape` | | Tape file (.tap / .tzx) |
 | `-tapemode` | `fast` | Tape mode: `fast`, `accurate`, or `turbo` (accurate mode's real CPU/tape correctness with rendering and audio/mouse bookkeeping skipped while the tape plays -- a genuine but modest wall-clock speedup, not a shortcut; the screen visibly freezes during a turbo load rather than redrawing incrementally, then jumps to the final state; see `docs/TAPE_LOADING_HANDOVER.md` for how the three modes actually compare) |
 | `-disk` | | Path to a +3 disk image (.dsk) |

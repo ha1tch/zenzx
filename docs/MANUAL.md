@@ -50,7 +50,7 @@ is only in front-end plumbing (windowing, audio device, input), so a
 
 Requirements:
 
-- Go 1.25 or later
+- Go 1.26.5 or later
 - For the GUI build only: a C toolchain and the raylib/oto system libraries
   (OpenGL, X11 or Wayland, ALSA)
 
@@ -236,7 +236,7 @@ hardware (`sinclair` is an alias for `sinclair1`). `-mouse` selects `none`
 
 ## Media formats
 
-Standard snapshot formats (`.sna`, `.z80`) and the proprietary `.zxs`
+Standard snapshot formats (`.sna`, `.z80`, and `.szx` for loading only) and the proprietary `.zxs`
 chunk format are supported via `-snapshot`/`snapshot-save`, with
 `-format auto` detecting from content. Tapes (`.tap`, `.tzx`) load via
 `-tape`, with `-tapemode fast|accurate|turbo` controlling load speed
@@ -265,6 +265,7 @@ In the GUI build, dropping a file onto the window loads it by extension:
 | `.tap` / `.tzx` | A tape image, then driven with the `Alt+P/R/T/I` controls |
 | `.dsk` | A +3 disk image (requires +3 mode with the FDC enabled) |
 | `.sna` / `.z80` | Standard snapshots (48K and 128K), via the shared `zentools` library |
+| `.szx` | ZX-State snapshots, load only, via the shared `zentools` library |
 
 ## The menu bar (GUI)
 

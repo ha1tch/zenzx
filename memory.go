@@ -144,6 +144,55 @@ type SpectrumMemory struct {
 	layer2AccessReadFn  func(address uint16) (value uint8, ok bool)
 	layer2AccessWriteFn func(address uint16, value uint8) (handled bool)
 
+	// bootROM/bootROMEnabled model the FPGA's own separate config-mode
+	// boot ROM (nextboot.rom on real hardware and in jnext's own
+	// roms/nextboot.rom -- NEXT_SUPPORT_DEVELOPMENT_PLAN.md Tier 2 item
+	// 6, T-36), confirmed via direct jnext source comparison
+	// (src/memory/mmu.h/.cpp, src/core/emulator.cpp) rather than
+	// inferred: hardwired to exactly 8KB (mmu.cpp's set_boot_rom
+	// zero-pads/truncates), mirrored across the FULL low 16K
+	// (0x0000-0x3FFF) by masking the address to 13 bits (addr&0x1FFF)
+	// rather than only covering the low 8K the way DivMMC's own
+	// overlay does, and highest priority of the whole VHDL overlay
+	// cascade ("0. bootrom 1. multiface 2. divmmc ..." -- jnext's own
+	// mmu.h comment) -- checked even before divMMCReadFn/WriteFn below.
+	// Enabled by default once set (real hardware's bootrom_en flip-flop
+	// has FPGA-config-time default '1'); disabled by ANY write to
+	// NextREG 0x03, unconditionally, regardless of value written
+	// (confirmed against emulator.cpp's NR 0x03 write handler and its
+	// cited VHDL: "bootrom_en <= '0' on any write to nr_03") -- see
+	// nextreg.go's nextRegWriteDirect. jnext's own re-enable-on-reset
+	// rule (gated on a persistent "config_mode" NextREG state jnext
+	// tracks separately) is NOT replicated here; this is scoped to
+	// getting the ROM mapped in and disabled correctly for one boot,
+	// not full reset-semantics parity.
+	bootROM        [8192]byte
+	bootROMLoaded  bool
+	bootROMEnabled bool
+
+	// nextCfg is the Next's config mode (nextconfig.go): the window through which the
+	// firmware loads the ROMs into SRAM.
+	nextCfg nextConfigState
+	// nextAltROM is NextREG 0x8C: the alternate ROM and the ROM lock (nextaltrom.go).
+	nextAltROM uint8
+
+	// divMMCReadFn/WriteFn are Read/Write's hook into DivMMC's
+	// automap/CONMEM memory overlay (divmmc.go, T-36): same
+	// closure-injection pattern and ok/handled contract as
+	// layer2AccessReadFn/WriteFn just above, wired by
+	// SpectrumIO.EnableDivMMC. Checked before even the Next-mode
+	// dispatch in Read/Write (see those functions' own comments) --
+	// real DivMMC hardware overlays the CPU's lower 16K at the
+	// physical level, beneath any classic-vs-Next machine-type
+	// distinction, so it must take priority over both, not just over
+	// one. Checked AFTER the boot ROM overlay above, matching jnext's
+	// confirmed VHDL priority cascade (bootrom above divmmc). nil
+	// (ok=false/handled=false) whenever no DivMMC is attached, in
+	// which case Read/Write fall straight through to the existing
+	// dispatch, unchanged.
+	divMMCReadFn  func(address uint16) (value uint8, ok bool)
+	divMMCWriteFn func(address uint16, value uint8) (handled bool)
+
 	// nextExtraRAM backs logical pages nextExtraPageBase..nextTotalPages-1
 	// (0x10-0xDF): 208 pages, 1664K -- pages 0..nextExtraPageBase-1
 	// deliberately alias the EXISTING `ram` array instead of duplicating
@@ -153,7 +202,7 @@ type SpectrumMemory struct {
 	// the 16 aliased pages this reaches the full 1792K (224-page) real
 	// hardware ceiling; pages nextReservedPageBase (0xE0) and above are
 	// never backed by storage at all -- see nextPageIsReserved.
-	nextExtraRAM [nextTotalPages - nextExtraPageBase][8192]byte
+	nextExtraRAM *[nextTotalPages - nextExtraPageBase][8192]byte // allocated on the first write (nextPageWrite); nil, reading as zero, until then
 
 	// nextLegacyBank7FFD/nextLegacyPortDFFD (T-28 item #27): the raw
 	// values most recently written to ports 0x7FFD/0xDFFD, tracked for
@@ -352,6 +401,9 @@ func (m *SpectrumMemory) nextPageRead(page uint8, offset uint16) uint8 {
 	if idx >= len(m.nextExtraRAM) {
 		return 0xFF
 	}
+	if m.nextExtraRAM == nil {
+		return 0
+	}
 	return m.nextExtraRAM[idx][offset]
 }
 
@@ -373,6 +425,9 @@ func (m *SpectrumMemory) nextPageWrite(page uint8, offset uint16, value uint8) {
 	idx := int(page) - nextExtraPageBase
 	if idx >= len(m.nextExtraRAM) {
 		return
+	}
+	if m.nextExtraRAM == nil {
+		m.nextExtraRAM = new([nextTotalPages - nextExtraPageBase][8192]byte)
 	}
 	m.nextExtraRAM[idx][offset] = value
 }
@@ -430,7 +485,7 @@ func (m *SpectrumMemory) readNext(address uint16) uint8 {
 	page := m.nextSlots[slot]
 	offset := address & 0x1FFF
 	if nextSlotDefersToLegacyROM(slot, page) {
-		return m.rom[m.romBank][uint16(slot)*0x2000+offset]
+		return m.nextROMRead(address) // the ROM, or the alternate ROM over it: nextaltrom.go
 	}
 	return m.nextPageRead(page, offset)
 }
@@ -451,9 +506,27 @@ func (m *SpectrumMemory) writeNext(address uint16, value uint8) {
 	page := m.nextSlots[slot]
 	offset := address & 0x1FFF
 	if nextSlotDefersToLegacyROM(slot, page) {
+		m.nextROMWrite(address, value) // dropped unless the alternate ROM takes writes
 		return
 	}
 	m.nextPageWrite(page, offset, value)
+
+	// Mirror into the cached screen buffer the video renderer reads
+	// directly (videoRenderer.Decode(memory, screen) -- zenzx.go) --
+	// the classic (non-Next) write path already does this for every
+	// bank-5 write (see the address-based m.screen.bitmap/attributes
+	// assignments elsewhere in this file); writeNext never did, so a
+	// classic ROM's screen writes landed correctly in ram[5] (confirmed landed correctly in ram[5] (confirmed
+	// byte-identical to a non-Next run via a direct memory dump) but
+	// never reached the renderer, leaving the screen black regardless
+	// of what the ROM actually drew. Page 10 is bank 5s low half, the
+	// only part of bank 5 any classic model ever treats as screen
+	// memory (page 11/bank 5s high half is never screen memory on any
+	// classic model, so intentionally excluded here, matching the
+	// classic path's own 0x4000-0x5AFF-only range). 0x4000-0x5AFF-only range).
+	// (The paragraph above describes the 0.9.2 fix. Since 0.11.0 the page that is mirrored
+	// is the lower half of whichever bank is displayed, 5 or 7: nextMirrorScreenWrite.)
+	m.nextMirrorScreenWrite(page, offset, value)
 }
 
 // is48KROMActive reports whether the currently-paged ROM bank is
@@ -478,11 +551,54 @@ func (m *SpectrumMemory) is48KROMActive() bool {
 	return m.romBank == 1
 }
 
+// SetBootROM attaches the FPGA config-mode boot ROM (nextboot.rom on
+// real hardware) and enables its overlay immediately -- see the
+// bootROM field's own doc comment (above, in the struct) for the
+// jnext-confirmed sizing/mirroring/priority/disable rules this
+// implements. data shorter than 8192 bytes is zero-padded, longer is
+// truncated, matching jnext's own set_boot_rom (mmu.cpp) exactly.
+func (m *SpectrumMemory) SetBootROM(data []byte) {
+	for i := range m.bootROM {
+		m.bootROM[i] = 0
+	}
+	copy(m.bootROM[:], data)
+	m.bootROMLoaded = true
+	m.bootROMEnabled = true
+	// A Next with its boot ROM powers on in config mode (nextconfig.go).
+	m.nextCfg.active = true
+}
+
+// DisableBootROM turns off the boot ROM overlay. Called from
+// nextreg.go's nextRegWriteDirect on any write to NextREG 0x03 --
+// see the bootROM field's own doc comment for why that trigger is
+// unconditional on the value written.
+func (m *SpectrumMemory) DisableBootROM() {
+	m.bootROMEnabled = false
+}
+
 func (m *SpectrumMemory) Read(address uint16) uint8 {
+	// FPGA config-mode boot ROM overlay (T-36): highest priority of
+	// all overlays, confirmed against jnext -- see the bootROM field's
+	// own comment for sourcing. Mirrors the 8K image across the full
+	// 16K low range via addr&0x1FFF.
+	if m.bootROMEnabled && address < 0x4000 {
+		return m.bootROM[address&0x1FFF]
+	}
+	// DivMMC automap/CONMEM overlay (T-36): see divMMCReadFn's own
+	// field comment above for why this precedes even the Next MMU
+	// gate below.
+	if m.divMMCReadFn != nil {
+		if v, ok := m.divMMCReadFn(address); ok {
+			return v
+		}
+	}
 	// Next MMU (T-28, item #19): checked first, before every existing
 	// branch below. isNext defaults false, so this is a no-op for every
 	// existing 48K/128K/+3/TS2068 model -- zero behaviour change unless
 	// EnableNext() has been called.
+	if m.nextConfigMapped(address) {
+		return m.nextConfigRead(address)
+	}
 	if m.isNext {
 		return m.readNext(address)
 	}
@@ -619,7 +735,25 @@ func (m *SpectrumMemory) readSpecialMode(address uint16) uint8 {
 }
 
 func (m *SpectrumMemory) Write(address uint16, value uint8) {
+	// FPGA config-mode boot ROM overlay (T-36): same gate as Read --
+	// see its comment. The overlay is ROM, so a write while it's
+	// enabled is simply dropped, matching every other ROM region in
+	// this codebase.
+	if m.bootROMEnabled && address < 0x4000 {
+		return
+	}
+	// DivMMC automap/CONMEM overlay (T-36): same gate as Read -- see
+	// its comment and divMMCWriteFn's own field comment above.
+	if m.divMMCWriteFn != nil {
+		if m.divMMCWriteFn(address, value) {
+			return
+		}
+	}
 	// Next MMU (T-28, item #19): same gate as Read -- see its comment.
+	if m.nextConfigMapped(address) {
+		m.nextConfigWrite(address, value)
+		return
+	}
 	if m.isNext {
 		m.writeNext(address, value)
 		return
@@ -884,8 +1018,12 @@ func (m *SpectrumMemory) updateScreenBank(newBank uint8) {
 		return
 	}
 
-	// Copy current screen to its RAM bank
-	if m.screenBank == 5 {
+	// Copy current screen to its RAM bank. Not on a Next: there every write lands in RAM
+	// first and the cache only follows it (nextMirrorScreenWrite), so RAM is already right,
+	// and copying the cache back would overwrite the bank with whatever the cache held.
+	if m.isNext {
+		// nothing to save
+	} else if m.screenBank == 5 {
 		copy(m.ram[5][0:6144], m.screen.bitmap[:])
 		copy(m.ram[5][6144:6912], m.screen.attributes[:])
 	} else {

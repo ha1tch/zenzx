@@ -1,7 +1,7 @@
 # ZenZX — known limits and dormant guards
 
-Version: 0.9.0
-Last reviewed: 2026-09-15
+Version: 0.11.0
+Last reviewed: 2026-11-16
 
 Intentional limits, invariant boundaries, and recorded decisions. Defects
 and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
@@ -92,6 +92,12 @@ skip is recorded in the release's changelog entry.
 - **Gate:** host with raylib/oto system libraries; not linkable in the sandbox
 - **Invocation:** `./build.sh` (or `./build_linux.sh`) then launch the binary and load a snapshot
 - **Last exercised:** 2026-08-27 env:sandbox — exercised via check_gui.sh during the -tapemode=turbo GUI wiring change (T-25) -- GUI build linked, system libs present Previous: 2026-08-25 env:sandbox — exercised by the v0.6.0 release's gui-check step (relcore, 6s, green)
+
+### G-04. NextZXOS boot against the real firmware (`TestNextZXOSBoots`, next_boot_test.go)
+
+- **Gate:** `ZENZX_NEXT_FILES` names a folder with three third-party files that cannot be in the tree: `nextboot.rom`, `enNxtmmc.rom` and `next-card.img` (the last two from the official emulator distribution through `scripts/next_card.py`). Skipped when unset. No hardware requirement.
+- **Invocation:** `ZENZX_NEXT_FILES=thirdparty go test -tags headless -run TestNextZXOSBoots -v .`
+- **Last exercised:** 2026-11-16 env:sandbox — pass in 1.2 s with the 26.11 distribution: hand-over at frame 2250, welcome guide loaded at 2750, main menu at 3010.
 
 **G-02 retired, 2026-08-28 (T-05 closed at v0.6.8):** `TestFDCReadMatchesDisk`
 (`fdc_read_test.go`) now runs unconditionally against a checked-in fixture

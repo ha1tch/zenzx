@@ -454,67 +454,67 @@ func TestViewZoomDispatchesToSetScale(t *testing.T) {
 	}
 }
 
-func TestEnEspanolAttributesEachModelToItsOwnManufacturer(t *testing.T) {
+func TestInSpanishGroupListsExpectedModels(t *testing.T) {
 	machinesRes, err := machineconfig.Load("", defaultMachinesJSON, validModelIDs)
 	if err != nil {
 		t.Fatalf("machineconfig.Load: %v", err)
 	}
 
-	// "En Español" is a flat sequence now, not a nested SubGroups
-	// structure: a top-level Title, then alternating indent=1 Titles
-	// (sub-manufacturer headings) and the indent=2 Models under each,
-	// until the next indent=0 Title ends the section.
+	// The Spanish-market section is a flat run of indent=2 Models
+	// directly under one top-level "In Spanish" Title -- no
+	// per-manufacturer sub-titles (Sinclair/Investrónica/Amstrad)
+	// the way an earlier machines.json revision had it. This
+	// replaces the old TestEnEspanolAttributesEachModelToItsOwnManufacturer,
+	// which asserted that now-removed nested structure and so no
+	// longer matches machines.json.
 	items := machinesRes.Config.Items
 	start := -1
 	for i, node := range items {
-		if node.Type == machineconfig.Title && node.Indent == 0 && node.Label == "En Español" {
+		if node.Type == machineconfig.Title && node.Indent == 0 && node.Label == "In Spanish" {
 			start = i + 1
 			break
 		}
 	}
 	if start < 0 {
-		t.Fatal("machines.json has no top-level \"En Español\" title")
+		t.Fatal("machines.json has no top-level \"In Spanish\" title")
 	}
 
-	want := map[string][]string{
-		"Sinclair":     {"spanish48k"},
-		"Investrónica": {"spanish128k"},
-		"Amstrad":      {"spanishplus2", "spanishplus3"},
-	}
-	got := map[string][]string{}
-	currentSub := ""
+	want := []string{"spanish48k", "spanish128k", "spanishplus2", "spanishplus3"}
+	var got []string
 	for i := start; i < len(items); i++ {
 		node := items[i]
 		if node.Type == machineconfig.Title && node.Indent == 0 {
 			break // reached the next top-level group
 		}
-		switch {
-		case node.Type == machineconfig.Title && node.Indent == 1:
-			currentSub = node.Label
-		case node.Type == machineconfig.Model:
-			got[currentSub] = append(got[currentSub], node.ID)
+		if node.Type == machineconfig.Title {
+			t.Errorf("unexpected nested Title %q (indent %d) inside \"In Spanish\" -- this group is flat, with no manufacturer sub-titles", node.Label, node.Indent)
+			continue
 		}
+		if node.Type != machineconfig.Model {
+			continue
+		}
+		if node.Indent != 2 {
+			t.Errorf("model %q has indent %d, want 2", node.ID, node.Indent)
+		}
+		got = append(got, node.ID)
 	}
 
-	for name, wantFlags := range want {
-		gotFlags, ok := got[name]
-		if !ok {
-			t.Errorf("no sub-manufacturer %q found under En Español", name)
-			continue
-		}
-		if len(gotFlags) != len(wantFlags) {
-			t.Errorf("%s: got %v, want %v", name, gotFlags, wantFlags)
-			continue
-		}
-		for i, want := range wantFlags {
-			if gotFlags[i] != want {
-				t.Errorf("%s[%d] = %q, want %q", name, i, gotFlags[i], want)
-			}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], w)
 		}
 	}
 }
 
-func TestMachineMenuEnEspanolSubTitlesRenderIndented(t *testing.T) {
+func TestMachineMenuInSpanishHasNoManufacturerSubTitles(t *testing.T) {
+	// GUI-level counterpart to TestInSpanishGroupListsExpectedModels:
+	// guards against the flat "In Spanish" group accidentally growing
+	// per-manufacturer sub-titles again without a test noticing.
+	// Replaces the old TestMachineMenuEnEspanolSubTitlesRenderIndented,
+	// which asserted the opposite (that those sub-titles existed).
 	b, err := newAppMenuBar(testZX(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
 		t.Fatalf("newAppMenuBar: %v", err)
@@ -522,20 +522,15 @@ func TestMachineMenuEnEspanolSubTitlesRenderIndented(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barMachine)
-	wantSubTitles := []string{"  Sinclair", "  Investrónica", "  Amstrad"}
-	found := map[string]bool{}
+	unwanted := []string{"  Sinclair", "  Investrónica", "  Amstrad"}
 	for _, it := range items {
-		if it.Title {
-			for _, want := range wantSubTitles {
-				if it.Label == want {
-					found[want] = true
-				}
-			}
+		if !it.Title {
+			continue
 		}
-	}
-	for _, want := range wantSubTitles {
-		if !found[want] {
-			t.Errorf("no Title item with label %q found (expected sub-manufacturer heading under En Español)", want)
+		for _, bad := range unwanted {
+			if it.Label == bad {
+				t.Errorf("found manufacturer sub-title %q -- \"In Spanish\" is currently a flat group with no per-manufacturer breakdown", it.Label)
+			}
 		}
 	}
 }

@@ -296,6 +296,7 @@ func TestT31NextModePaletteEndToEnd(t *testing.T) {
 	}
 	zx.cpu.Reset()
 	zx.memory.EnableNext()
+	zx.io.nextRegWriteDirect(0x69, 0x80) // Layer 2 on
 	zx.EnableZ80N()
 
 	run := func(addr uint16, prog []uint8) {

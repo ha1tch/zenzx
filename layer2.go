@@ -130,7 +130,7 @@ func layer2FramebufferDimensions(mode layer2Mode) (width, height int) {
 // to solve 640-mode's apparent "overflow" by widening the window instead
 // -- wrong, since it contradicted this exact hardware behaviour (caught
 // before shipping, not after: the wiki fetch was made specifically
-// because the arithmetic in that draft didn't reconcile with Horacio's
+// because the arithmetic in that draft didn't reconcile with the tech team's
 // own stated design, prompting a recheck rather than proceeding on an
 // unverified assumption). Vertical density is unaffected -- 640x256's
 // height (256) is identical to 320x256's, both drawn at full float32(mult)
@@ -184,8 +184,17 @@ func layer2FramebufferPages(mode layer2Mode) uint8 {
 // harmless, and correctly matches "Layer 2 shows whatever is in its
 // framebuffer" hardware behaviour rather than silently hiding a layer real
 // hardware has no way to hide.
+//
+// Corrected in 0.11.0. The Next's own register reference (registers.txt and ports.txt in
+// the distribution, /docs/extra-hw/io-port-system) does give the enable: port 0x123B bit 1,
+// "1 to enable layer 2 display", with NextREG 0x69 bit 7 as its alias, both 0 after a
+// reset. NextZXOS leaves Layer 2 off at its welcome screen and menus, so compositing it
+// regardless covered the ULA picture with whatever its bank held.
 func (io *SpectrumIO) layer2Enabled() bool {
-	return io.memory != nil && io.memory.isNext
+	if io.memory == nil || !io.memory.isNext {
+		return false
+	}
+	return io.layer2Access.raw&0x02 != 0 || io.nextRegs.regs[0x69]&0x80 != 0
 }
 
 // layer2BaseBank returns NR 0x12's current value: the first of the six

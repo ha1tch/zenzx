@@ -29,3 +29,9 @@ documents for the ROM images in rom/.
 
 github.com/ha1tch/queryfy (same author) validates machines.json,
 Apache 2.0.
+
+github.com/ha1tch/blipper (same author), Apache 2.0 -- pkg/nextdisk
+imports its fatfs subpackage (a standalone FAT16/FAT32 driver with no
+dependency of its own beyond the standard library) to read files off
+a FAT disk image, in support of T-33's ZX Spectrum Next boot-chain
+work. Nothing else from blipper is used.

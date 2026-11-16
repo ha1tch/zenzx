@@ -13,10 +13,10 @@ package main
 // fired are dispatched in order. Multiple actions due on the same frame all
 // fire; a warning is logged (subject to verbosity) so collisions are visible.
 //
-// Phase 1 wires the verbs that correspond to existing functionality and touch
-// no keyboard state. Phase 2 keyboard verbs are present in the dispatch table
-// but return a "not yet wired" error so that forward-looking scripts fail
-// clearly rather than silently.
+// Every verb is wired, the keyboard verbs (type, key, press, release) included.
+// notWired stays as the dispatch stub for a verb that is added to the
+// vocabulary before it is implemented, so that a script using it fails clearly
+// rather than silently.
 // ============================================================================
 
 import (
@@ -128,7 +128,7 @@ func NewScheduler(script *Script, cfg ScheduleConfig) *Scheduler {
 		"sym":           (*Scheduler).doSym,
 		"expect-mem":    (*Scheduler).doExpectMem,
 		"dump-mem":      (*Scheduler).doDumpMem,
-		// Keyboard injection (Phase 2).
+		// Keyboard injection.
 		"type":    (*Scheduler).doType,
 		"key":     (*Scheduler).doKey,
 		"press":   (*Scheduler).doPress,
@@ -688,7 +688,7 @@ func (s *Scheduler) doExpectScreen(zx *ZenZX, a Action) error {
 	return nil
 }
 
-// notWired is the dispatch stub for known-but-unimplemented Phase 2 verbs.
+// notWired is the dispatch stub for a known verb that is not implemented yet.
 func notWired(_ *Scheduler, _ *ZenZX, a Action) error {
 	return fmt.Errorf("verb %q is not yet wired", a.Verb)
 }

@@ -69,13 +69,13 @@ and a link to the project's own page.
 
   -model=NAME        48k, 128k, plus2, plus2a, plus3,
                       spanish48k, spanish128k, spanishplus2,
-                      spanishplus3, ts2068
+                      spanishplus3, ts2068, next
   -theme=NAME         Dark, Light, or Spectrum
   -settings=PATH      settings.json path (theme/font/zoom/scale/
                       fixed-bar persistence; default settings.json)
   -disk=FILE          mount a .dsk at startup (+3 models)
   -snapshot=FILE      load a snapshot at startup
-  -format=FORMAT      snapshot format: sna, z80, zxs, auto
+  -format=FORMAT      snapshot format: sna, z80, szx (load only), zxs, auto
   -audiobackend=NAME  raylib or oto
 
 Examples:

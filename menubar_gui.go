@@ -56,7 +56,7 @@ var (
 var validModelIDs = []string{
 	"48k", "128k", "plus2", "plus2a", "plus3",
 	"spanish48k", "spanish128k", "spanishplus2", "spanishplus3",
-	"ts2068",
+	"ts2068", "next",
 }
 
 const (
@@ -73,10 +73,9 @@ const (
 // the copy embedded in the binary via defaultMachinesJSON below). See
 // pkg/machineconfig for the node schema (separator/title/model/
 // submenu) and validation pipeline, and machines.json at the project
-// root for the current grouping, including "En Español"'s own
-// per-model manufacturer attribution (Sinclair/Investrónica/Amstrad --
-// it spans three, unlike every other group here, which has exactly
-// one).
+// root for the current grouping -- "In Spanish" is a flat group of
+// four models under one title, not broken out by manufacturer the way
+// an earlier revision of this file had it.
 
 // zoomLevels are the magnification factors the Font menu's "Font zoom
 // X_" items offer -- applied to every dropdown's text/layout, never to

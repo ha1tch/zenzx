@@ -686,7 +686,7 @@ func (zx *ZenZX) handleDroppedFiles() {
 						fmt.Println("  Alt+I: Show tape info")
 					}
 
-				case ".sna", ".SNA", ".z80", ".Z80":
+				case ".sna", ".SNA", ".z80", ".Z80", ".szx", ".SZX":
 					// Handle other snapshot formats
 					zx.paused = true
 

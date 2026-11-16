@@ -5,6 +5,53 @@ text verbatim as at closure, stamped with the closing version and date.
 The changelog says what shipped; this record says what was wrong and
 how it was resolved. Append-only.
 
+## [0.11.0] T-41 — Boot ROM stage of the Next chain has no repeatable check (blank FAT32 card, expected stop at TBBLUE.FW) (v0.11.0, 2026-11-16)
+
+Theme: next-support · closed 0.11.0 · 2026-11-16
+- **Trigger:** 0.11.0 consolidation. The first boot stage was confirmed by hand against a generated blank FAT32 card (T-36, eleventh finding), and nothing repeats that check. The T-36 history shows eleven findings, most of them written before the code could be built or run.
+- **Fix:** a test that builds the blank FAT32 image itself, attaches the boot ROM and DivMMC ROM named by environment variables (third-party files, not in the tree; skip when absent), runs to the point the boot ROM gives up, and asserts the SD command sequence (init, then CMD17 reads of the MBR and volume) and that the boot ROM overlay is still mapped. Register it in the dormant-guards table when written.
+- **Done when:** the test passes locally with the ROMs present and is listed as a dormant guard with its first execution record.
+
+Done (2026-11-16, 0.11.0): closed by a wider check than the one asked for. `TestNextZXOSBoots` (next_boot_test.go) runs the whole chain against the real firmware and a card made by `scripts/next_card.py`, and asserts the hand-over, NextZXOS loading its welcome guide from the card, and the main menu after SPACE; the boot ROM stage is its first part. It is dormant guard G-04, first run 2026-11-16 in the sandbox: pass in 1.2 s. The blank-card variant was not written.
+
+Cross-ref: CHANGELOG 0.11.0.
+
+## [0.10.0] T-17 — AY-3-8912 ports (128K-style 0xFFFD/0xBFFD) respond regardless of -model, including 48K which has no AY chip (v0.10.0, 2026-11-12)
+
+Theme: model · closed 0.10.0 · 2026-11-12
+- **Trigger:** 2026-08-17, noticed while implementing per-model default configuration for -joystick (this session's work matching real built-in hardware per -model -- see joystick.go's defaultJoystickModeForModel). The AY port dispatch (io.go, 'AY-3-8912 sound chip register select (128K)' / 'data write (128K)' comments) is unconditional -- port 0xFFFD/0xBFFD access works identically regardless of io.memory.is128K, meaning a 48K-model program reading/writing these ports gets real AY chip responses even though real 48K hardware has no AY-3-8912 at all (beeper only).
+- **Pre-existing, not a regression from this session's work** -- this gating gap predates the joystick/mouse/TS2068 work entirely; noted here because it's the same underlying architectural principle (-model should imply which hardware genuinely exists) applied to a different subsystem, and was directly observed while auditing port dispatch for the joystick fix.
+- **Scope:** genuine 128K-family AY presence, confirmed real: 128K/+2/+2A/+3 all have AY-3-8912 (128K sound); 48K does not (beeper only); TS2068 has its own, per Technical Manual, already correctly gated to its own F5H/F6H ports (ts2068.go) and unaffected by this item.
+- **Fix:** gate the existing 0xFFFD/0xBFFD dispatch in io.go behind io.memory.is128K (already tracked per-instance), matching how ts2068WritePort/ts2068ReadPort are already gated behind io.memory.isTS2068. Low-risk, mechanical change -- add the same guard already used for the TS2068 ports.
+
+Cross-ref: CHANGELOG 0.10.0.
+## [0.9.2] T-35 — writeNext never mirrored bank-5 screen writes into the cached screen buffer the renderer reads (videoRenderer.Decode), leaving Next-mode boot blank despite correct memory content (v0.9.2, 2026-09-18)
+
+Theme: next-support · closed 0.9.2 · 2026-09-18
+Root-caused via direct plus3-vs-next comparison: CPU execution and raw memory content were confirmed byte-for-byte identical between a working -model=plus3 boot and a blank -model=next boot (same ROM, same PC trace, same steady-state idle loop). The divergence was isolated to rendering: DecodeDisplay's raw pre-composite ULA image was already black on the Next run. Root cause: the classic (non-Next) write path mirrors every bank-5 write into zx.screen.bitmap/attributes, a separate cached buffer videoRenderer.Decode reads directly -- but writeNext (the path used whenever isNext=true) only ever wrote through nextPageWrite into the raw ram array, never touching that cache. Fixed by adding the equivalent bank-5 (page 10) mirror to writeNext, matching the classic path's own 0x4000-0x5AFF address range. This also resolves Wave 3 / ti0.r0's placeholder scope (audit Z80N wiring as a real machine mode, confirm no gap beyond opcode semantics) -- the gap found was exactly this, well beyond opcode semantics.
+
+Cross-ref: CHANGELOG 0.9.2.
+
+## [0.9.0] T-34 — NextREG 0x00 (machine ID) default is 0x00; real hardware/VHDL value is 0x0A (v0.9.0, 2026-09-17)
+
+Theme: next-support · closed 0.9.0 · 2026-09-17
+Trigger: jnext source comparison (2026-09-15). jnext's NR 0x00 read handler returns a fixed 0x0A (VHDL g_machine_id), matching a documented 2026-07-09 fix: an earlier 0x08 value made NextZXOS take a wrong "emulator" branch at its ROM1 machine-ID check and broke boot. zenzx's nextRegDefaults table currently defaults register 0x00 to 0x00, a value no real firmware or hardware expects.
+
+Done (2026-09-15): nextreg.go's 0x00 entry in nextRegDefaults changed from 0x00 to 0x0A. pkg/... and headless . suites re-run green; go vet clean. Fix is in the working tree, uncommitted -- close once it ships in a tagged zenzx release (the register's closure procedure needs a --version to close against; there is no pending zenzx release yet).
+
+Cross-ref: CHANGELOG 0.9.0.
+
+## [0.9.0] T-33 — NextREG NEXTREG-opcode write must bypass port-0x243B select latch, not clobber it (v0.9.0, 2026-09-17)
+
+Theme: next-support · closed 0.9.0 · 2026-09-17
+Trigger: jnext source comparison (2026-09-15) against zenzx's ti0.r1 NextREG implementation, per real hardware and jnext's own bug history (GH #54, RevivalSurvival.nex). zen80's NEXTREG opcode (ED 91/92) was implemented as two sequential ioOut() calls -- select then data -- identical to a raw port OUT. Real Next hardware writes the opcode's target register directly into the register file and never touches the port-0x243B select latch; jnext shipped the port-pair version once, hung a real game's raster-wait loop on it, and fixed it. zenzx's nextreg_test.go used to assert the WRONG invariant (TestNextRegRawPortAndInstructionAgree treated port-pair/opcode equivalence as correct).
+
+Done (2026-09-15): zen80's Z80.NextregWrite hook is implemented, tested, committed and tagged v0.5.7 in the zen80 working tree (commit c928706) -- but NOT yet pushed to github.com/ha1tch/zen80. SpectrumIO now has nextRegWriteDirect/nextRegOpcodeWrite (nextreg.go); EnableZ80N wires zx.cpu.NextregWrite = zx.io.nextRegOpcodeWrite (zenzx.go). nextreg_test.go's TestNextRegRawPortAndInstructionAgree was split into TestNextRegRawPortAndInstructionAgreeOnValue (keeps the still-true value-agreement assertion) and the new TestNextRegOpcodeDoesNotTouchSelectedReg (asserts the two paths correctly DIVERGE on `selected` state). Full pkg/... and headless . suites green; go vet clean.
+
+Remaining: zenzx's go.mod names zen80 v0.5.7 in its require line, but that version is not yet reachable via `go get` from origin (tagged locally in the zen80 working tree only). Development in this sandbox session used a temporary local-path replace directive, since removed for release hygiene (a sandbox-local filesystem path cannot ship). Close this item only once zen80 v0.5.7 is pushed AND `go mod tidy` + the full test suite are re-run clean against the real published module (no replace directive needed at that point -- the require line already names the right version).
+
+Cross-ref: CHANGELOG 0.9.0.
+
 ## [0.7.0] T-28 — Extended MMU: 8K-page paging beyond the 128K/+3 ceiling (v0.7.0, 2026-09-15)
 
 Theme: next-support · closed 0.7.0 · 2026-09-15

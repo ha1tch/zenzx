@@ -170,6 +170,7 @@ func NewZenZX(audioBackend AudioBackend) *ZenZX {
 		return zx.tape != nil && zx.tape.st != nil && zx.tape.st.Playing
 	}
 	io.floatingBusFn = zx.floatingBusByte
+	io.nextVideoLineFn = zx.nextVideoLine // NextREG 0x1E/0x1F, nextvideoline.go
 
 	// TS2068 dynamic video-mode switching (ts2068.go): a no-op for
 	// every other model, since io.onTS2068VideoModeChange is only ever
@@ -222,6 +223,26 @@ func (zx *ZenZX) EnableZ80N() {
 	// nextRegOpcodeWrite's doc comment in nextreg.go for why (real
 	// hardware behaviour, and a real jnext bug/fix, GH #54).
 	zx.cpu.NextregWrite = zx.io.nextRegOpcodeWrite
+}
+
+// EnableDivMMC attaches a DivMMC interface (T-36) to this instance:
+// the automap/CONMEM memory overlay plus the SD-card-over-SPI
+// transport (divmmc.go, sdcard.go, io.go's EnableDivMMC), AND wires
+// the CPU's own M1Hook to drive automap paging -- the one piece
+// SpectrumIO.EnableDivMMC can't do itself, since io.go only holds the
+// narrow Z80CPU interface (SetCPU), never zen80's concrete *z80.Z80.
+//
+// M1Hook is a single func field, not a chain: this overwrites whatever
+// hook was previously installed (e.g. the trace harness's own
+// installM1Hook, zzz_trace_callstack_test.go) rather than composing
+// with it. Harmless for this emulator's current uses -- DivMMC and the
+// trace harness are never exercised in the same run -- but a real
+// limitation if that ever changes; flagged rather than silently
+// accepted.
+func (zx *ZenZX) EnableDivMMC(sdImage SDCardImage, sdSize int64, romImage []byte) {
+	zx.io.EnableDivMMC(sdImage, sdSize, romImage)
+	zx.cpu.M1Hook = zx.io.divMMC.OnM1
+	zx.io.divMMC.pcFn = func() uint16 { return zx.cpu.PC }
 }
 
 // LoadROMBytes is LoadROM's byte-data equivalent, used when the caller
@@ -417,6 +438,7 @@ func (zx *ZenZX) RunFrame() {
 	}
 
 	// Start new frame for border tracking
+	zx.serviceNextReset()
 	zx.io.StartFrame()
 
 	// New frame origin: all frame-relative ULA timing (contention,
@@ -499,6 +521,7 @@ func (zx *ZenZX) loadingFrame() {
 	if zx.paused {
 		return
 	}
+	zx.serviceNextReset()
 	zx.io.StartFrame()
 	zx.frameOrigin = zx.cpu.Cycles
 	frameCycles := 0

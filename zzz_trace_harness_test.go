@@ -29,7 +29,7 @@ import (
 // -- setup (Stage 2) --
 //
 //	ZTRACE_SETUP      tape (default) | snapshot | bin | boot-only
-//	ZTRACE_MODEL      48k (default) | 128k | plus3
+//	ZTRACE_MODEL      48k (default) | 128k | plus3 | next
 //	ZTRACE_TAPE       tape path, ZTRACE_SETUP=tape only (default: the Batman corpus TZX)
 //	ZTRACE_SNAPSHOT   snapshot path, ZTRACE_SETUP=snapshot only (.sna or .z80)
 //	ZTRACE_BIN        raw binary path, ZTRACE_SETUP=bin only
@@ -38,6 +38,19 @@ import (
 //	ZTRACE_BINSTART   PC after load, hex "0x.."/decimal/"-1" for "leave
 //	                  unchanged" (default: load address) -- ParseAddrSigned,
 //	                  same as -binstart
+//	ZTRACE_BOOTROM    path to an 8K FPGA config-mode boot ROM (T-36) --
+//	                  ZTRACE_MODEL=next only, attaches via
+//	                  zx.memory.SetBootROM, same as -bootrom
+//	ZTRACE_DIVMMC_ROM path to an 8K DivMMC/ESXDOS ROM (T-36), same as
+//	                  -divmmc-rom -- requires ZTRACE_SDCARD too. Chains
+//	                  DivMMC's own OnM1 onto whatever this harness
+//	                  already installs as zx.cpu.M1Hook, since that's a
+//	                  single func field (zenzx.go's EnableDivMMC has its
+//	                  own comment on this); this is the one call site
+//	                  both are actually needed together, so composed
+//	                  manually here rather than building general
+//	                  hook-chaining infrastructure for it.
+//	ZTRACE_SDCARD     path to a raw FAT16/32 SD image, same as -sdcard
 //	ZTRACE_FROM_RESET "1" to install hooks before boot, tracing from the
 //	                  reset vector onward (Stage 3). Pairs naturally with
 //	                  ZTRACE_SETUP=boot-only. ZTRACE_ENTRY=0000 arms
@@ -412,6 +425,43 @@ func TestTraceHarness(t *testing.T) {
 		t.Fatalf("loading ROM for ZTRACE_MODEL=%q: %v", model, err)
 	}
 
+	if bootROMPath := envStr("ZTRACE_BOOTROM", ""); bootROMPath != "" {
+		data, err := os.ReadFile(bootROMPath)
+		if err != nil {
+			t.Fatalf("ZTRACE_BOOTROM %s: %v", bootROMPath, err)
+		}
+		zx.memory.SetBootROM(data)
+	}
+	if divmmcROMPath := envStr("ZTRACE_DIVMMC_ROM", ""); divmmcROMPath != "" {
+		sdPath := envStr("ZTRACE_SDCARD", "")
+		if sdPath == "" {
+			t.Fatal("ZTRACE_DIVMMC_ROM requires ZTRACE_SDCARD too")
+		}
+		romData, err := os.ReadFile(divmmcROMPath)
+		if err != nil {
+			t.Fatalf("ZTRACE_DIVMMC_ROM %s: %v", divmmcROMPath, err)
+		}
+		sdFile, err := os.Open(sdPath)
+		if err != nil {
+			t.Fatalf("ZTRACE_SDCARD %s: %v", sdPath, err)
+		}
+		info, err := sdFile.Stat()
+		if err != nil {
+			t.Fatalf("stat ZTRACE_SDCARD %s: %v", sdPath, err)
+		}
+		zx.io.EnableDivMMC(sdFile, info.Size(), romData)
+		// See ZTRACE_DIVMMC_ROM's own doc comment above for why this
+		// chains manually instead of relying on general hook-chaining.
+		prevHook := zx.cpu.M1Hook
+		divMMC := zx.io.divMMC
+		zx.cpu.M1Hook = func(pc uint16, opcode uint8, context string) {
+			if prevHook != nil {
+				prevHook(pc, opcode, context)
+			}
+			divMMC.OnM1(pc, opcode, context)
+		}
+	}
+
 	tapeLog := os.Getenv("ZTRACE_TAPELOG") == "1" && setupMode == "tape"
 	pressKey := envInt("ZTRACE_PRESSKEY", -1)
 
@@ -557,7 +607,32 @@ func loadModelROM(zx *ZenZX, model string) error {
 		return zx.Load128KROM("./rom/128-0.rom", "./rom/128-1.rom")
 	case "plus3":
 		return zx.LoadPlus3ROM("./rom/plus3-0.rom", "./rom/plus3-1.rom", "./rom/plus3-2.rom", "./rom/plus3-3.rom")
+	case "next":
+		// Mirrors zenzx_headless.go's own "-model=next" case exactly
+		// (same +3 ROM base, Z80N/Next MMU enable, slot defaults, and
+		// FDC-plus-blank-disk so a boot chain that falls through to
+		// +3DOS doesn't hang the same way T-36's own debugging hit).
+		// Added for T-36's DivMMC/boot-ROM tracing -- see ZTRACE_BOOTROM/
+		// ZTRACE_DIVMMC_ROM/ZTRACE_SDCARD below.
+		if err := zx.LoadPlus3ROM("./rom/plus3-0.rom", "./rom/plus3-1.rom", "./rom/plus3-2.rom", "./rom/plus3-3.rom"); err != nil {
+			return err
+		}
+		zx.EnableZ80N()
+		zx.memory.EnableNext()
+		zx.memory.SetNextSlot(0, 0xFF)
+		zx.memory.SetNextSlot(1, 0xFF)
+		zx.memory.SetNextSlot(2, 10)
+		zx.memory.SetNextSlot(3, 11)
+		zx.memory.SetNextSlot(4, 4)
+		zx.memory.SetNextSlot(5, 5)
+		zx.memory.SetNextSlot(6, 0)
+		zx.memory.SetNextSlot(7, 1)
+		zx.io.EnableFDC()
+		if zx.io.fdc != nil {
+			zx.io.fdc.CreateBlankDisk()
+		}
+		return nil
 	default:
-		return fmt.Errorf("ZTRACE_MODEL=%q not supported by the trace harness yet -- 48k, 128k, plus3 only; extend loadModelROM to add another", model)
+		return fmt.Errorf("ZTRACE_MODEL=%q not supported by the trace harness yet -- 48k, 128k, plus3, next only; extend loadModelROM to add another", model)
 	}
 }

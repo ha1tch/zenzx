@@ -73,6 +73,15 @@ type SpectrumIO struct {
 	fdc           *FDC765         // FDC implementation
 	fdcDebug      bool            // Debug flag for FDC operations
 
+	hasDivMMC bool     // DivMMC interface present (T-36)
+	// nextResetRequest is a reset asked for through NextREG 0x02 and not yet carried out
+	// (nextconfig.go): 0 none, nextResetSoft or nextResetHard.
+	nextResetRequest int
+	// nextVideoLineFn gives the line the display is drawing, for NextREG 0x1E and 0x1F
+	// (nextvideoline.go); nil outside a full machine, where both read 0.
+	nextVideoLineFn func() int
+	divMMC    *DivMMC  // DivMMC implementation (divmmc.go)
+
 	// Audio support
 	audio       *AudioWrapper // Reference to audio manager wrapper (changed from *AudioManager)
 	ayRegisters [16]uint8     // AY register cache for snapshots
@@ -356,6 +365,20 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 		return io.kempston2State
 	}
 
+	// DivMMC (T-36): ports 0xE3 (control) and 0xEB (SD SPI data) --
+	// confirmed against github.com/avlixa/zx_spectrum_next_03.01.09's
+	// own ports.txt, which shows the high byte as fully don't-care, so
+	// this matches the low-byte-only match convention already used for
+	// Kempston/mouse ports above and below.
+	if io.hasDivMMC && io.divMMC != nil {
+		switch port & 0xFF {
+		case 0xE3:
+			return io.divMMC.ReadControl()
+		case 0xEB:
+			return io.divMMC.SD().ReadData()
+		}
+	}
+
 	// Kempston mouse (0xFADF/0xFBDF/0xFFDF -- upper 4 address bits are
 	// don't-care on real hardware, matched here via a 12-bit mask, per
 	// the partial-decode table documented at spectrumcomputing.co.uk)
@@ -402,7 +425,7 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 	}
 
 	// AY-3-8912 sound chip data read (128K)
-	if port&0xC002 == 0xC000 {
+	if io.hasAY() && port&0xC002 == 0xC000 {
 		if io.audio != nil && io.ayRegister < 16 {
 			// Use the wrapper's thread-safe read method
 			value := io.audio.ReadAYRegister(io.ayRegister)
@@ -466,6 +489,23 @@ func (io *SpectrumIO) WritePort(port uint16, value uint8) {
 		}
 	}
 
+	// DivMMC (T-36): ports 0xE3 (control), 0xE7 (SD SPI chip select),
+	// 0xEB (SD SPI data) -- see the matching ReadPort comment above for
+	// sourcing.
+	if io.hasDivMMC && io.divMMC != nil {
+		switch port & 0xFF {
+		case 0xE3:
+			io.divMMC.WriteControl(value)
+			return
+		case 0xE7:
+			io.divMMC.SD().WriteCS(value)
+			return
+		case 0xEB:
+			io.divMMC.SD().WriteData(value)
+			return
+		}
+	}
+
 	// Memory paging port (128K/+2) - 0x7FFD
 	if port&0xC002 == 0x4000 {
 		io.memory.SetPaging(value)
@@ -516,12 +556,12 @@ func (io *SpectrumIO) WritePort(port uint16, value uint8) {
 	// 48K/128K/+3/TS2068 machine: isNext is always false there, making
 	// `!(false && ...)` unconditionally true and leaving this condition
 	// identical to its pre-existing form.
-	if port&0xC002 == 0xC000 && !(io.memory.isNext && port == 0xDFFD) {
+	if io.hasAY() && port&0xC002 == 0xC000 && !(io.memory.isNext && port == 0xDFFD) {
 		io.ayRegister = value & 0x0F
 	}
 
 	// AY-3-8912 sound chip data write (128K) - 0xBFFD
-	if port&0xC002 == 0x8000 {
+	if io.hasAY() && port&0xC002 == 0x8000 {
 		if io.ayRegister < 16 {
 			// Update audio chip if available using thread-safe wrapper method
 			if io.audio != nil {
@@ -623,6 +663,33 @@ func (io *SpectrumIO) SetFDCDebug(enable bool) {
 		io.fdc.EnableDebug(enable)
 	}
 	fmt.Printf("FDC debug set to %v\n", enable)
+}
+
+// EnableDivMMC attaches a DivMMC interface (T-36): the automap/CONMEM
+// memory overlay plus the SD-card-over-SPI transport (divmmc.go,
+// sdcard.go), backed by sdImage (sdSize bytes) and romImage (the
+// ESXDOS/boot ROM to page in at 0x0000-0x1FFF -- see divmmc.go's own
+// header comment for what this is NOT). Wires memory's
+// divMMCReadFn/WriteFn, the same closure-injection direction
+// NewSpectrumIO already uses for the Layer 2 Access Port.
+//
+// Does NOT wire the CPU's M1Hook, which automap needs to see PC on
+// every M1 cycle: SpectrumIO only ever holds the narrow Z80CPU
+// interface (SetCPU, GetCycles-only), not zen80's concrete *z80.Z80.
+// The caller must also call ZenZX's own EnableDivMMC (zenzx.go), which
+// does both this and the M1Hook wiring together -- calling this method
+// directly leaves automap permanently un-triggered (CONMEM-forced
+// paging would still work; the boot chain's own cold-start entry at
+// PC=0 would not).
+func (io *SpectrumIO) EnableDivMMC(sdImage SDCardImage, sdSize int64, romImage []byte) {
+	sd := NewSDCard(sdImage, sdSize)
+	io.divMMC = NewDivMMC(romImage, sd)
+	io.hasDivMMC = true
+	if io.memory != nil {
+		io.memory.divMMCReadFn = io.divMMC.MemRead
+		io.memory.divMMCWriteFn = io.divMMC.MemWrite
+		io.wireNextConfigDivMMC()
+	}
 }
 
 // LoadDisk loads a disk image into the FDC
