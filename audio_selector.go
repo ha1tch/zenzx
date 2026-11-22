@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // AudioBackend represents which audio system to use
 type AudioBackend int
@@ -26,7 +26,7 @@ type AudioInterface interface {
 // AudioWrapper wraps either raylib or Oto audio implementation
 type AudioWrapper struct {
 	backend AudioBackend
-	oto     *AudioManagerOto // New Oto implementation
+	oto     *AudioEngine
 }
 
 // NewAudioWrapper creates a new audio wrapper with the specified backend
@@ -38,10 +38,17 @@ func NewAudioWrapper(backend AudioBackend) *AudioWrapper {
 	switch backend {
 
 	case AudioBackendOto:
-		wrapper.oto = NewAudioManagerOto()
+		wrapper.oto = NewAudioEngine()
 	}
 
 	return wrapper
+}
+
+// SetDevice sets where the machine's sound goes; see AudioEngine.SetDevice.
+func (aw *AudioWrapper) SetDevice(d AudioDevice) {
+	if aw.oto != nil {
+		aw.oto.SetDevice(d)
+	}
 }
 
 // Initialize initializes the audio system

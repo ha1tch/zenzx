@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"image"
@@ -208,6 +208,10 @@ type spriteResolved struct {
 	rotate        bool
 	scaleX        spriteScale
 	scaleY        spriteScale
+	// A 4-bit pattern: 128 bytes, a nibble a pixel, two to a pattern slot. half says
+	// which (N6). An anchor chooses with attribute 4 bit 7 (H) and its relatives follow.
+	fourBit bool
+	half    uint8
 }
 
 // spriteSystem is the sprite-adjacent state living on SpectrumIO,
@@ -217,6 +221,7 @@ type spriteResolved struct {
 // each).
 type spriteSystem struct {
 	selected uint8
+	ports    spritePorts // ports 0x303B, 0x57 and 0x5B (spriteports.go)
 	attrs    [spriteCount]spriteAttributes
 	patterns [spritePatternSlots][spriteWidth * spriteHeight]uint8
 
@@ -360,6 +365,9 @@ func (s *spriteSystem) effectiveAttrs() [spriteCount]spriteResolved {
 				paletteOffset: po, xMirror: xm, yMirror: ym, rotate: rot,
 				scaleX: sx, scaleY: sy,
 			}
+			if a.attr3&0x40 != 0 && a.attr4&0x80 != 0 { // H: 4-bit patterns, N6 in bit 6
+				r.fourBit, r.half = true, a.attr4>>6&0x01
+			}
 			out[i] = r
 			anchor = r
 			anchorRelType = relType
@@ -381,6 +389,17 @@ func (s *spriteSystem) effectiveAttrs() [spriteCount]spriteResolved {
 		effPattern := pattern
 		if po2 {
 			effPattern = anchor.pattern + pattern
+		}
+		// A relative sprite has the anchor's kind of pattern; with 4-bit ones its N6 is
+		// attribute 4 bit 5, and a pattern number relative to the anchor's is added in
+		// the seven bits that N5-N0 and N6 make.
+		effHalf := uint8(0)
+		if anchor.fourBit {
+			seven := pattern<<1 | a.attr4>>5&0x01
+			if po2 {
+				seven += anchor.pattern<<1 | anchor.half
+			}
+			effPattern, effHalf = seven>>1&0x3F, seven&0x01
 		}
 		_ = unifiedSelf // the relative's OWN bit 5 selects nothing per the wiki -- type is the ANCHOR's choice (anchorRelType); kept decoded for documentation/testing symmetry with decodeAnchor's relType, not consumed here.
 		if anchorRelType == spriteRelativeUnified {
@@ -408,6 +427,7 @@ func (s *spriteSystem) effectiveAttrs() [spriteCount]spriteResolved {
 				pattern: effPattern, paletteOffset: effPalette,
 				xMirror: anchor.xMirror, yMirror: anchor.yMirror, rotate: anchor.rotate,
 				scaleX: anchor.scaleX, scaleY: anchor.scaleY,
+				fourBit: anchor.fourBit, half: effHalf,
 			}
 			continue
 		}
@@ -420,6 +440,7 @@ func (s *spriteSystem) effectiveAttrs() [spriteCount]spriteResolved {
 			pattern: effPattern, paletteOffset: effPalette,
 			xMirror: xm, yMirror: ym, rotate: rot,
 			scaleX: sx, scaleY: sy,
+			fourBit: anchor.fourBit, half: effHalf,
 		}
 	}
 	return out
@@ -471,6 +492,20 @@ func (io *SpectrumIO) spriteTransparentIndex() uint8 {
 // itself real (nextreg.go) rather than left as a fixed stand-in with the
 // comparison-order bug still underneath it.
 func (io *SpectrumIO) spritePixelIndexAt(r spriteResolved, lx, ly int) (nextColourIndex, bool) {
+	if r.fourBit {
+		// Eight bytes a line, the left pixel in the high nibble; transparent when the
+		// nibble is the low four bits of NextREG 0x4B; the palette offset is the colour's
+		// high four bits.
+		b := io.sprites.patterns[r.pattern&0x3F][int(r.half)*128+ly*8+lx/2]
+		nibble := b >> 4
+		if lx&1 == 1 {
+			nibble = b & 0x0F
+		}
+		if nibble == io.spriteTransparentIndex()&0x0F {
+			return 0, false
+		}
+		return nextColourIndex(r.paletteOffset<<4 | nibble), true
+	}
 	raw := io.sprites.patterns[r.pattern][ly*spriteWidth+lx]
 	if raw == io.spriteTransparentIndex() {
 		return 0, false

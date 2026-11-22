@@ -1,6 +1,6 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import "testing"
 
@@ -9,7 +9,7 @@ func TestSetReservedTopHeightAddsToTargetHeight(t *testing.T) {
 	if err := zx.LoadROM("./rom/48.rom"); err != nil {
 		t.Fatalf("LoadROM: %v", err)
 	}
-	dm := zx.display
+	dm := zx.window()
 
 	baseTarget := dm.targetHeight
 
@@ -27,7 +27,7 @@ func TestSetReservedTopHeightNoopWhenUnchanged(t *testing.T) {
 	if err := zx.LoadROM("./rom/48.rom"); err != nil {
 		t.Fatalf("LoadROM: %v", err)
 	}
-	dm := zx.display
+	dm := zx.window()
 
 	dm.SetReservedTopHeight(0) // already 0
 	if dm.isAnimating {
@@ -40,7 +40,7 @@ func TestSetReservedTopHeightBackToZeroRestoresTarget(t *testing.T) {
 	if err := zx.LoadROM("./rom/48.rom"); err != nil {
 		t.Fatalf("LoadROM: %v", err)
 	}
-	dm := zx.display
+	dm := zx.window()
 
 	baseTarget := dm.targetHeight
 	dm.SetReservedTopHeight(24)
@@ -56,7 +56,7 @@ func TestSetScaleValidValue(t *testing.T) {
 	if err := zx.LoadROM("./rom/48.rom"); err != nil {
 		t.Fatalf("LoadROM: %v", err)
 	}
-	dm := zx.display
+	dm := zx.window()
 
 	if !dm.SetScale(2) {
 		t.Fatal("SetScale(2) = false, want true (2 should be a valid scale)")
@@ -71,7 +71,7 @@ func TestSetScaleInvalidValueRejected(t *testing.T) {
 	if err := zx.LoadROM("./rom/48.rom"); err != nil {
 		t.Fatalf("LoadROM: %v", err)
 	}
-	dm := zx.display
+	dm := zx.window()
 
 	if dm.SetScale(0) {
 		t.Error("SetScale(0) = true, want false (0 is out of range)")
@@ -86,7 +86,7 @@ func TestSetScaleSameValueIsNoopButReturnsTrue(t *testing.T) {
 	if err := zx.LoadROM("./rom/48.rom"); err != nil {
 		t.Fatalf("LoadROM: %v", err)
 	}
-	dm := zx.display
+	dm := zx.window()
 	dm.SetScale(2)
 
 	dm.isAnimating = false // reset to detect whether SetScale triggers a fresh one

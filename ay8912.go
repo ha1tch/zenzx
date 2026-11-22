@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // ============================================================================
 // AY-3-8912 Sound Chip Emulation (Corrected Version)

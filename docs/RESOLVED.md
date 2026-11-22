@@ -5,6 +5,146 @@ text verbatim as at closure, stamped with the closing version and date.
 The changelog says what shipped; this record says what was wrong and
 how it was resolved. Append-only.
 
+## [0.41.0] T-71 — Switch the focused machine by keyboard (focus-by-number) in a multi-machine session (v0.41.0, 2026-11-18)
+
+Theme: input · closed 0.41.0 · 2026-11-18
+With -multi several machines run at once but only one has keyboard focus, changed by clicking its window. A keyboard way to switch focus (e.g. a modifier+digit, 1..9 for the first nine machines) would let someone drive a grid without reaching for the mouse. The chord must avoid clashing with OS shortcuts: CMD+number is taken by macOS (Spaces/tabs) and some Linux DEs; prefer a combination free on macOS, Windows and common Linux desktops (candidates to weigh: Alt+digit, Ctrl+Alt+digit, or a two-key leader like Alt+M then digit). Decide the chord, document it alongside the existing Alt-key controls, and show the focused machine (the cyan frame already marks it).
+
+Cross-ref: CHANGELOG 0.41.0.
+
+## [0.41.0] T-70 — Autorun a prebuilt .tap (machine-code games), not only text BASIC (v0.41.0, 2026-11-18)
+
+Theme: link · closed 0.41.0 · 2026-11-18
+AutorunFile tokenises its input as text BASIC and types LOAD empty-string. A compiled game is distributed as a .tap with its own BASIC loader. Detect a TAP (by extension or signature) and load it straight into the deck, keeping the same LOAD keystrokes, so any assembled program can -autorun. Needed by examples/world.
+
+Cross-ref: CHANGELOG 0.41.0.
+
+## [0.34.1] T-06 — 15 Go files are not gofmt-clean (v0.34.1, 2026-11-17)
+
+Theme: hygiene · closed 0.34.1 · 2026-11-17
+- **Trigger:** session review 2026-08-17: `gofmt -l .` lists audio_oto.go, audio_sinc_filter.go, fdc.go, fdc_read_test.go, io.go, keyboard_script.go, memory.go, scheduler.go, screen_read.go, script.go, script_test.go, snapshot_formats.go, tape_types.go, version_main.go, zenzx.go. Pre-existing; not introduced this session.
+- **Fix:** run `gofmt -w` on the tree in a dedicated commit with no other changes, then add a gofmt check as a release step so it cannot recur.
+
+Cross-ref: CHANGELOG 0.34.1.
+
+## [0.27.0] T-38 — Migrate onto the shared zenui module and zentools' bdf (v0.27.0, 2026-11-16)
+
+Theme: shared · closed 0.27.0 · 2026-11-16
+Trigger: zenzx carried the only copy of the UI toolkit it grew. zenui v0.1.0 extracts it, with `zxpalette` and the raylib adapter, and zentools' `pkg/bdf` is the canonical BDF reader.
+
+Scope: switch the root package and `pkg/fonts` to the shared modules; delete `pkg/zenui`, `pkg/zenuiraylib`, `pkg/zxpalette` and `pkg/bdf`; move zentools to v0.8.6.
+
+Verified: the headless build, vet and tests, the `./pkg/...` tests, and a cgo-free windows build and vet of every GUI file and test all give the same results as before the change. This was checked against a local simulation of the published module.
+
+Outstanding: build against the real published zenui tag; run the GUI-tagged tests on a host with a display (they are only compile-checked in the sandbox); land it on main, which still carries the in-tree copies as of v0.10.0 (the change itself lives in the zenplay workspace's copy of zenzx), then cut a release.
+
+Cross-ref: CHANGELOG 0.27.0.
+
+## [0.22.0] T-52 — A snapshot started from NextZXOS ends at address 0 (v0.22.0, 2026-11-16)
+
+Theme: next-support · closed 0.22.0 · 2026-11-16
+- **Trigger:** 0.14.0, trying the card's palette cycling demo: `SPECTRUM "!RunMe.snx"` from NextBASIC in `/demos/PaletteCycle` leaves a black screen with PC=0000, SP=5C01.
+- **Known:** NextZXOS gets as far as setting the memory mapping and the palette for the snapshot (NextREG 0x8E=02, MMU slots changed, the ULA palette written through NextREG 0x41), and NextREG 0x02 reads 0x08 afterwards. `.nexload` of `.nex` files works; only a snapshot was tried this way.
+- **In jnext (0.20.0):** the same command does not run the demo there either: jnext is back at the NextZXOS welcome screen afterwards, where ZenZX is at a black screen. CSpect was not tried.
+- **Not known:** what the loader does next. NextREG 0x02 bit 3 is the Multiface NMI request and the Multiface is not modelled, so that is the first thing to look at.
+- **Done when:** the palette cycling demo runs from NextBASIC and from the Browser.
+- **Resolved in 0.22.0:** NextZXOS starts a snapshot through the Multiface. It loads the snapshot, asks for a Multiface NMI with NextREG 0x02 bit 3 from a fixed address in its ROM (0x0AB8), and the Multiface ROM, seeing that address in NextREG 0xC2/0xC3 (the stackless NMI's return address), takes the registers from the snapshot's header and leaves with RETN to a RET in the 48K ROM, which takes the program's start from its own stack. Two things were in the way. There was no Multiface (`nextmultiface.go`, new). And the demo then stopped at its first interrupt: the CPU core clears bit 0 of the IM 2 vector, and the demo sets only the two bytes of its table that a vector of 0xFF reads (`im2vector.go`, T-60). With both, the demo runs from NextBASIC and from the Browser, and the card's other snapshots (Pogie, The Hollow Earth Hypothesis, OnlyYou6ch) start too. Neither reference runs it: jnext 1.3.0 is back at the welcome screen, CSpect 3.3.1.0 starts the snapshot (its red border) and stays at a black screen.
+
+Cross-ref: CHANGELOG 0.22.0.
+
+## [0.17.0] T-54 — The Next's line interrupt (NextREG 0x22, 0x23) is not raised (v0.17.0, 2026-11-16)
+
+Theme: next-support · closed 0.17.0 · 2026-11-16
+- **Trigger:** 0.15.0, writing the copper. NextREG 0x22 and 0x23 are stored only: bit 1 of 0x22 with a 9-bit line in 0x22 bit 0 and 0x23 should raise a maskable interrupt at the start of that line (the counter NextREG 0x1E/0x1F reads, NextREG 0x64 included), and bit 2 of 0x22 turns the ULA's frame interrupt off. Bit 7 does not read back the ULA's interrupt.
+- **Effect:** a program that splits the screen with a line interrupt, in place of the copper, gets no interrupt at the line. A change it makes from the frame interrupt is drawn at the right place since 0.15.0; one that waits for the line interrupt never happens.
+- **Fix:** raise the interrupt in the frame loop at the T-state of the line, for the same length as the frame interrupt; honour bit 2; read bit 7 back. The interrupt registers of NextREG 0xC0-0xCF (vectors, enables, status) are a separate matter and are not modelled.
+- **Done when:** a test program that changes the border from a line interrupt shows the change at that line.
+
+Cross-ref: CHANGELOG 0.17.0.
+
+## [0.16.0] T-53 — NextREG 0x07 is stored but the CPU always runs at 3.5 MHz (v0.16.0, 2026-11-16)
+
+Theme: next-support · closed 0.16.0 · 2026-11-16
+- **Trigger:** 0.15.0, comparing the card's show512 demo with CSpect after the frame began to be drawn in pieces. The demo, like NextZXOS itself, asks for 28 MHz (NextREG 0x07 = 3); the register is stored and the CPU goes on at 3.5 MHz.
+- **Effect:** everything a program does takes up to eight times as many frames as on the machine, and what is timed against the beam lands in the wrong place. show512 writes a 256 colour palette between the two halves of its picture: at 28 MHz that fits in the gap between them, at 3.5 MHz it is still going on twelve lines into the lower half, and those lines (frame lines 76 to 87) come out black where CSpect has colour. They are the only pixels of that screen that differ.
+- **Fix:** run 2, 4 or 8 times the T-states in a frame when NextREG 0x07 asks, keeping the frame, the lines, the sound and the tape in 3.5 MHz T-states. NextREG 0x07 reads back the speed in bits 5-4 as well.
+- **Done when:** show512 is the same as CSpect's picture on every pixel, and the NextZXOS boot and save guard (G-04) passes.
+
+Cross-ref: CHANGELOG 0.16.0.
+
+## [0.13.0] T-48 — GUI: Next layers under the ULA, with the border hidden, and at 1x (v0.13.0, 2026-11-16)
+
+Theme: next-support · closed 0.13.0 · 2026-11-16
+- **Trigger:** 0.11.0, reading display.go and videorender_gpu.go while making the GUI draw the tilemap, and one observation in `TestGLNextPicture`.
+- **Gaps:** (1) With the border hidden the standard picture is drawn from the window's top left, but Layer 2 and the sprites are still placed at the border's offset, so they are displaced; seen as a missing Layer 2 pixel when the GL test ran without a border. (2) The GUI draws only the layers that NextREG 0x15 puts above the ULA and treats the ULA as opaque, so a layer under the ULA never shows through a transparent ULA colour; the headless decode composites all three. (3) The tilemap is drawn as part of the ULA picture, so sprites and Layer 2 are always over it. (4) At 1x a 512 pixel picture (Timex hi-res, 80 column tilemap) loses every other column; the 640x256 Layer 2 mode has a minimum scale of 2 for this reason.
+- **Fix:** the simplest route is the one the software picture already takes: composite all the Next layers with `DecodeDisplay` whenever a Next has any of them on, and show that as one texture.
+- **Done when:** `TestGLNextPicture` covers a layer under a transparent ULA colour and the hidden border, and passes.
+- **Resolved (0.13.0):** by the route named above, and further. The trigger was the firmware's loading screen, which showed only its left half in both builds: it is Layer 2 at 320x256, whose clip window counts X in units of two pixels and which starts in the border. `ComposeNextFrame` (nextframe.go) draws the whole 320x256 frame, border included, and both front ends show it whenever a Next has Layer 2, the sprites or the tilemap on. Gap 1: with the border hidden the GUI shows the classic picture's part of the frame (`TestGLNextPicture`). Gap 2: every layer is composed, with the global transparency colour and the fallback colour (`TestNextFrameOrderTransparencyAndFallback`, the function both builds use). Gap 3 was not a gap: the tilemap shares the ULA's place in the order on the hardware too. Gap 4 is T-51. The classic picture moved from 28 to 32 pixels down in the GUI's 256 line canvas so that it is where the frame has it. Seen whole in both builds: the firmware's loading screen; in the headless build also the card's Daybreak, ScrollNutter, show512 and tilemap demos. The earlier drawing code is still in the tree (T-50).
+
+Cross-ref: CHANGELOG 0.13.0.
+
+## [0.11.0] T-49 — next_card.py leaves the card's free space record as for an empty volume (v0.11.0, 2026-11-16)
+
+Theme: next-support · closed 0.11.0 · 2026-11-16
+- **Trigger:** 0.11.0, checking saves to the card after a report that saving did not work in a local run: `CAT` showed "1022M free" on a card with 902M free.
+- **Cause:** `scripts/next_card.py` formats the card with pyfatfs and copies the files in, and the library leaves the FSInfo sector as it was for the empty volume: 261,619 clusters free, next free cluster 2. NextZXOS takes both from there.
+- **Fix:** the script counts the free clusters in the finished FAT and writes the count and the first free cluster to the FSInfo sector and its backup. `--repair IMAGE` does the same to an existing card in place.
+- **Verified:** a rebuilt card reads 230,952 free, first free 30,670, equal to a count of the FAT; saves on it leave the record in step.
+- **Not established:** whether this was what failed in the local run. In the sandbox every save tried works in both builds with or without the fix (see T-36's fifteenth finding).
+
+Cross-ref: CHANGELOG 0.11.0.
+
+## [0.11.0] T-42 — NextREG 0x12 and 0x13 are 16K bank numbers; zenzx reads them as 8K pages (v0.11.0, 2026-11-16)
+
+Theme: next-support · closed 0.11.0 · 2026-11-16
+- **Trigger:** 0.11.0, while getting NextZXOS to boot. The Next's register reference (`registers.txt` in the distribution, `/docs/extra-hw/io-port-system`) says NextREG 0x12 and 0x13 hold a *16K RAM bank* number, reset values 8 and 11. `layer2BaseBank` (layer2.go) and the port 0x123B mapping (layer2accessport.go) use the value as an 8K page number, and the register file's reset value for 0x12 is 0. NextZXOS writes 9 at start-up; a program that draws Layer 2 through the documented banks would be shown from the wrong memory.
+- **Fix:** take the visible and shadow bases as bank numbers (page = 2 x bank), give 0x12 and 0x13 their reset values, and update the Layer 2 tests, which were written against the page reading. The GUI path (videorender_gpu.go) uses the same accessor.
+- **Done when:** a Layer 2 picture written to banks 8-10 with NextREG 0x12 at its reset value is displayed, in the headless decode and in the GUI.
+
+Shipped in 0.11.0 (2026-11-16): `layer2BankToPage` (layer2.go) takes both registers as bank numbers, their reset values are 8 and 11, and port 0x123B's mapping uses the same conversion; the Layer 2 tests give bank numbers now, and `TestLayer2UsesBankNumbersAndResetValues` checks the reset values and the mapping. The GUI: `videorender_gpu.go` reads the base through the same accessor, and `TestGLNextPicture` (gl_gui_test.go, dormant guard G-05) draws a frame through the GUI's renderer with a byte in page 16 and NextREG 0x12 at its reset value, and reads that pixel back from the window: pass on 2026-11-16 under Xvfb with software OpenGL. The same test found that NextREG 0x15 had the wrong reset value (T-47).
+
+Cross-ref: CHANGELOG 0.11.0.
+
+## [0.11.0] T-47 — NextREG 0x15 reset value is S U L; the hardware resets to S L U (v0.11.0, 2026-11-16)
+
+Theme: next-support · closed 0.11.0 · 2026-11-16
+- **Trigger:** 0.11.0, `TestGLNextPicture`: a Layer 2 picture did not appear in the GUI with NextREG 0x15 left alone.
+- **Cause:** the register table gave NextREG 0x15 the value 0x08, the layer order S U L, so Layer 2 was under the ULA until a program wrote the register. The Next's registers.txt gives bits 4-2 the soft reset value 000, S L U. T-29's notes had flagged the stored value as doubtful.
+- **Fix:** the reset value is 0x00. `TestNextRegDefaults` asserts it; one GUI test that relied on S U L sets it.
+
+Cross-ref: CHANGELOG 0.11.0.
+
+## [0.11.0] T-46 — GUI-tagged tests had never been run; four were wrong and one starts a browser (v0.11.0, 2026-11-16)
+
+Theme: tooling · closed 0.11.0 · 2026-11-16
+- **Trigger:** 0.11.0. The tests without the `headless` tag had only ever been compiled; with a display available they were run for the first time.
+- **Found:** (1) `TestHandleLogoMenuResultZenZXWebsiteOpensURL` called `rl.OpenURL` for real: it started a browser, which kept `go test` from ending until its ten minute limit. (2) Three tests in layer2_viewport_test.go expected the 640x256 Layer 2 mode to count with Layer 2 off; since 0.11.0 it counts only while Layer 2 is displayed. (3) `TestInSpanishGroupListsExpectedModels` took the Timex Sinclair 2068, which follows the Spanish group after a separator, for a member of it.
+- **Fix:** the opener is a variable (`openURL`, menubar_gui.go) that the test replaces and checks; the three tests turn Layer 2 on; a separator ends a group in the menu test. machines.json was right and is unchanged.
+- **Verified:** the whole GUI-build suite, `go test .` without the `headless` tag, passes in under a second under Xvfb with software OpenGL, with `ZENZX_GL_TESTS` set and without.
+
+Cross-ref: CHANGELOG 0.11.0.
+
+## [0.11.0] T-45 — Script key input never reaches the machine in the GUI build (v0.11.0, 2026-11-16)
+
+Theme: tooling · closed 0.11.0 · 2026-11-16
+- **Trigger:** 0.11.0, driving NextZXOS in the GUI build with a script: SPACE at the welcome screen did nothing.
+- **Cause:** the GUI loop ran the script, then `handleKeyboard` (input.go) set every row of the key matrix to "released" before copying the host keyboard in, then ran the frame. `key`, `type` and `press` therefore never reached the machine in the GUI build, on any model. The headless build has no host keyboard and was not affected.
+- **Fix:** `Scheduler.OwnsKeyboard` reports typing in progress or a key held by `press`; while it is true the GUI leaves the matrix alone (`zx.scriptKeys`).
+- **Verified:** `TestSchedulerOwnsKeyboardWhileKeysAreDown`; and in the GUI build under Xvfb a script now goes from the welcome screen through the menu into NextBASIC and types a line.
+
+Cross-ref: CHANGELOG 0.11.0.
+
+## [0.11.0] T-43 — SD card is read-only: no CMD24, CMD25 or CMD13 (v0.11.0, 2026-11-16)
+
+Theme: next-support · closed 0.11.0 · 2026-11-16
+- **Trigger:** 0.11.0. `SDCardImage` is an `io.ReaderAt`, and sdcard.go has no CMD24 or CMD25 and no CMD13. The firmware and NextZXOS both write to the card in normal use: the firmware saves the chosen video mode to `config.ini`, NextZXOS saves its settings and whatever the user saves. With the card read-only the writes are refused or ignored; nothing has been seen to fail at start-up, but saving cannot work.
+- **Fix:** CMD24 (single block write) and CMD25 (multiple), with the data-response token and the busy period the firmware polls for, CMD13 (status), and an image opened read-write, with a flag for a write-protected card. Ochenta's notes record that its cards were once damaged because CMD13 was not answered while writes were accepted; the two belong together.
+- **Done when:** a file saved from NextBASIC is on the card image afterwards and the image still mounts on the host.
+
+Done (2026-11-16, 0.11.0): `sdcard_write.go` adds CMD24, CMD25, CMD13, CMD16 and ACMD23; both front ends open the image for writing unless `-sdcard-readonly` is given, and fall back to a write-protected card when the file cannot be written. Run in the headless build: NextBASIC chosen from the menu, `10 REM written from zenzx` entered and `SAVE "zztest.bas"` given; NextZXOS wrote seven blocks with CMD24, each followed by CMD13, and the image afterwards holds `/zztest.bas`, 152 bytes with a +3DOS header and the line in it, among 1,394 files read back by a host FAT library. Unit tests in `sdcard_write_test.go` cover single and multiple block writes, the write-protect switch, a read-only image, an out-of-range block and an abandoned write.
+
+Cross-ref: CHANGELOG 0.11.0.
+
 ## [0.11.0] T-41 — Boot ROM stage of the Next chain has no repeatable check (blank FAT32 card, expected stop at TBBLUE.FW) (v0.11.0, 2026-11-16)
 
 Theme: next-support · closed 0.11.0 · 2026-11-16

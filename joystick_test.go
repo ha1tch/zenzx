@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import "testing"
 
@@ -16,7 +16,8 @@ func TestParseJoystickMode(t *testing.T) {
 		{"sinclair1", JoystickSinclair1, false},
 		{"sinclair2", JoystickSinclair2, false},
 		{"sinclair-both", JoystickSinclairBoth, false},
-		{"cursor", JoystickNone, true}, // not implemented -- must error, not silently fall back
+		{"cursor", JoystickCursor, false},
+		{"next", JoystickNext, false},
 		{"garbage", JoystickNone, true},
 	}
 	for _, c := range cases {
@@ -426,10 +427,11 @@ func TestKempstonMouseCoexistsWithDualKempstonJoysticks(t *testing.T) {
 	if got := io.ReadPort(0xFBDF); got != 5 {
 		t.Errorf("mouse X (0xFBDF) = %d, want 5 -- joystick activity must not have corrupted it", got)
 	}
-	var deltaY int8 = -3 // a variable, not a constant, so the conversion below is a runtime reinterpretation (wraps) rather than a constant conversion (which would need representability)
+	// The mouse moved 3 up the screen (the host's Y grows downward): the counter goes up.
+	var deltaY int8 = 3 // a variable, not a constant, so the conversion below is a runtime reinterpretation (wraps) rather than a constant conversion (which would need representability)
 	wantY := uint8(deltaY)
 	if got := io.ReadPort(0xFFDF); got != wantY {
-		t.Errorf("mouse Y (0xFFDF) = %d, want %d (-3 wrapped)", got, wantY)
+		t.Errorf("mouse Y (0xFFDF) = %d, want %d: the counter rises as the mouse moves up", got, wantY)
 	}
 	buttons := io.ReadPort(0xFADF)
 	if buttons&0x02 != 0 { // left button = bit1, active low (right=bit0, middle=bit2)

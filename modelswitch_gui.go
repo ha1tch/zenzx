@@ -1,6 +1,6 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -9,7 +9,9 @@ import (
 
 // switchModelLive reloads model's standard ROM set into the already-
 // running zx and resets it, mirroring zenzx_gui.go's startup switch
-// statement -- same ROM files, same +3-style FDC handling -- but without
+// statement (the set-up itself is loadModelROMs, machine_model.go, which
+// the headless program's extra machines share) -- same ROM files, same
+// +3-style FDC handling -- but without
 // consulting any CLI-only flags (-disk, -noFdc, -debugFdc), which don't
 // have a live equivalent here. FDC is unconditionally disabled first, then
 // re-enabled only if the new model is plus3/spanishplus3, so switching
@@ -25,105 +27,8 @@ import (
 func switchModelLive(zx *ZenZX, model, romDir string) {
 	zx.io.DisableFDC()
 
-	var loaded bool
-	var label string
-
-	switch model {
-	case "48k":
-		if data, err := resolveROMBytes("48.rom", romDir); err == nil {
-			loaded = zx.LoadROMBytes(data) == nil
-		}
-		label = "48K"
-
-	case "128k":
-		if data0, err := resolveROMBytes("128-0.rom", romDir); err == nil {
-			if data1, err := resolveROMBytes("128-1.rom", romDir); err == nil {
-				loaded = zx.Load128KROMBytes(data0, data1) == nil
-			}
-		}
-		label = "128K (Sinclair)"
-
-	case "plus2":
-		if data0, err := resolveROMBytes("plus2-0.rom", romDir); err == nil {
-			if data1, err := resolveROMBytes("plus2-1.rom", romDir); err == nil {
-				loaded = zx.Load128KROMBytes(data0, data1) == nil
-			}
-		}
-		label = "Spectrum +2 (grey)"
-
-	case "plus2a":
-		if data, err := loadPlus3Bytes(romDir, "plus3-0.rom", "plus3-1.rom", "plus3-2.rom", "plus3-3.rom"); err == nil {
-			loaded = zx.LoadPlus3ROMBytes(data[0], data[1], data[2], data[3]) == nil
-		}
-		label = "Spectrum +2A (+3 ROM, no floppy controller)"
-
-	case "plus3":
-		if data, err := loadPlus3Bytes(romDir, "plus3-0.rom", "plus3-1.rom", "plus3-2.rom", "plus3-3.rom"); err == nil {
-			loaded = zx.LoadPlus3ROMBytes(data[0], data[1], data[2], data[3]) == nil
-			if loaded {
-				zx.io.EnableFDC()
-			}
-		}
-		label = "Spectrum +3"
-
-	case "spanish48k":
-		if data, err := resolveROMBytes("48-spanish.rom", romDir); err == nil {
-			loaded = zx.LoadROMBytes(data) == nil
-		}
-		label = "Spanish 48K"
-
-	case "spanish128k":
-		if data0, err := resolveROMBytes("128-spanish-0.rom", romDir); err == nil {
-			if data1, err := resolveROMBytes("128-spanish-1.rom", romDir); err == nil {
-				loaded = zx.Load128KROMBytes(data0, data1) == nil
-			}
-		}
-		label = "Spanish 128K"
-
-	case "spanishplus2":
-		if data0, err := resolveROMBytes("plus2-spanish-0.rom", romDir); err == nil {
-			if data1, err := resolveROMBytes("plus2-spanish-1.rom", romDir); err == nil {
-				loaded = zx.Load128KROMBytes(data0, data1) == nil
-			}
-		}
-		label = "Spanish Spectrum +2"
-
-	case "spanishplus3":
-		if data, err := loadPlus3Bytes(romDir, "plus3-spanish-0.rom", "plus3-spanish-1.rom", "plus3-spanish-2.rom", "plus3-spanish-3.rom"); err == nil {
-			loaded = zx.LoadPlus3ROMBytes(data[0], data[1], data[2], data[3]) == nil
-			if loaded {
-				zx.io.EnableFDC()
-			}
-		}
-		label = "Spanish Spectrum +3"
-
-	case "next":
-		if data, err := loadPlus3Bytes(romDir, "plus3-0.rom", "plus3-1.rom", "plus3-2.rom", "plus3-3.rom"); err == nil {
-			loaded = zx.LoadPlus3ROMBytes(data[0], data[1], data[2], data[3]) == nil
-			if loaded {
-				zx.EnableZ80N()
-				zx.memory.EnableNext()
-				zx.memory.SetNextSlot(0, 0xFF) // ROM low half -- defers to legacy ROM (readNext)
-				zx.memory.SetNextSlot(1, 0xFF) // ROM high half -- ditto
-				zx.memory.SetNextSlot(2, 10)   // bank 5 low half (screen) -- classic reset default
-				zx.memory.SetNextSlot(3, 11)   // bank 5 high half
-				zx.memory.SetNextSlot(4, 4)    // bank 2 low half
-				zx.memory.SetNextSlot(5, 5)    // bank 2 high half
-				zx.memory.SetNextSlot(6, 0)    // bank 0 low half -- reset default before any 7FFD write
-				zx.memory.SetNextSlot(7, 1)    // bank 0 high half
-			}
-		}
-		label = "ZX Spectrum Next (+3 ROM base)"
-
-	case "ts2068":
-		if home, err := resolveROMBytes("ts2068-0.rom", romDir); err == nil {
-			if ext, err := resolveROMBytes("ts2068-1.rom", romDir); err == nil {
-				loaded = zx.LoadTS2068ROMBytes(home, ext) == nil
-			}
-		}
-		label = "TS2068 (Home + Extension)"
-
-	default:
+	label, known, loaded := loadModelROMs(zx, model, romDir) // machine_model.go
+	if !known {
 		fmt.Printf("Menu bar: unknown model %q, not switching\n", model)
 		return
 	}
@@ -135,6 +40,11 @@ func switchModelLive(zx *ZenZX, model, romDir string) {
 
 	zx.Reset()
 	zx.io.SetJoystickMode(defaultJoystickModeForModel(model))
+	// A Next has its own mouse port; the mouse chosen for another model stays as it was,
+	// but for the AMX mouse, which a Next cannot have.
+	if model == "next" && zx.io.mouseMode != MouseKempston {
+		zx.io.SetMouseMode(MouseKempston)
+	}
 	fmt.Printf("Switched to %s\n", label)
 }
 

@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -47,6 +47,39 @@ func (cw *CPUWrapper) GetCycles() uint64 {
 // Main ZenZX Emulator
 // ============================================================================
 
+// escapeMode is how the Escape key behaves, set by the -escape command-line
+// flag. See parseEscapeMode for the flag values.
+type escapeMode int
+
+const (
+	// escapeOn: Escape quits the program at once (the historical default).
+	escapeOn escapeMode = iota
+	// escapeOff: Escape never quits.
+	escapeOff
+	// escapeClose: Escape closes an open dialog, menu or the debugger HUD, and
+	// never quits the program.
+	escapeClose
+	// escapeQuery: Escape asks for confirmation before quitting.
+	escapeQuery
+)
+
+// parseEscapeMode reads an -escape flag value. An unknown value falls back to
+// escapeOn and reports the error to the caller.
+func parseEscapeMode(s string) (escapeMode, bool) {
+	switch s {
+	case "on", "":
+		return escapeOn, true
+	case "off":
+		return escapeOff, true
+	case "close":
+		return escapeClose, true
+	case "query":
+		return escapeQuery, true
+	default:
+		return escapeOn, false
+	}
+}
+
 type ZenZX struct {
 	// Core components
 	cpu    *z80.Z80
@@ -79,6 +112,9 @@ type ZenZX struct {
 	turboActive       bool
 	turboNextBoundary int
 
+	// auto is a pending autorun, nil once it has typed its keys: autorun.go.
+	auto *autorun
+
 	// Turbo mode's page-based physical memory model (turbo_pages.go,
 	// turbo.go's turboSnapshotIn/turboRemap/turboSyncToReal). Mirrors
 	// SpectrumMemory's own real rom[4]/ram[8] layout exactly: pages 0-3
@@ -95,7 +131,7 @@ type ZenZX struct {
 	turboPort7FFD uint8
 
 	// Display management
-	display *DisplayManager
+	display Display
 
 	// Audio support
 	audio *AudioWrapper // Changed from *AudioManager to *AudioWrapper
@@ -110,10 +146,21 @@ type ZenZX struct {
 	paused     bool
 
 	// System
-	is128K         bool
-	isPlus3        bool
-	noEscKey       bool
+	is128K  bool
+	isPlus3 bool
+	// escape is how the Escape key behaves (set from -escape): quit at once,
+	// never quit, close an open dialog/HUD only, or ask before quitting.
+	escape escapeMode
+	// uiOwnsEscape is set by the GUI's loop for a frame in which a menu or a
+	// window of the menu bar is open: Escape closes that, not the program.
+	uiOwnsEscape   bool
+	scriptKeys     bool   // set by the GUI loop while a script has keys down (input.go)
 	snapshotFormat string // Preferred snapshot format
+
+	// next is the Next's boot chain when attachNextBootChain attached one (nextchain.go).
+	next *nextChain
+	// card2 is the card in the DivMMC's second slot, nil when it is empty (sdcard2.go).
+	card2 *secondCard
 
 	// Non-standard features (see nonstandard.go). Set once at startup from
 	// the validated -non-standard/-ns-* flags; not yet consumed by any
@@ -123,6 +170,13 @@ type ZenZX struct {
 	// Active video renderer (see videorender.go). Defaults to the standard
 	// renderer; SelectVideoRenderer switches it based on -ns-graphics.
 	videoRenderer VideoRenderer
+	// rendererSelected is set once SelectVideoRenderer has run, so a display
+	// given to the machine afterwards is told (SetDisplay).
+	rendererSelected bool
+
+	// firstProgram is the first BASIC program the machine loaded, once it
+	// has loaded one (program_name.go).
+	firstProgram string
 }
 
 func NewZenZX(audioBackend AudioBackend) *ZenZX {
@@ -134,15 +188,8 @@ func NewZenZX(audioBackend AudioBackend) *ZenZX {
 
 	io := NewSpectrumIO(memory, audio) // Pass wrapper
 	cpu := z80.New(memory, io)
-	display := NewDisplayManager(screen)
-
-	// Pass audio reference to display for debug overlay
-	display.SetAudioManager(audio) // Pass wrapper
-
-	// Pass io reference to display for the 640x256 Layer 2 mode's
-	// minimum-zoom clamp (2026-09-15, T-29 GUI-wiring pass -- see
-	// DisplayManager.io's own doc comment).
-	display.SetSpectrumIO(io)
+	// A machine starts with nobody watching; SetDisplay gives it a display.
+	display := newNullDisplay(screen)
 
 	// Set CPU reference in IO for cycle tracking
 	io.SetCPU(&CPUWrapper{cpu: cpu})
@@ -170,7 +217,8 @@ func NewZenZX(audioBackend AudioBackend) *ZenZX {
 		return zx.tape != nil && zx.tape.st != nil && zx.tape.st.Playing
 	}
 	io.floatingBusFn = zx.floatingBusByte
-	io.nextVideoLineFn = zx.nextVideoLine // NextREG 0x1E/0x1F, nextvideoline.go
+	io.nextVideoLineFn = zx.nextVideoLine       // NextREG 0x1E/0x1F, nextvideoline.go
+	io.rasterEnable(zx.rasterTiming, zx.screen) // the Next's frame in pieces, and the copper
 
 	// TS2068 dynamic video-mode switching (ts2068.go): a no-op for
 	// every other model, since io.onTS2068VideoModeChange is only ever
@@ -213,8 +261,8 @@ func NewZenZX(audioBackend AudioBackend) *ZenZX {
 // ZenZX's existing -model options are the Next, and this method exists
 // specifically for CPU-level Z80N verification (running a test binary and
 // reading results back, e.g. via a "dump-mem" script action) rather than
-// as a claim of full Next hardware emulation (memory paging, sprites, the
-// copper, and so on are all still absent). See -z80n in the headless and
+// as a claim of Next hardware emulation (that is -model next: memory paging,
+// sprites, the copper and the rest come with the machine, not with this). See -z80n in the headless and
 // GUI entry points.
 func (zx *ZenZX) EnableZ80N() {
 	zx.cpu.Z80N = true
@@ -241,7 +289,11 @@ func (zx *ZenZX) EnableZ80N() {
 // accepted.
 func (zx *ZenZX) EnableDivMMC(sdImage SDCardImage, sdSize int64, romImage []byte) {
 	zx.io.EnableDivMMC(sdImage, sdSize, romImage)
-	zx.cpu.M1Hook = zx.io.divMMC.OnM1
+	zx.cpu.M1Hook = func(pc uint16, opcode uint8, context string) {
+		if !zx.memory.mfPaged { // the Multiface is over the ROM: its code is at no entry point
+			zx.io.divMMC.OnM1(pc, opcode, context)
+		}
+	}
 	zx.io.divMMC.pcFn = func() uint16 { return zx.cpu.PC }
 }
 
@@ -258,13 +310,13 @@ func (zx *ZenZX) LoadROMBytes(data []byte) error {
 	zx.isPlus3 = zx.memory.isPlus3
 
 	if zx.isPlus3 {
-		fmt.Println("+3 mode enabled (4 ROM banks)")
+		sayln("+3 mode enabled (4 ROM banks)")
 		zx.setupContention128() // see contention.go: known approximation for +3 too, not just 128K/+2
 	} else if zx.is128K {
-		fmt.Println("128K mode enabled (2 ROM banks)")
+		sayln("128K mode enabled (2 ROM banks)")
 		zx.setupContention128()
 	} else {
-		fmt.Println("48K mode")
+		sayln("48K mode")
 		zx.setupContention48()
 	}
 
@@ -430,15 +482,23 @@ func (zx *ZenZX) Reset() {
 	if zx.tape != nil && zx.tape.st != nil && zx.tape.st.Playing {
 		zx.tape.Stop()
 	}
+
+	if zx.io != nil && zx.io.link != nil {
+		zx.io.link.Reset()
+	}
 }
 
 func (zx *ZenZX) RunFrame() {
 	if zx.paused {
 		return
 	}
+	if zx.auto != nil {
+		zx.autorunStep() // autorun.go
+	}
 
 	// Start new frame for border tracking
 	zx.serviceNextReset()
+	zx.nextFrameLength()
 	zx.io.StartFrame()
 
 	// New frame origin: all frame-relative ULA timing (contention,
@@ -457,11 +517,11 @@ func (zx *ZenZX) RunFrame() {
 	// period of the cumulative counter -- two timebases precessing
 	// against each other by 112+ T-states per frame, leaving the
 	// contention window at a continuously rotating frame phase.
-	zx.cpu.INT = true
+	zx.cpu.INT = !zx.io.nextIntRaise(nextIntULA) && !zx.io.nextULAIntOff() // NextREG 0x22 bit 2 turns the frame interrupt off; nextint.go
 
 	for frameCycles < zx.interruptLength && zx.running {
 		zx.checkAMXInterrupt()
-		cycles := zx.cpu.Step()
+		cycles := zx.stepCPU()
 		frameCycles += cycles
 		zx.cycleCount += cycles
 		cycleUpdateCounter += cycles
@@ -479,10 +539,13 @@ func (zx *ZenZX) RunFrame() {
 
 	for frameCycles < zx.cyclesPerFrame && zx.running {
 		zx.checkAMXInterrupt()
-		cycles := zx.cpu.Step()
+		cycles := zx.stepCPU()
 		frameCycles += cycles
 		zx.cycleCount += cycles
 		cycleUpdateCounter += cycles
+		if zx.io.nextLineInt.on {
+			zx.lineInterrupt(frameCycles) // the Next's line interrupt: nextlineint.go
+		}
 
 		// Update audio system with current cycle count every ~500 cycles
 		if cycleUpdateCounter >= 500 && zx.audio != nil && zx.audio.IsEnabled() {
@@ -504,6 +567,7 @@ func (zx *ZenZX) RunFrame() {
 	// Pass border changes to display manager, anchored at the true
 	// frame origin rather than a modulo-derived approximation.
 	zx.display.SetBorderChanges(zx.io.GetBorderHistory(), zx.frameOrigin, zx.cyclesPerFrame)
+	zx.io.EndFrame()
 
 	zx.frameCount++
 }
@@ -522,13 +586,15 @@ func (zx *ZenZX) loadingFrame() {
 		return
 	}
 	zx.serviceNextReset()
+	zx.nextFrameLength()
 	zx.io.StartFrame()
+	zx.io.raster.skip = true // no picture is kept of these frames; the copper still runs
 	zx.frameOrigin = zx.cpu.Cycles
 	frameCycles := 0
 
-	zx.cpu.INT = true
+	zx.cpu.INT = !zx.io.nextIntRaise(nextIntULA) && !zx.io.nextULAIntOff()
 	for frameCycles < zx.interruptLength && zx.running {
-		cycles := zx.cpu.Step()
+		cycles := zx.stepCPU()
 		frameCycles += cycles
 		zx.cycleCount += cycles
 		if zx.tape != nil {
@@ -538,13 +604,17 @@ func (zx *ZenZX) loadingFrame() {
 	zx.cpu.INT = false
 
 	for frameCycles < zx.cyclesPerFrame && zx.running {
-		cycles := zx.cpu.Step()
+		cycles := zx.stepCPU()
 		frameCycles += cycles
 		zx.cycleCount += cycles
+		if zx.io.nextLineInt.on {
+			zx.lineInterrupt(frameCycles)
+		}
 		if zx.tape != nil {
 			zx.tape.Tick(cycles)
 		}
 	}
+	zx.io.EndFrame()
 
 	zx.frameCount++
 }
@@ -580,37 +650,43 @@ func (zx *ZenZX) SelectVideoRenderer(graphicsMode string) error {
 		return err
 	}
 	zx.videoRenderer = r
+	zx.rendererSelected = true
 	zx.display.SetVideoRenderer(r)
 	return nil
 }
 
-// DecodeDisplay renders the current display memory through the active
-// video renderer into a 256x192 image.RGBA. Both front ends call this --
-// the GUI to upload a texture each frame, headless to encode a PNG -- so
-// neither needs to know which renderer is active.
+// SetDisplay gives the machine the display it draws through, and tells that
+// display about the machine: its audio (for the debug overlay), its I/O (for
+// the 640x256 Layer 2 mode's minimum-zoom clamp, see DisplayManager.io) and,
+// if one has been selected, its video renderer. nil puts back the display that draws nothing.
+func (zx *ZenZX) SetDisplay(d Display) {
+	if d == nil {
+		d = newNullDisplay(zx.screen)
+	}
+	d.SetAudioManager(zx.audio)
+	d.SetSpectrumIO(zx.io)
+	if zx.rendererSelected {
+		d.SetVideoRenderer(zx.videoRenderer)
+	}
+	zx.display = d
+}
+
+// DecodeDisplay draws the picture of the machine as it is now. Both front ends can call it
+// -- the headless build does, to encode a PNG -- so neither needs to know which renderer is
+// active. It is 256x192 for every machine but the Next, whose picture is the whole 320x256
+// frame, border included (640x256 with a double resolution layer): nextframe.go, and
+// nextraster.go for what changes part of the way down it.
 func (zx *ZenZX) DecodeDisplay() *image.RGBA {
-	ula := zx.videoRenderer.Decode(zx.memory, zx.screen)
-	// T-29 (wave ti0.r3) / T-30 (wave ti0.r4): composite Layer 2 and
-	// sprites over/under the ULA image per NR 0x15's real three-layer
-	// order (CompositeNextLayers/nextLayerOrder, layer2.go) when Next mode
-	// has either active. DecodeLayer2/DecodeSprites each return nil on
-	// every classic 48K/128K/+3/TS2068 machine and on a Next machine that
-	// hasn't enabled Layer 2/sprites (see layer2Enabled/spriteEnabled), so
-	// when BOTH are nil this is a pure no-op -- byte-identical to the
-	// pre-T-29 return -- for every existing call site and every
-	// non-Next-mode test/regression already passing. Only a machine with
-	// at least one of the two layers active ever takes the composite path
-	// at all; CompositeNextLayers itself treats a nil layer as fully
-	// transparent, so passing one of l2/sprites as nil while the other is
-	// real (e.g. Layer 2 active, sprites not yet enabled) composites
-	// correctly without either layer needing to know about the other's
-	// state.
-	l2 := zx.io.DecodeLayer2()
-	sprites := zx.io.DecodeSprites()
-	if l2 == nil && sprites == nil {
+	standard := func() *image.RGBA { return zx.videoRenderer.Decode(zx.memory, zx.screen) }
+	if zx.io.nextFrameActive() {
+		return zx.io.NextFrame(standard, zx.screen, zx.io.borderColor)
+	}
+	// On a Next in one of the Timex screen modes the picture is drawn by software
+	// (nextsoftula.go).
+	if ula := zx.io.nextSoftwareULA(standard, zx.screen); ula != nil {
 		return ula
 	}
-	return CompositeNextLayers(ula, l2, sprites, zx.io.GetNextRegister(0x15))
+	return standard()
 }
 
 // ============================================================================

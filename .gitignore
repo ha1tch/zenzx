@@ -1,6 +1,7 @@
 # Build outputs
 /zenzx
 /zenzx-headless
+/dist/
 /zenzx_linux
 /zenzx_windows*
 /zenzx_darwin*
@@ -17,10 +18,18 @@ test-output.json
 test-errors.txt
 *.test
 
+# What the Next examples' build leaves (examples/next/build.sh)
+/examples/next/*/build/
+/examples/next/*/build.log
+
 # Screenshots produced by the headless build
 *.png
 !docs/**/*.png
 !reference/**/*.png
+!examples/next/*/art/*.png
+
+# Python leaves these beside the scripts in examples/next/tools
+__pycache__/
 
 # OS / editor cruft
 .DS_Store
@@ -31,3 +40,11 @@ test-errors.txt
 .ed-journal.json
 release-*.log
 next-trace.log
+# Files for -model=next: the distribution zip, the cards, the ROMs (next/README.md)
+/next/*
+!/next/README.md
+thirdparty/
+# What the emulator writes beside itself while it is used: quick saves, screenshots
+/snapshot_*.zxs
+/snapshot_*.json
+/st-*.png

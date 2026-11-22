@@ -1,9 +1,10 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"fmt"
+	"image"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -94,6 +95,13 @@ type DisplayManager struct {
 	// window has finished animating to its new size.
 	reservedTopHeight int
 
+	// tiles, when set, draws the window's whole content below the reserved
+	// top in place of one machine's picture: the tiled layouts of
+	// machinedeck_gui.go. tilesW and tilesH are the size that content asks
+	// of the window.
+	tiles          func()
+	tilesW, tilesH int
+
 	// GPU fast-path texture caches (videorender_gpu.go), baked once in
 	// InitializeAfterWindow and freed in CleanupTextures. bitPatternGPU
 	// holds one texture per possible byte value (which of 8 bits are
@@ -166,6 +174,34 @@ type DisplayManager struct {
 	borderTexture        rl.RenderTexture2D
 	borderTextureReady   bool
 	borderStripesEnabled bool
+}
+
+// showMachine turns the display to another machine: it draws that machine's
+// screen at the zoom it had, and forgets what it had baked on the GPU for the
+// machine it showed before, whose version counters mean nothing for this one.
+// The caller gives the machine the display with SetDisplay.
+func (dm *DisplayManager) showMachine(zx *ZenZX) {
+	zx.screen.multiplier = dm.screen.multiplier
+	dm.screen = zx.screen
+	dm.spriteGPUCache.clear()
+	if dm.layer2ColourGPUReady {
+		for i := range dm.layer2ColourGPU {
+			rl.UnloadTexture(dm.layer2ColourGPU[i])
+		}
+		dm.layer2ColourGPUReady = false
+	}
+}
+
+// window returns the machine's GUI display, giving it one if it has none
+// yet: the GUI program sets it at start-up, and GUI tests that build a bare
+// machine get it on first use.
+func (zx *ZenZX) window() *DisplayManager {
+	if dm, ok := zx.display.(*DisplayManager); ok {
+		return dm
+	}
+	dm := NewDisplayManager(zx.screen)
+	zx.SetDisplay(dm)
+	return dm
 }
 
 func NewDisplayManager(screen *SpectrumScreen) *DisplayManager {
@@ -366,7 +402,19 @@ func (dm *DisplayManager) maxMultiplierThatFits() int {
 	return min
 }
 
+// tiledNoScale says, once asked, why the zoom does nothing in a tiled layout.
+func (dm *DisplayManager) tiledNoScale() bool {
+	if dm.tiles == nil {
+		return false
+	}
+	fmt.Println("Scale: the zoom is for one machine filling the window; a tiled layout sizes its tiles itself (View menu)")
+	return true
+}
+
 func (dm *DisplayManager) ScaleUp() bool {
+	if dm.tiledNoScale() {
+		return false
+	}
 	limit := dm.maxMultiplierThatFits()
 	if dm.screen.multiplier < limit {
 		dm.screen.multiplier++
@@ -381,6 +429,9 @@ func (dm *DisplayManager) ScaleUp() bool {
 }
 
 func (dm *DisplayManager) ScaleDown() bool {
+	if dm.tiledNoScale() {
+		return false
+	}
 	min := dm.minMultiplierForMode()
 	if dm.screen.multiplier > min {
 		dm.screen.multiplier--
@@ -397,6 +448,9 @@ func (dm *DisplayManager) ScaleDown() bool {
 // which jump straight to a specific scale rather than stepping one at a
 // time the way ScaleUp/ScaleDown do.
 func (dm *DisplayManager) SetScale(n int) bool {
+	if dm.tiledNoScale() {
+		return false
+	}
 	if n < dm.minMultiplierForMode() || n > dm.maxMultiplierThatFits() {
 		return false
 	}
@@ -409,7 +463,47 @@ func (dm *DisplayManager) SetScale(n int) bool {
 	return true
 }
 
+// setTiles hands the window's content to draw, which wants it w by h, and
+// starts the window on its way to that size as a change of zoom does. A nil
+// draw gives the window back to the one machine's picture.
+func (dm *DisplayManager) setTiles(w, h int, draw func()) {
+	dm.tiles, dm.tilesW, dm.tilesH = draw, w, h
+	dm.updateTargetSize()
+}
+
+// syncCurrentToWindow sets the animated current size to the actual OS window
+// size, so a snap that follows a user drag animates from where the window
+// really is rather than from a stale model size.
+func (dm *DisplayManager) syncCurrentToWindow(w, h int) {
+	dm.currentWidth, dm.currentHeight = w, h
+}
+
+// renderTiles is Render while the window is tiled: the tiles, then what
+// Render draws over any picture.
+func (dm *DisplayManager) renderTiles(paused bool) {
+	rl.BeginDrawing()
+	rl.ClearBackground(rl.Black)
+	dm.tiles()
+	if dm.showFPS {
+		dm.fps = rl.GetFPS()
+		rl.DrawText(fmt.Sprintf("FPS: %d", dm.fps), int32(rl.GetScreenWidth()-100), int32(rl.GetScreenHeight()-30), 20, rl.Red)
+	}
+	if paused {
+		rl.DrawText("PAUSED", 10, 10, 20, rl.Yellow)
+	}
+	if dm.preEndDrawHook != nil {
+		dm.preEndDrawHook()
+	}
+	rl.EndDrawing()
+}
+
 func (dm *DisplayManager) updateTargetSize() {
+	if dm.tiles != nil {
+		dm.targetWidth = dm.tilesW
+		dm.targetHeight = dm.tilesH + dm.reservedTopHeight
+		dm.isAnimating = true
+		return
+	}
 	if dm.showBorder && dm.hasBorder() {
 		totalW, totalH := dm.totalSize()
 		dm.targetWidth = totalW * dm.screen.multiplier
@@ -421,20 +515,20 @@ func (dm *DisplayManager) updateTargetSize() {
 	dm.isAnimating = true
 }
 
-// classicScreenExtraTopMargin is how much of RefHeight's extra 8px over
-// TotalHeight (display_constants.go) is added to the classic 256x192
-// picture's OWN top margin, on top of BorderTop -- 4px, split evenly with
-// classicScreenExtraBottomMargin, per the tech team's own choice (2026-09-15,
-// T-29 GUI-wiring pass) over an asymmetric split or growing the window.
-// Zero for any renderer other than the standard one (totalSize() doesn't
+// classicScreenExtraTopMargin is how much of RefHeight's extra 8px over TotalHeight
+// (display_constants.go) goes above the classic 256x192 picture, on top of BorderTop: all
+// of it. That puts the picture 32 pixels down as well as 32 in, which is where a Next has
+// it in its 320x256 frame (nextframe.go), so the picture does not move when a Next turns
+// one of its layers on and the frame takes over the window. Until 0.13.0 the 8 pixels were
+// split 4 and 4. Zero for any renderer other than the standard one (totalSize() doesn't
 // use RefHeight for those, so there is no extra margin to distribute).
-const classicScreenExtraTopMargin = 4
-const classicScreenExtraBottomMargin = 4
+const classicScreenExtraTopMargin = 8
+const classicScreenExtraBottomMargin = 0
 
 // classicScreenOffset returns where the classic 256x192 (or active
 // non-standard renderer's own) picture should be drawn within the
 // window, in window pixels at the current multiplier -- the ONE place
-// BorderTop's extra 4px margin (see classicScreenExtraTopMargin above) is
+// BorderTop's extra margin (see classicScreenExtraTopMargin above) is
 // actually applied. For any renderer other than the standard one, this is
 // exactly borderLeft*mult, borderTop*mult, unchanged from every version
 // of this code before the T-29 GUI-wiring pass.
@@ -676,6 +770,11 @@ func InitDisplay(scale int, showBorder bool, renderer VideoRenderer) (int, int) 
 	windowHeight := totalH * initialScale
 
 	rl.SetTraceLogLevel(rl.LogNone)
+	// Resizable so a tiled layout can be dragged to a new size; the drag is
+	// snapped back to the layout's own proportions (machinedeck_gui.go's
+	// snapTiledResize). A single-machine view ignores drags and keeps its zoom
+	// steps, re-asserting its size on the next frame.
+	rl.SetConfigFlags(rl.FlagWindowResizable)
 	rl.InitWindow(int32(windowWidth), int32(windowHeight), "ZenZX")
 
 	if monW, monH := int(rl.GetMonitorWidth(rl.GetCurrentMonitor())), int(rl.GetMonitorHeight(rl.GetCurrentMonitor())); monW > 0 && monH > 0 {
@@ -695,27 +794,6 @@ func InitDisplay(scale int, showBorder bool, renderer VideoRenderer) (int, int) 
 	rl.SetTargetFPS(50) // Match Spectrum frame rate
 
 	return windowWidth, windowHeight
-}
-
-func HandleDroppedFiles(screen *SpectrumScreen) {
-	if rl.IsFileDropped() {
-		files := rl.LoadDroppedFiles()
-		if len(files) > 0 {
-			filename := files[0]
-			// Check file extension
-			if len(filename) > 4 {
-				ext := filename[len(filename)-4:]
-				if ext == ".scr" || ext == ".SCR" {
-					if err := screen.LoadFromFile(filename); err == nil {
-						fmt.Printf("Loaded screen: %s\n", filename)
-					} else {
-						fmt.Printf("Error loading screen %s: %v\n", filename, err)
-					}
-				}
-			}
-		}
-		rl.UnloadDroppedFiles()
-	}
 }
 
 // Render draws the current frame: the active VideoRenderer's output,
@@ -744,24 +822,41 @@ func (dm *DisplayManager) Render(paused bool, mem *SpectrumMemory, screen *Spect
 	// than in a renderer's own Decode.
 	dm.screen.updateFlash()
 
+	if dm.tiles != nil {
+		dm.renderTiles(paused)
+		return
+	}
+
 	fastRenderer, useFastPath := dm.videoRenderer.(FastGUIRenderer)
 	useFastPath = useFastPath && dm.gpuTexturesReady
+	// A Next in a Timex screen mode or with the tilemap on is drawn by software.
+	soft := dm.nextSoftwareULA(mem, screen, io)
+	if soft != nil {
+		useFastPath = false
+	}
+	// A Next with Layer 2, the sprites or the tilemap on: the whole frame, border included,
+	// is composed by software (nextframe.go) and shown as one texture over the picture area.
+	var frame *image.RGBA
+	if io != nil && io.nextFrameActive() {
+		frame = io.NextFrame(func() *image.RGBA { return dm.videoRenderer.Decode(mem, screen) }, screen, io.borderColor)
+		soft, useFastPath = frame, false
+	}
 
 	rl.BeginDrawing()
 
 	if !useFastPath {
-		img := dm.videoRenderer.Decode(mem, screen)
-		if !dm.screenTextureReady {
-			dm.screenTexture = rl.LoadTextureFromImage(rl.NewImageFromImage(img))
-			dm.screenTextureReady = true
-		} else {
-			rl.UpdateTexture(dm.screenTexture, img)
+		img := soft
+		if img == nil {
+			img = dm.videoRenderer.Decode(mem, screen)
 		}
+		dm.showInScreenTexture(img)
 	}
 
 	drawBorder := dm.showBorder && dm.hasBorder()
 
-	if drawBorder {
+	if frame != nil {
+		dm.drawNextFrame(drawBorder)
+	} else if drawBorder {
 		dm.renderBorderStripes(dm.borderChanges, dm.frameOrigin, dm.borderColor)
 
 		rl.ClearBackground(rl.Black)
@@ -795,7 +890,7 @@ func (dm *DisplayManager) Render(paused bool, mem *SpectrumMemory, screen *Spect
 		} else {
 			rl.DrawTexturePro(
 				dm.screenTexture,
-				rl.Rectangle{X: 0, Y: 0, Width: float32(dm.screenW), Height: float32(dm.screenH)},
+				rl.Rectangle{X: 0, Y: 0, Width: float32(dm.screenTexture.Width), Height: float32(dm.screenTexture.Height)},
 				rl.Rectangle{X: float32(borderH), Y: float32(borderV), Width: float32(screenWidth), Height: float32(screenHeight)},
 				rl.Vector2{X: 0, Y: 0},
 				0,
@@ -803,19 +898,6 @@ func (dm *DisplayManager) Render(paused bool, mem *SpectrumMemory, screen *Spect
 			)
 		}
 		rl.EndScissorMode()
-		// Layer 2/sprites draw OUTSIDE the classic screen's own scissor
-		// rect (2026-09-15, T-29 GUI-wiring pass): a wider-than-256 or
-		// taller-than-192 Layer 2 viewport, centred in the fixed
-		// reference canvas via nextLayersViewportOffset, can legitimately
-		// extend beyond the classic screen's own scissor bounds (which
-		// stay sized to screenW/screenH -- the classic picture's real
-		// size -- regardless of Layer 2's mode), so clipping it to that
-		// rect would silently crop wide-mode content exactly the way the
-		// original GUI-wiring gap did.
-		if io != nil && dm.gpuTexturesReady {
-			nx, ny := dm.nextLayersViewportOffset(io)
-			renderNextLayersGPU(dm, io, mem, float32(nx), float32(ny), dm.screen.multiplier)
-		}
 	} else {
 		rl.ClearBackground(rl.Black)
 		if useFastPath {
@@ -823,16 +905,12 @@ func (dm *DisplayManager) Render(paused bool, mem *SpectrumMemory, screen *Spect
 		} else {
 			rl.DrawTexturePro(
 				dm.screenTexture,
-				rl.Rectangle{X: 0, Y: 0, Width: float32(dm.screenW), Height: float32(dm.screenH)},
+				rl.Rectangle{X: 0, Y: 0, Width: float32(dm.screenTexture.Width), Height: float32(dm.screenTexture.Height)},
 				rl.Rectangle{X: 0, Y: float32(dm.reservedTopHeight), Width: float32(dm.currentWidth), Height: float32(dm.currentHeight - dm.reservedTopHeight)},
 				rl.Vector2{X: 0, Y: 0},
 				0,
 				rl.White,
 			)
-		}
-		if io != nil && dm.gpuTexturesReady {
-			nx, ny := dm.nextLayersViewportOffset(io)
-			renderNextLayersGPU(dm, io, mem, float32(nx), float32(ny), dm.screen.multiplier)
 		}
 	}
 

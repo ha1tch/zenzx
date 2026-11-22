@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // ============================================================================
 // ZX Spectrum Next: Layer 2 Access Port, IO port 0x123B (T-29 completion
@@ -99,7 +99,7 @@ func (io *SpectrumIO) layer2AccessPortTargetPage(offset uint16) (page uint8, ok 
 	}
 	var baseBank uint8
 	if p.usesShadowBank() {
-		baseBank = io.GetNextRegister(0x13)
+		baseBank = io.layer2ShadowBasePage()
 	} else {
 		baseBank = io.layer2BaseBank()
 	}

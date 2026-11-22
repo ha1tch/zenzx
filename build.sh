@@ -11,7 +11,7 @@ VERSION=$(git describe --tags --always --dirty 2>/dev/null || cat VERSION 2>/dev
 OUT="${1:-zenzx}"
 
 echo "Building GUI ZenZX ${VERSION} -> ${OUT}"
-CGO_ENABLED=1 go build -ldflags "-s -w -X main.version=${VERSION}" -o "${OUT}" .
+CGO_ENABLED=1 go build -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${OUT}" ./cmd/zenzx
 
 echo "Done:"
 ls -lh "${OUT}"

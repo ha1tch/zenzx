@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import "testing"
 
@@ -82,10 +82,10 @@ func TestKempstonMousePortDecode(t *testing.T) {
 	if got := io.ReadPort(0xFBDF); got != 5 {
 		t.Errorf("X port = %d, want 5", got)
 	}
-	var negThree int32 = -3
-	wantY := uint8(negThree) // wraps to 253 at runtime -- not expressible as a Go constant conversion
+	// DeltaY -3 is 3 up the screen in the host's terms; the Kempston counter rises upward.
+	wantY := uint8(3)
 	if got := io.ReadPort(0xFFDF); got != wantY {
-		t.Errorf("Y port = %d, want %d (wrapped -3)", got, wantY)
+		t.Errorf("Y port = %d, want %d: the counter rises as the mouse moves up", got, wantY)
 	}
 	if got := io.ReadPort(0xFADF); got != 0xFF&^0x02 {
 		t.Errorf("buttons port = 0x%02X, want 0x%02X (left pressed)", got, 0xFF&^0x02)

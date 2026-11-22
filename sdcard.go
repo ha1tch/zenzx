@@ -1,9 +1,7 @@
-package main
+package zenzx
 
 import (
-	"fmt"
 	"io"
-	"os"
 )
 
 // sdIdle is the universal SPI bus filler / NCR / Nac-gap byte value.
@@ -58,6 +56,12 @@ type SDCard struct {
 	img       SDCardImage
 	sizeBytes int64
 
+	// programAt are the places in the image where blocks that begin a BASIC
+	// program were read, oldest first, until the machine asks which files
+	// they are (program_name.go). A few are kept: the first may be the
+	// system's own start-up file.
+	programAt []int64
+
 	csAsserted bool
 	cmdBuf     []byte // bytes of the SD command frame collected so far (0-6)
 	pending    []byte // response bytes still to be shifted out
@@ -108,6 +112,9 @@ type SDCard struct {
 	// it exactly like a WriteData(0xFF) would."
 	freshByte bool
 
+	// wr is the state of a write in progress, and the write-protect switch: sdcard_write.go.
+	wr sdWriteState
+
 	// Debug, when true, logs every CS transition and command/response
 	// frame to stderr -- off by default (zero value), no behaviour
 	// change unless a caller sets it (zenzx_headless.go/zenzx_gui.go's
@@ -144,13 +151,14 @@ func NewSDCard(img SDCardImage, sizeBytes int64) *SDCard {
 func (c *SDCard) WriteCS(value uint8) {
 	asserted := value&0x01 == 0
 	if c.Debug {
-		fmt.Fprintf(os.Stderr, "[sdcard] CS write 0x%02X -> %s (was %s)\n", value,
+		tracef("[sdcard] CS write 0x%02X -> %s (was %s)\n", value,
 			map[bool]string{true: "asserted", false: "deasserted"}[asserted],
 			map[bool]string{true: "asserted", false: "deasserted"}[c.csAsserted])
 	}
 	if asserted != c.csAsserted {
 		c.cmdBuf = c.cmdBuf[:0]
 		c.appCmd = false
+		c.wr.state = sdWriteNone // a write does not survive the card being deselected
 		c.freshByte = false
 		c.persistentByte = 0xFF
 		if !c.multiBlock {
@@ -194,7 +202,7 @@ func (c *SDCard) WriteCS(value uint8) {
 func (c *SDCard) WriteData(value uint8) {
 	if !c.csAsserted {
 		if c.Debug {
-			fmt.Fprintf(os.Stderr, "[sdcard] data write 0x%02X ignored (CS deasserted)\n", value)
+			tracef("[sdcard] data write 0x%02X ignored (CS deasserted)\n", value)
 		}
 		c.lastByte = 0xFF
 		return
@@ -203,7 +211,7 @@ func (c *SDCard) WriteData(value uint8) {
 	if len(c.pending) > 0 || c.multiBlock {
 		b := c.nextResponseByte()
 		if c.Debug {
-			fmt.Fprintf(os.Stderr, "[sdcard] data write 0x%02X -> clocked out 0x%02X (%d bytes left)\n", value, b, len(c.pending))
+			tracef("[sdcard] data write 0x%02X -> clocked out 0x%02X (%d bytes left)\n", value, b, len(c.pending))
 		}
 		c.lastByte = b
 	} else {
@@ -211,10 +219,15 @@ func (c *SDCard) WriteData(value uint8) {
 	}
 	c.freshByte = true
 
+	// A write in progress takes the byte: a data token, the data, or filler (sdcard_write.go).
+	if len(c.cmdBuf) == 0 && c.writeDataByte(value) {
+		return
+	}
+
 	if len(c.cmdBuf) == 0 {
 		if value&0xC0 != 0x40 {
 			if c.Debug {
-				fmt.Fprintf(os.Stderr, "[sdcard] data write 0x%02X ignored (not a command start-bit byte, not mid-frame)\n", value)
+				tracef("[sdcard] data write 0x%02X ignored (not a command start-bit byte, not mid-frame)\n", value)
 			}
 			return
 		}
@@ -236,19 +249,19 @@ func (c *SDCard) WriteData(value uint8) {
 	}
 	c.cmdBuf = append(c.cmdBuf, value)
 	if c.Debug {
-		fmt.Fprintf(os.Stderr, "[sdcard] data write 0x%02X -> cmdBuf now % 02X\n", value, c.cmdBuf)
+		tracef("[sdcard] data write 0x%02X -> cmdBuf now % 02X\n", value, c.cmdBuf)
 	}
 	if len(c.cmdBuf) == 6 {
 		if c.Debug {
-			fmt.Fprintf(os.Stderr, "[sdcard] cmd frame % 02X\n", c.cmdBuf)
+			tracef("[sdcard] cmd frame % 02X\n", c.cmdBuf)
 		}
 		c.execCommand(c.cmdBuf)
 		if c.Debug {
 			n := len(c.pending)
 			if n > 16 {
-				fmt.Fprintf(os.Stderr, "[sdcard]   -> resp % 02X ... (%d bytes total)\n", c.pending[:16], n)
+				tracef("[sdcard]   -> resp % 02X ... (%d bytes total)\n", c.pending[:16], n)
 			} else {
-				fmt.Fprintf(os.Stderr, "[sdcard]   -> resp % 02X\n", c.pending)
+				tracef("[sdcard]   -> resp % 02X\n", c.pending)
 			}
 		}
 		c.cmdBuf = c.cmdBuf[:0]
@@ -284,7 +297,7 @@ func (c *SDCard) ReadData() uint8 {
 	if len(c.pending) > 0 || c.multiBlock {
 		b := c.nextResponseByte()
 		if c.Debug {
-			fmt.Fprintf(os.Stderr, "[sdcard] bare data read -> clocked out 0x%02X (%d bytes left)\n", b, len(c.pending))
+			tracef("[sdcard] bare data read -> clocked out 0x%02X (%d bytes left)\n", b, len(c.pending))
 		}
 		c.lastByte = b
 	} else {
@@ -312,6 +325,13 @@ func (c *SDCard) nextResponseByte() uint8 {
 	return c.persistentByte
 }
 
+// noteBlock remembers where a block that begins a BASIC program was read.
+func (c *SDCard) noteBlock(offset int64, block []byte) {
+	if len(c.programAt) < 8 && plus3DOSProgram(block) {
+		c.programAt = append(c.programAt, offset)
+	}
+}
+
 // loadNextMultiBlock loads multiBlockSector into pending as the next
 // CMD18 block: one filler byte (0xFF) + the 0xFE data token + 512
 // sector bytes + a real CRC-16 -- confirmed against jnext, which
@@ -337,6 +357,7 @@ func (c *SDCard) loadNextMultiBlock() {
 	}
 	buf := make([]byte, sectorSize)
 	_, _ = c.img.ReadAt(buf, offset)
+	c.noteBlock(offset, buf)
 	crc := sdCRC16(buf)
 	resp := make([]byte, 0, 2+sectorSize+2)
 	resp = append(resp, sdIdle, 0xFE)
@@ -394,10 +415,19 @@ func (c *SDCard) execCommand(frame []byte) {
 		c.cmd9SendCSD()
 	case 12:
 		c.cmd12StopTransmission()
+	case 13:
+		c.cmd13SendStatus()
+	case 16, 23:
+		// SET_BLOCKLEN and (after CMD55) SET_WR_BLK_ERASE_COUNT: accepted, nothing to do.
+		c.queueR1(c.r1())
 	case 17:
 		c.cmd17ReadSingleBlock(arg)
 	case 18:
 		c.cmd18ReadMultipleBlock(arg)
+	case 24:
+		c.cmdWriteBlock(arg, false)
+	case 25:
+		c.cmdWriteBlock(arg, true)
 	case 55:
 		c.cmd55AppCmd()
 	case 58:
@@ -405,8 +435,9 @@ func (c *SDCard) execCommand(frame []byte) {
 	default:
 		// Illegal-command bit (R1 bit 2) set, confirmed against jnext
 		// (its own comment cites SD Physical Layer Simplified Spec
-		// § 7.3.2.1): CMD10/16/23/24 and anything else this stub
-		// doesn't implement lands here.
+		// § 7.3.2.1): CMD10 and anything else this stub doesn't
+		// implement lands here. (CMD13, 16, 23, 24 and 25 came with
+		// writing, sdcard_write.go.)
 		c.queueR1(c.r1() | 0x04)
 	}
 }
@@ -535,6 +566,7 @@ func (c *SDCard) cmd17ReadSingleBlock(sector uint32) {
 	}
 	buf := make([]byte, sectorSize)
 	_, _ = c.img.ReadAt(buf, offset)
+	c.noteBlock(offset, buf)
 	crc := sdCRC16(buf)
 	resp := make([]byte, 0, 5+sectorSize+2)
 	resp = append(resp, sdIdle, sdIdle, 0x00, sdIdle, 0xFE)
@@ -564,6 +596,7 @@ func (c *SDCard) cmd18ReadMultipleBlock(sector uint32) {
 	}
 	buf := make([]byte, sectorSize)
 	_, _ = c.img.ReadAt(buf, offset)
+	c.noteBlock(offset, buf)
 	crc := sdCRC16(buf)
 	resp := make([]byte, 0, 5+sectorSize+2)
 	resp = append(resp, sdIdle, sdIdle, 0x00, sdIdle, 0xFE)

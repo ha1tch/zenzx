@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // NextREG 0x8E: the classic paging ports in one register (T-36).
 //

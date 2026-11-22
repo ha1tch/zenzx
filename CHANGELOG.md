@@ -4,6 +4,1094 @@ All notable changes to ZenZX are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.50.0] - 2026-11-21
+
+A substantial minor release gathering the drawer, SD-card and floppy work, the
+shipped Next demo card, the Microdigital and zenpoint custom ROMs, the menu
+rework, and a documentation sweep.
+
+### Added
+
+- **Drop a file onto a storage slot.** Dragging a file over the window brings
+  down a slot drawer (styled like the machine dock); dropping onto a slot copies
+  the file into that slot's media -- a Next's SD card (slot 2) or the +3's disc,
+  through its +3DOS filesystem. The drop goes to the focused machine.
+- **The Next Browser refreshes without a keypress.** After a file is written to a
+  live SD card, the host drives NextZXOS's own M-then-Y remount so the Browser
+  re-reads and shows the file, located by a firmware-version-robust signature and
+  targeted at the focused machine.
+- **The release ships ZenZX's own Next demo card** (gallop, fuji, orbit) beside
+  the program, with the boot files downloading beside it; `zenzx-headless
+  -next-examples-card PATH` builds one on demand.
+- **Custom ROMs in `custom-roms/`:** the Microdigital TK90X (standard, Brazilian,
+  Uruguayan) and TK95 (Portuguese, Spanish), and our own zenpoint 48K swap ROMs
+  (Spanish, English).
+
+### Changed
+
+- **The Machine menu groups every model under its maker** -- Sinclair Research
+  Ltd, Amstrad plc, TBBlue / SpecNext Ltd, In Spanish, Timex -- all at one level,
+  with the Spanish models brought up level with the rest.
+- **The mount drawer follows the dock's rounded, floating look.**
+- **A card write is seen after a remount**, new disc/card files carry valid FAT
+  timestamps, and the debugger HUD's grip animation is half speed.
+- **Documentation sweep:** the README compressed with captioned Next-example
+  screenshots; `gui.md`/`MANUAL.md` document the slot drop; the stale `-noesc`
+  flag corrected to `-escape` and `-z80n` documented; and the changelog
+  consolidated, with older per-patch detail moved to
+  [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).## [0.42.9] - 2026-11-21
+
+### Added
+
+- **The release ships ZenZX's own Next demo card.** Each release package now
+  carries a `next/zenzx-card.img` beside the program -- a self-contained card
+  holding the example programs (gallop, fuji, orbit) -- so a first Next launch
+  boots NextZXOS with the examples already in its second slot, no `-next-examples`
+  step. The card is built from the embedded programs with no boot files and no
+  assembler; `zenzx-headless -next-examples-card PATH` writes one on demand, and
+  the CI package step uses it. It adds about 370 KB to a package (the card is a
+  sparse FAT32 image that compresses to almost nothing).
+
+### Changed
+
+- **The Next download prefers a `next` folder beside the program.** When one
+  exists (as in a release package), the boot files download into it, beside the
+  shipped demo card, so the card auto-inserts. The `-next-files` flag and the
+  `NEXT_FILES` variable still take precedence, and the per-user folder remains the
+  fallback.
+
+## [0.42.8] - 2026-11-20
+
+### Changed
+
+- **Documentation sync and README tidy.** The README's surplus detail (the
+  multi-machine/link specifics and the library-build specifics) moved to
+  `docs/link.md` and `docs/development.md`, leaving the README a lean overview
+  with pointers; the Next code-example screenshots (gallop, fuji, orbit) gained
+  captions matching the games grids. `docs/gui.md` now documents dropping a file
+  onto a storage slot -- the drawer, the per-slot routing to a card or disc, the
+  focused-machine rule, and the refusal toast for an inert slot.
+
+## [0.42.7] - 2026-11-20
+
+### Changed
+
+- **The mount drawer follows the dock's look.** The slot drawer that slides down
+  on a drag now matches the dock: a rounded panel that floats off the top edge and
+  lets the machine behind it show through (solid at the top edge, fading toward the
+  machine), with rounded tiles inside, drawn with raycanvas's soft corners the same
+  way the dock draws. It replaces the earlier flat, square-edged panel and tiles.
+
+## [0.42.6] - 2026-11-20
+
+### Added
+
+- **Drop files onto a +3 floppy.** Dropping a file onto the "+3 Drive A" slot now
+  writes it into the disc in the drive, the floppy counterpart of dropping onto an
+  SD card. The file is added to the disc's +3DOS filesystem through plus3
+  (`github.com/ha1tch/plus3`, its `diskimg` package), the image is saved and the
+  drive reloaded from it, so the running +3 reads the new disc; the new file is
+  seen on the next directory access (a CAT or a loader). As with the SD slots, the
+  write goes to the focused machine's drive -- two +3 machines keep their own
+  discs -- and the acknowledgement is the toast. Drive A only (the FDC models one
+  drive). A drop is refused, with a toast, when the drive is empty.
+
+## [0.42.5] - 2026-11-20
+
+### Fixed
+
+- **The host-driven Browser refresh now targets the focused machine.** With two
+  or more Next machines running, a file dropped while the second was focused
+  still refreshed the first machine's Browser (and landed on its card), because
+  the mount drawer acted on the machine it was built with rather than the one in
+  focus. The drawer now resolves the focused machine (the deck's front) at drop
+  time and both writes the file and drives the remount against that machine, and
+  it captures the target when the refresh is armed so a focus change mid-sequence
+  cannot redirect it. A single machine is unaffected. Verified on real NextZXOS
+  26.11 with two machines (dormant guard G-10).
+
+## [0.42.4] - 2026-11-20
+
+SD-card refresh in NextZXOS: a file copied to a card now shows up in the
+Browser, and can be made to show up without the manual remount.
+
+### Added
+
+- **Host-driven Browser refresh, no keypress.** After a file is written to a
+  live card, the host now drives NextZXOS's own Browser remount (its M-then-Y)
+  so the Browser re-reads the directory and shows the new file without the user
+  pressing anything. It works by feeding the firmware's own key sysvars
+  (LAST_K `$5C08`, FLAGS `$5C3B` bit 5) the two keycodes its idle key-wait loop
+  reads, so the firmware runs its real remount-and-rebuild path on its own
+  thread. The loop is found by its byte signature (`76 21 3B 5C CB 6E` --
+  HALT / LD HL,FLAGS / BIT 5,(HL)), the classic Spectrum key-wait idiom, not a
+  fixed address, so it survives firmware versions that keep the idiom and
+  declines rather than guesses where they do not. Driven across frames by the
+  mount drawer so it never blocks the render loop. Verified on real NextZXOS
+  26.11 (dormant guard G-09).
+
+### Fixed
+
+- **A card write is now seen by NextZXOS after a remount.** Writing files to a
+  card (`AddFiles`) replaces the card image by renaming a new file over it,
+  which orphaned the open handle the emulator held, so NextZXOS kept seeing the
+  old contents even after its Browser remount. The card is now re-inserted after
+  the write, reopening the handle, so a remount (manual or host-driven) re-reads
+  the new image. Verified single-machine (G-07) and for two concurrent Next
+  machines with independent card sets (G-08).
+- **New files on a card carry valid FAT timestamps.** Directory entries written
+  by `AddFiles` had zero (invalid) FAT dates; they now carry a real date/time,
+  with parent-directory write times bumped. A correctness fix, independent of the
+  refresh above.
+
+### Changed
+
+- **The debugger HUD's grip reveal/hide is half speed.** The gripper's
+  show/hide ease was halved (step 0.12 -> 0.06) for a smoother, slower reveal.
+
+## [0.42.3] - 2026-11-20
+
+Fixes to the mount drawer's drag handling, a proportional resize for tiled
+layouts, and font and layout polish.
+
+### Added
+
+- **Proportional window resize for tiled layouts.** A tiled layout specifies
+  proportions, not a fixed size, so its window is now resizable: dragging an
+  edge snaps the window back to the layout's own aspect
+  (`(cols*RefWidth):(rows*RefHeight)` -- wide for columns, tall for a stack),
+  with the dimension dragged furthest kept and the other derived. The tiles
+  stretch to fill, the aspect is preserved through the floor and the monitor
+  clamp, and the snap animates from where the window actually is. A
+  single-machine view is unchanged -- it keeps its zoom steps.
+
+### Fixed
+
+- **A HUD resize no longer pops the mount drawer open.** The drawer armed on
+  any button-drag over the window, which caught the debugger HUD's resize
+  drag. It now stands down whenever another widget owns the pointer (a HUD
+  resize or hover, an open HUD, menu, dock or overlay).
+- **OS file drops now reach the mount drawer.** raylib reports an OS file drag
+  only at the drop, never during it, so the drawer could not appear mid-drag
+  and drops fell through to machine-load. Dropping is now drop-then-reveal:
+  a drop of a non-machine file opens the drawer as confirmation and copies to
+  the slot under the cursor (or the nearest writable slot), then auto-closes.
+  Routing is by file type -- tapes, snapshots, discs, `.scr` and `.nex` load
+  into the machine; anything else is copied to a card.
+- **A dropped `.nex` is acknowledged.** NEX loading is not implemented yet
+  (tracked), so a dropped `.nex` now reports that rather than silently doing
+  nothing.
+- **The mount drawer's slot legends no longer overlap.** The slot title is
+  drawn at double size; the lines under it now advance past its real height
+  instead of sitting on top of it.
+
+### Changed
+
+- **Sinclair Narrow digits 0 and 7** are nudged one column right so every
+  digit shares the same right edge, lining up the disassembly's hex columns.
+
+## [0.42.2] - 2026-11-20
+
+Drag-and-drop mounting with on-screen acknowledgements, an authentic Sinclair
+font set, and a new narrow face for the debugger HUD.
+
+### Added
+
+- **A mount drawer for drag-and-drop.** When a machine has storage mounted and
+  a file is dragged in, a drawer slides down from the top showing the machine's
+  storage slots as drop targets. Dropping a file onto an eligible slot writes
+  it into that slot's filesystem (SD cards, via `pkg/nextcard`), with the
+  capacity and read-only checks enforced; a read-only or over-capacity slot is
+  inert, not a target. The `+3` drive is shown but its drops are deferred.
+- **On-screen acknowledgements (OSD toasts).** A mount, or a file loaded into
+  the machine (tape, disc, snapshot, `.scr`), now raises a prominent rising
+  caption naming what happened and where -- files are named outright when few,
+  counted when many -- rather than only printing to stdout.
+- **`tools/mkfont`**, a reproducible BDF generator that extracts the ZX
+  Spectrum character set from a ROM. It emits the 8x8 `sinclair.bdf` and, with
+  `-narrow`, the new 6x8 `sinclair-narrow.bdf`.
+- **Sinclair Narrow** (`pkg/fonts/sinclair-narrow.bdf`), a 6x8 face derived
+  from the Spectrum character set: each 8-wide cell loses two columns, with a
+  number of glyphs hand-redrawn for legibility and the lowercase right-aligned
+  in the cell. Available as `fonts.SinclairNarrow()`.
+
+### Fixed
+
+- **Dropped-file loading regressed to `.scr` only.** The drop list was read
+  twice per frame, and the raylib binding frees it on the first read, so every
+  loader after the first saw nothing. The drop is now read once and dispatched,
+  restoring `.tap`/`.tzx`, snapshots and `.dsk` across 48K/128K/Next.
+- **`sinclair.bdf` carried internationalised-ROM glyphs.** Codes for
+  `[ \ ] { | } ~` showed Spanish locale shapes; the font is regenerated from a
+  genuine UK 48K ROM so those are the correct Spectrum glyphs.
+
+### Changed
+
+- **The debugger HUD now draws in Sinclair Narrow** instead of the 8x8 Sinclair
+  face.
+
+## [0.42.1] - 2026-11-19
+
+Debugger HUD fixes and a reworked Escape key.
+
+### Fixed
+
+- **Typing in the debugger HUD** now works where the platform's character
+  queue is not populated: the HUD reads `GetCharPressed` first and falls back
+  to mapping the keys pressed that frame to characters, so the command line
+  accepts input regardless of the char-queue path.
+
+### Changed
+
+- The debugger HUD no longer shows a banner line when it opens; it opens to a
+  clean prompt.
+- **`-noesc` is replaced by `-escape`** with four modes: `on` (Escape quits at
+  once, the previous default), `off` (Escape never quits), `close` (Escape
+  closes an open dialog, menu or the HUD only, never quitting), and `query`
+  (Escape asks for confirmation -- a second Escape within two seconds -- before
+  quitting). In every mode but `off`, Escape closes an open HUD before any
+  quit. Escape handling now lives in one place, the GUI's main loop.
+
+## [0.42.0] - 2026-11-19
+
+A debugger for the running machine: a standalone CLI and an in-emulator HUD
+over one shared engine.
+
+### Added
+
+- **A debug engine over the CPU** (`pkg/debug`): breakpoints, single-step and
+  run, memory watchpoints, register and memory inspection, and live
+  disassembly through zendis. It drives the machine through a narrow
+  `DebugView` facade on the machine (`debugview.go`), leaving the zen80 core
+  untouched; the fetch seam is zen80's unconditional `DebugPCHook`, and a
+  bounded run budget means an unreachable breakpoint stops rather than hangs.
+- **A command layer** (`pkg/debugcmd`): one grammar and one fixed-format
+  renderer (`break`, `watch`, `step`, `run`, `regs`, `mem`, `dis`, `set`,
+  `reset`, `info`, `help`), shared by both surfaces so their output matches.
+- **A standalone debugger CLI** (`cmd/zendbg`): builds a headless machine,
+  attaches the engine and reads commands on stdin; raylib-free, so it runs on
+  Linux and macOS, and doubles as the engine's script-mode test harness.
+- **An in-emulator debugger HUD** (Alt+D): the same engine and grammar drawn
+  over the running machine in the BDF Sinclair font, with pixel-art transport
+  buttons in the dock-icon style, a slide animation matching the dock, and a
+  machine caption in the theme accent. In `-multi` it binds to the front
+  machine, keeps a separate command buffer and breakpoints per machine, and is
+  mutually exclusive with the dock. The HUD slides open and shut with an
+  easing animation, and its height is adjustable by a gripper on its top edge
+  that grows from the centre as it fades in (clamped between a minimum and
+  maximum height).
+
+### Changed
+
+- The machine library gained a `Debug()` facade (a T-39 increment) exposing a
+  narrow, read-mostly debug view without exporting the CPU or memory directly.
+- `zendis` is now a dependency (v0.8.2), which brings `zentools` up to v0.16.1.
+
+## [0.41.0] - 2026-11-18
+
+A connected-world example across nine Spectrums, and machine-code autorun.
+
+### Added
+
+- **A connected world across nine Spectrums** (`examples/world/`): a character
+  walks around a tiled screen and off its edge onto the neighbouring machine's
+  screen, and a ball bounces from screen to screen, over the existing
+  `-multi`/`-listen`/`-autorun` link. `world.asm` is a compact top-down engine
+  (tile background, walking character, drifting ball, wall collision, link
+  edge-crossing); `host.py` holds the 3x3 grid and routes what leaves one
+  screen onto the right edge of the next, reflecting at the world's border.
+  The tile and sprite art is `brickything`'s, rebuilt into Spectrum bitmaps
+  with zentools' `zx scr`; the sprite blitter and screen-address routines are
+  the Oakhollow engine's, included verbatim. The game tape (`world.tap`)
+  ships assembled, so the example runs without an assembler; `run.sh`
+  launches it and rebuilds the tape only when `zenas` is present and the
+  sources changed.
+- **Autorun a prebuilt tape** (`-autorun`, both programs): `-autorun` now
+  accepts a `.tap`/`.tzx` file as well as text BASIC. A file with that
+  extension is loaded straight into the deck and started with the same
+  `LOAD ""`, so an assembled machine-code program (such as the world example)
+  autoloads the same way a BASIC program does. `AutorunFile` routes by
+  extension to the new `AutorunTAP`; both share `autorunTape`. (T-70)
+- **Launch scripts for the link examples**: `examples/link/chat.sh` and
+  `examples/world/run.sh` start each example with the right parameters
+  (finding `zenzx` in `dist/` or the repo root, or via `ZENZX`), so neither
+  needs the command typed by hand.
+- **`-focus-follow`** (GUI, with `-multi`): move the keyboard focus to the
+  machine whose player beacon (the byte at `0xBFFE`) is set, so the controls
+  follow the player across screens. For an example whose program maintains
+  that beacon, such as the connected world; off by default.
+
+### Fixed
+
+- The connected-world example now has exactly one character and one ball in
+  the whole world, each owned by a single machine at a time: a machine draws
+  and moves an entity only while it holds it, so crossing to a neighbour
+  removes it from the source screen instead of leaving a copy behind. The
+  main loop is synchronised to the frame interrupt (`HALT`), which stops the
+  character flickering, and the walk cycle is paced so the legs no longer
+  blur. With `-focus-follow` the keyboard follows the character across the
+  grid. The world now wraps (a torus): walk off the top and you come out the
+  bottom, off the left and you come out the right. The ball is centred in its
+  frame, so it no longer looks like it bounces before reaching a wall. Two
+  more movers join it -- a pair of scissors and a plant pot -- each starting
+  in its own room; all three share one table-driven move/bounce/cross
+  routine. Each mover travels its own way: the ball diagonally, the scissors
+  straight across (a horizontal rook), the pot straight up and down (a
+  vertical rook). An entity now crosses only through the opening in the wall
+  border; against a solid wall section the hero is blocked and a mover
+  bounces, so a mover can no longer wedge at the edge and flood the link
+  (which had clogged the room and stopped the hero passing through it). At the
+  centre of a room a rook mover now picks a new direction -- any of the three
+  that are not a reversal -- so the scissors and pot wander the grid along the
+  corridors instead of running a fixed line (a small per-machine RNG makes the
+  choice). The pot moves at half the scissors' speed.
+- **`Alt+1`..`Alt+9`** (GUI, with `-multi`): bring that machine to the front
+  by keyboard -- the display, sound and keyboard pass to it, the same as
+  clicking its tile, so a grid of machines can be driven without the mouse.
+  A digit past the number of machines does nothing. `machinedeck_gui.go`
+  (`deckFocusKeys`, in the dock's `Update`). (T-71)
+
+### Changed
+
+- The world example's character now faces the way it walks: a mirrored,
+  left-facing set of walk frames is selected when it moves left (O), the
+  right-facing set when it moves right (P). `assets.asm` carries both sets;
+  `world.asm` keeps a `facing` byte.
+
+## [0.40.0] - 2026-11-18
+
+A layout switch, and a chat-room example.
+
+### Added
+
+- **`-layout`** (both programs): with several machines, how the GUI tiles them at the start -- `single` (the default), `columns`, `rows`, `grid`, `main-left`, `main-right`, the View menu's own layouts. So `-multi 4:48k,48k,128k,plus3 -layout grid` opens already tiled, with no trip to the View menu, which still changes it afterwards. The headless program renders each machine on its own and only checks the value. `multi.go` (`parseLayout`, `layoutHelp`), `machinedeck_gui.go` (`layoutByName`), applied in `zenzx_gui.go` once the deck is settled.
+- **A chat room over the link** (`examples/link/`): `chatroom.py`, a host that relays each line one machine sends to all the others, each in its own ANSI colour, and `chat.bas` with `chat-ada`, `chat-clive` and `chat-grace`, four clients that show what they are sent and send a line of their own. Four Spectrums in one room on the existing `-multi`/`-listen`/`-autorun`, tiled with `-layout grid`. `docs/link.md` has the command.
+
+### Known state
+
+- Seen under Xvfb: the four clients tiled in a grid, each showing the whole conversation, with the Python host relaying and colouring each line.
+- Not seen on macOS or Windows.
+
+## [0.39.0] - 2026-11-18
+
+The Info items open a window.
+
+### Changed
+
+- **Show Info (Tape), Disk Info, Card Info and Snapshot Info open a window with their text**, where each printed a line or two to the terminal, which someone who started the program from an icon never saw. The window is the reader Help and About use (`zenui.TextModal`); the text is still printed as well. `info_gui.go`.
+- **They say more than the printed lines did**, since there is room:
+
+  | Window | Says |
+  |---|---|
+  | Tape | file, mode, playing or stopped and at which block, the first program's name, every block. With no tape, how to load one (it used to say nothing at all) |
+  | Disk | file or "a blank disc, not saved yet", tracks and sides, unsaved changes, the file's size, whether the file has changed on disk since it was loaded |
+  | Card | for each slot: file, size, write protection, how many files and how much, and whether a Next boots from it, with the reason when not |
+  | Snapshot | how to load one, and what Quick Save and Save Timestamped write (it used to name `.zxs` only) |
+
+- A text of fewer than eighteen lines gets a panel of its own height; a longer one, a tape of many blocks, gets the tall panel and scrolls. Paths too long for a line are cut at the front, keeping the file's name.
+- `printDiskInfo` and `printCardInfo` are gone; `Alt+I` still prints the tape's blocks to the terminal (`ShowTapeInfo`), since a key pressed in the middle of a game should not put a window over it.
+
+### Known state
+
+- Seen under Xvfb: the Tape window on a 48K with an autorun program, the Disk window on a +3 with a blank disc, the Card window on a Next with two cards. Run Diagnostics still prints its report to the terminal: it is several screens long and is a debugging aid.
+- Not seen on macOS or Windows.
+
+## [0.38.0] - 2026-11-18
+
+Making a card bootable.
+
+### Added
+
+- **Make bootable, in the SD Cards window.** It takes the chosen card, which may be empty or hold files of your own, and puts on it the files a Next needs to start NextZXOS, copied from the standard card in the same folder. What the card held is kept. It is offered for a free card that does not boot, when the standard card is there to copy from; it shows its progress, can be stopped (the card is then as it was), and afterwards the card is listed as one that boots. `sdcards_gui.go`.
+- **`-next-bootable=CARD`**, both programs: the same from the command line. The name is looked for as `-multi` looks for a card's.
+- **The files, and how they were found** (`pkg/nextcard/bootable.go`): eight, 773 KB. `TBBLUE.FW`; `config.ini`, `menu.def`, `enNextZX.rom`, `enAltZX.rom`, `enNxtmmc.rom` and `keymap.bin` in `machines/next`; `nextzxos/enSystem.sys`. The 26.11 distribution's card has 1,393 files (0.38.0 as released said 1,350, which was an estimate); a Next reads thirteen of them on the way to the menu and into the Browser, and starts without five of those (the Multiface's ROM, the `gw03v33` ROM, the clock driver, the welcome screen, the Browser's settings), which was found by leaving each out in turn and then all five together. `MakeBootable` copies the eight and checks the result; `AddTree` is the one rewrite of the card that puts files in several folders.
+- **A card made this way boots**: `TestNextZXOSBootsFromAMinimalCard` makes an empty card, makes it bootable from the real standard card and runs a Next from it to the NextZXOS menu (dormant guard G-04, with the other tests that need the real boot files).
+
+### Fixed
+
+- A rewrite of a card that was stopped could still replace the card when every file being added was new to it, because only files already on the card were read through the step that looks for the stop. It is looked for once more before the new card takes the old one's place (`pkg/nextcard/add.go`).
+
+### Known state
+
+- Tried here: a new 280 MB card made bootable from the command line and from the window under Xvfb; the Next restarted from it and showed the NextZXOS menu with the card in slot 1; the Browser and NextBASIC opened on such a card in the headless program. The menu comes up after about 500 frames, which is when the full card shows its welcome screen.
+- The card has no dot commands, guides or programs, no welcome screen and no clock driver. That is what was asked for, and the manual says so where it describes the button.
+- The list is that of the 26.11 distribution. Another distribution's card as the source is checked for each of the eight files before anything is written, and the copy is refused if one is missing.
+- Not seen on macOS or Windows.
+
+## [0.37.0] - 2026-11-18
+
+Several Nexts from the command line, each with its own SD card.
+
+### Added
+
+- **`-multi` takes a card for a Next**: `-multi 3:next/sdcard-01,next/sdcard-02,next/sdcard-03` starts three Nexts, each booting from the card named after the slash (`next=sdcard-01` means the same). 0.36.0 allowed one Next and no more, because two cannot boot from one card. Now every Next but one must name a card, and the one that names none boots from the standard card, so `4:48k,next/sdcard-01,128k,next` is two Nexts as well. Both programs.
+- **How a name becomes a file**: as written, then with `.img` added, first from where the program was started and then in the folder of the Next's boot files; so `next/sdcard-01` is `sdcard-01.img` in that folder and `next/cards/a.img` is a path. Before any machine is made each card is checked to be one a Next can boot from (`nextcard.VerifyCard`: a sound FAT32, `TBBLUE.FW`, `config.ini` with `timing=0`), and a card named twice, or the standard card named while another Next is using it, is refused with the numbers of the two machines. `multi.go`: `parseMulti`, `resolveNextCards`, `nextCardsOf`, `bootNextFrom`.
+
+### Changed
+
+- The machine the single-machine options go to, when there are Nexts: the Next with no card named, or the first Next if each has its own (`primaryMachine`). It is also the only one that gets a card in its second slot.
+- A count before a colon is a count only when it is a number, so a path with a colon in it can be a card's name.
+
+### Known state
+
+- Tried here with three copies of the distribution's card: three Nexts in the headless program, each at the NextZXOS welcome screen after 1,500 frames; the same three in the GUI under Xvfb; and `4:48k,next/sdcard-01,128k,next` in the GUI, the four in their listed places.
+- The boot files must already be in place when a card is named; the first-start download is not offered on this path, and the error says how to fetch them.
+- `-autorun` is still not available on a Next (T-69).
+- Not seen on macOS or Windows.
+
+## [0.36.0] - 2026-11-18
+
+Several machines from the command line, a socket into each, and a BASIC program from a text file.
+
+### Added
+
+- **`-multi`: several machines at start-up.** `-multi 12,128k` is twelve 128Ks; `-multi 4:48k,48k,128k,next` is four machines, a model each; a list alone (`48k,128k`) and a count alone (`3`, of `-model`) are accepted too; the most is 32. In the GUI they are the dock's machines, in the order given, the first in front. In the headless program they run side by side, which it could not do before, and a screenshot of each is written (`<prefix>-m<N>-frame<F>.png`). `multi.go`, `multi_gui.go`, `multi_headless.go`.
+- **`-listen`: the link.** A TCP port for each machine (one number and the others follow it, or one each). What a program outside writes to the socket reaches a program on the machine a byte at a time through I/O ports 16384 (data) and 16385 (control), by a four-step handshake a BASIC program keeps up with; what the program writes to port 16384 comes back on the socket. The ports are opened on `127.0.0.1` unless `-listen-host` says otherwise. `link.go`; the protocol is in `docs/link.md`.
+- **`-autorun`: a BASIC program from a text file.** The text is tokenised with zentools' tokeniser, made into a tape of one program that runs from its first line, and loaded by pressing the keys for the machine once it has started: `LOAD ""` on a 48K, ENTER on a 128K, +2, +2A or +3. One file for all the machines or one place each. `autorun.go`.
+- **Headless: a run with no end, and its pace.** `-frames 0` runs until interrupted, and is the default with `-listen`; `-pace real` keeps to 50 frames a second (the default for a run with no end) and `-pace max` does not. A run that is interrupted writes its screenshots before it stops.
+- **`examples/link/`**: `receiver.bas` (prints what it is sent), `echo.bas` (sends it back in capitals) and `send.py`.
+- **For a program that embeds ZenZX**: `NewLink`, `Link.Listen`, `Link.Send`, `Link.Receive`, `Link.SetPorts`, `ZenZX.AttachLink`, `ZenZX.AutorunBASIC`, `ZenZX.AutorunFile`, `BasicTape`.
+
+### Changed
+
+- **One place sets a machine up as a model**: `loadModelROMs` (`machine_model.go`) is the ROM set and hardware of each model, taken out of the GUI's live model switch, which now calls it, so that the headless program's extra machines are made the same way (`newMachine`). The first machine of each program is still set up by its own start-up code. A step of T-39.
+
+### Fixed
+
+- **A dock with more machines than fit ran off both edges of the window.** It shrinks its pictures to fit, but scaled them as if the gaps between them shrank too, so the row stayed too wide by a share of the gaps: with twelve machines in a window at 3x the first picture and the New tile were cut off. The gaps and padding are now taken out before the pictures are scaled (`machinedeck_gui.go`, `layout`). Found by starting twelve machines.
+
+### Known state
+
+- **The two port numbers are not free on the hardware**: an even port is the ULA's and 16385 has the address bits of the 128K's paging port. A machine with a link answers exactly those two numbers itself, before anything else; a machine without one is unchanged, and a test holds both halves of that on a 128K.
+- Tried here: four machines (48K, 48K, 128K, +3) in the headless program and four (48K, 48K, 128K, Next) and twelve 128Ks in the GUI under Xvfb, each sent text from a Python client over TCP, the echo read back. The BASIC programs take about 19 to 37 bytes a second at the machines' own speed. Twelve headless 128Ks run at about six times their own speed on this computer.
+- Left out, in the register as T-69: `-autorun` on a Next or a TS2068; more than one Next from the command line; a link for a machine added from the dock; single-machine options for any machine but the first.
+- Not seen on macOS or Windows.
+
+## [0.35.2] - 2026-11-17
+
+The New tile has a picture.
+
+### Changed
+
+- **The dock's New tile shows a sprite instead of two crossed lines**: the ZX badge with a plus sign over its corner, a 16x16 Spectrum sprite drawn in zenplay (the sprite "Sprite 45" of the package `gui-elements.zplay`). It is kept in `dockicon_gui.go` in zenplay's own notation for a sprite frame, pixels and mask a row, and drawn at a whole number of screen pixels to each of its own so that it stays sharp: about half the tile's height, which is 4 to 1 in a window at 3x. It is black ink on white paper in every theme, and nothing is drawn round it: where the sprite has no pixel the dock shows through. The frame round the tile still takes the selection's colour when the tile is chosen.
+
+### Known state
+
+- The package has no sprite called `zx-add`; "Sprite 45" is the one that is the ZX badge with the add sign. If another was meant, the sixteen rows in `dockicon_gui.go` are all that changes.
+- Nothing of zenplay is imported: the sprite is sixteen strings.
+- Not seen on macOS.
+
+## [0.35.1] - 2026-11-17
+
+The dock lets the machine behind it show through.
+
+### Changed
+
+- **The dock's panel is see-through at the top and solid at the bottom.** Its opacity runs evenly from 50% at the top edge to 100% at the bottom edge, and the line round it from 70% to 100%. The pictures of the machines, their frames, the names and the New tile are as they were: a picture is never see-through. The two figures are `dockTopAlpha` and `dockEdgeTopAlpha` in `dockround_gui.go`.
+- **raycanvas v0.3.1**, which adds the two calls this uses, `FillRoundRectGradient` and `StrokeRoundRectGradient`. `go.sum` records `h1:RALSi+GrOj7i+4fpzDLprYUE9/pKy4IjaqMLl/brSrk=`, computed as 0.35.0's was.
+
+### Known state
+
+- **raycanvas v0.3.1 has to be on GitHub, tagged, before this builds anywhere but here.** v0.3.0 need not be pushed for ZenZX's sake any more; if it already is, v0.3.1 goes on top of it.
+- Not seen on macOS.
+
+## [0.35.0] - 2026-11-17
+
+The dock and the pictures in it have round corners.
+
+### Changed
+
+- **The machine dock is rounded.** Its panel, the pictures of the machines, the frames round them, the New tile and the mark under the machine in front all have round corners with smooth edges, and the dock stands 8 pixels above the bottom edge of the window instead of on it. A picture's corners are a twelfth of its height (between 4 and 14 pixels), so a picture that grows under the pointer keeps its shape; a picture flying out to the screen squares its corners off as it lands. The tiles of a tiled layout are part of the screen and stay square.
+- **How.** A picture in the dock is a live texture that lies over other pictures and over the machine on the screen, so its corners cannot be painted over in a background colour. It is drawn by [raycanvas](https://github.com/ha1tch/raycanvas) v0.3.0 as a mesh whose corners are part of its shape (`DrawImageRoundedCropped`), and the panel and frames by the same library's rounded fill and stroke. The window has no multisampling, which the machine's own picture must not have, so the edges are raycanvas's soft ones (`SetAntialias`). The code is `dockround_gui.go`; `machinedeck_gui.go` calls it where it drew rectangles.
+
+### Added
+
+- **A dependency: `github.com/ha1tch/raycanvas` v0.3.0**, in the GUI build only (the headless program does not import it). With it come its own: `fogleman/gg`, `golang/freetype`, `srwiley/oksvg`, `srwiley/rasterx`, `golang.org/x/image`, `golang.org/x/net` and `golang.org/x/text`, all pure Go. The stripped GUI binary grows from 11,975,224 to 12,570,968 bytes here (5%).
+
+### Known state
+
+- raycanvas was examined before it was used: it had no tests and several defects, among them the rounded clip that would have been the obvious way to do this. They are fixed in its v0.3.0, which has a test suite that reads pixels back; its CHANGELOG has the list. **raycanvas v0.3.0 has to be on GitHub, tagged, before this builds anywhere but here**, and its tagged tree has to be the delivered one: `go.sum` records `h1:El+LqLPrjyvzBO/GQ2m6W4N5+WFyoAfeaVPufh5272c=`, computed here with Go's own module archiver (`golang.org/x/mod/zip`, checked against zenui v0.2.0's published hash) from that tree.
+- Compared with 0.34.2 under Xvfb: the picture at start-up and with the View menu open are the same pixel for pixel outside the frame counter. The manual's picture of a machine being dragged from the dock was taken again.
+- The dock is still ZenZX's own and not a zenui widget (T-67).
+- Not seen on macOS.
+
+## [0.34.2] - 2026-11-17
+
+`go.sum` has the hash of zenui v0.2.0 as it is published.
+
+### Fixed
+
+- **`go.sum` recorded a hash for zenui v0.2.0 that no published zenui has**, so a build failed its checksum verification once zenui was on GitHub. The hash had been taken here from an archive made with `git archive`, which is not a module archive as Go makes one (it lists directories, and at the time it lacked `MANIFEST.sha256`). `go.sum` now has `h1:56msK0YKFjQhNdPPsh6GxZR1z6BMnMTDqa40XtLdreM=`, which is what the checksum database (`sum.golang.org`) records for `github.com/ha1tch/zenui` v0.2.0 as tagged on GitHub (commit `800ff13`); that tag was compared with the delivered archive file by file and is the same 94 files. `go mod tidy` leaves `go.mod` and `go.sum` as they are.
+
+### Known state
+
+- Nothing else changed: the code is 0.34.1's.
+- Do not delete `go.mod` to refresh the dependencies, and do not use `go get -u`: `go.mod` pins the versions this was built and tested with (raylib-go 0.60.0, oto 3.4.0, zentools 0.8.6), and `-u` replaces them all with the newest. `go mod tidy` is the command that brings `go.sum` up to date.
+
+## [0.34.1] - 2026-11-17
+
+The formatting check that CI runs is a step of every release.
+
+### Fixed
+
+- **A release cannot be cut with a Go file gofmt would change.** CI's first step is `gofmt -l .`, and a tree that fails it fails CI before anything is built. 0.27.0 went out with `io.go` unformatted, the last of the fifteen files T-06 listed in August; it was formatted in 0.28.0 and the tree has been clean since. `check_gofmt.sh` is now the one check: a step of `repoman relcore` that runs every time, `make fmt-check`, and CI's own step. It uses the gofmt of the Go the module builds with (`go env GOROOT`), not the first on `PATH`: here that was an older Go's, which can pass a tree the right version rejects. `sh check_gofmt.sh -w` (or `make fmt`) formats. T-06 is closed.
+
+### Known state
+
+- Run here before this release, as CI does: `gofmt -l .` with Go 1.26.5 over the 200 Go files of the tree and of the unpacked archive, both clean; `go vet -tags headless ./...`; the headless build and tests; the twelve cross builds of `make cross` (headless on seven platforms, the GUI without cgo on four, and with cgo on this one); the register check. CI's "Importable as a library" step, like every build, needs zenui v0.2.0 on GitHub.
+
+## [0.34.0] - 2026-11-17
+
+Machines have names, can be renamed, rotated and dragged onto tiles.
+
+### Added
+
+- **A machine takes the name of the first BASIC program it loads**, from tape, a +3 disc or a Next's SD card, unless it has been named by hand. Until then it is called by its model. `ZenZX.FirstProgram` (`program_name.go`) is where the three media meet: the tape's first Program header once the tape has delivered something; on disc, a sector that begins a +3DOS file of type Program, named from the directory entry whose first block it is; on a card, a block that begins such a file, named from the FAT volume. NextZXOS's `autoexec.1st` and `autoexec.bas` are passed over: the system runs them itself when it starts.
+- **Renaming.** In the dock, `F2` or a click on a name opens it for typing; `Enter` keeps it, `Escape` does not. A name given by hand is never changed automatically afterwards. An empty name hands the naming back.
+- **View menu: Rotate Machines.** Every machine moves to the next place in the layout. In a row, a column or a grid each moves along one tile and the machine in front stays in front; where the front machine has a place of its own (a main tile, or the whole window) the next machine takes it.
+- **Dragging from the dock onto a tile.** A press on a picture that moves before it is let go drags the machine; every tile is a drop site and shows a frame while the pointer is over it. The dropped machine goes there and the one that was there takes its place. On the main tile, or on the window when one machine fills it, the dropped machine comes to the front. A press let go where it went down is still a choice, as before.
+
+### Changed
+
+- **A tiled window is at least 336 pixels high below the menu bar's strip.** A single row of tiles at scale 1 is 256 high, less than the View menu that chooses it; the tiles are centred in the window, and keep a machine's proportions while the window is on its way to a new size.
+- `nextcard.Volume.FileAt` tells which file of a FAT volume starts at a byte of the image.
+
+### Known state
+
+- Seen under Xvfb with software OpenGL: a 48K loading a tape and its machine becoming "game" in the dock; `F2`, typing and `Enter`; with three 128K machines side by side, one dragged from the dock onto the third tile (the two changed places, the front machine stayed in front) and Rotate Machines moving each along one tile. The names from disc and from a card are covered by tests on a disc image and a card image made for them, and by booting NextZXOS from the real card, which reads one BASIC program of its own (`autoexec.1st`) and names nothing. A program loaded from a card or a +3 disc by hand in the window has not been tried. Not seen on a Mac.
+- From tape the name is the tape's first Program header, which is what nearly every tape loads first; a tape whose first program is skipped names the machine after it all the same (T-67).
+- In fast tape mode the tape has to be playing (`Alt+P`) for `LOAD ""` to find it, as before; the name comes when the first block is delivered.
+
+## [0.33.0] - 2026-11-17
+
+Two more tiled layouts, with a main tile.
+
+### Added
+
+- **View menu: Stack Left, Main Right and Main Left, Stack Right.** The machine in front has a large tile and the others are stacked beside it: with three machines, two on one side and one, twice their size, on the other. From three machines on. The main tile is as tall as the stack, so with four machines it is three times a small tile's size.
+- **The main tile follows the front machine.** A click on a stacked tile, or the dock, brings that machine to the front and into the main tile; the one that was there joins the stack, and the window keeps its size. The dock's flight lands on the main tile.
+
+### Known state
+
+- Seen under Xvfb with software OpenGL on a 1280x1024 screen at zoom 3, with three 128K machines: main right (scale 1, 960x512), a click on a stacked tile, and main left with that machine large. Not seen on a Mac.
+- The names say what the layouts are for any number of machines; with three they are the "two on the left, one on the right" and "one on the left, two on the right" that were asked for.
+
+## [0.32.0] - 2026-11-17
+
+Tiled layouts: every machine on the screen at once.
+
+### Added
+
+- **View menu: One Machine, Side by Side, Stacked, Grid.** With more than one machine running, the tiled layouts show them all, each in a cell the size of a machine's whole frame. The machine in front, which has the keyboard and the sound, has a frame round its tile; a click on a tile brings that machine to the front, and the dock's flight lands on the tile. Grid is offered from three machines on.
+- **The window takes the layout's shape**, on its way there as it is after a change of zoom, and is moved up or left when it would otherwise run off its monitor.
+- **The zoom is for one machine filling the window.** X 1 to X 3 are greyed in a tiled layout, and `Page Up`/`Page Down` say why they do nothing. Tiles are drawn at the largest whole scale, up to the zoom, at which the grid fits the monitor.
+
+### Fixed
+
+- A click that chose an item of the menu bar could also land on what was under the menu in the same frame. With tiles under it that brought another machine to the front.
+
+### Known state
+
+- Seen under Xvfb with software OpenGL on a 1280x1024 screen at zoom 3: three 128K machines side by side (scale 1, 960x256) and in a grid (scale 2, 1280x1024), two 48Ks stacked (scale 2, the window moved to the top to fit), a click on a tile, and the way back to one machine at 960x768. Not seen on a Mac, nor on a screen large enough for tiles at zoom 3.
+- In a tile the border is the machine's present border colour; the stripes of a tape loading are drawn only for one machine filling the window.
+- The pointer over a tile is not passed to that machine as its mouse, and the layout is not kept between sessions (T-67).
+
+## [0.31.0] - 2026-11-17
+
+The Floppy Disks window, for the +3: the SD Cards window's counterpart, built around what is different about discs.
+
+### Added
+
+- **The Floppy Disks window** (`floppies_gui.go`; Floppy Disk menu, **Manage Disks...**). A disc is read whole into memory when it goes in the drive, and its file gets the changes later, so the disc in memory and the file can differ either way. The window's second line says which: the same, changes here not yet in the file, the file changed on disk since it was read, or both. Its buttons are the ways out: **Write to file now**, **Read file again**, and **Save as new file**, which keeps both. Below are the folder's disc images with size, kind and who has each, and **Put in drive**, **Eject**, **Copy**, **New blank disc** and **Other file...**.
+- **It asks before losing a version.** Read file again over unwritten changes, Write or Eject over a file that changed on disk, and Eject of a written blank disc that has no file each take a second press, with what would be lost said under the list.
+- **A disc file is in the drive of one machine at a time.** The window does not offer a disc another machine has, Open DSK Image refuses one, and Copy has the machine that holds a disc write its changes to the file first, so the copy has them.
+
+### Changed
+
+- **The 30-second write no longer writes over a file that changed on disk.** The controller remembers the file as it was when read or last written (`FDC765.FileChanged`). If another program has rewritten the file since, and the +3 has changes of its own, the automatic write is not done; it says so once, and Save still writes on the person's say. Before, the disc in memory silently replaced whatever was there.
+
+### Fixed
+
+- **Insert Blank Disk after a DSK.** Reads prefer the parsed DSK to the flat image, and the blank disc only cleared the flat image: after a DSK had been in the drive, the "blank" disc went on reading as that DSK.
+- **Save Disk As (F8) of a DSK** wrote the flat image, which a DSK does not use, so the file was not the disc. It writes what the drive reads from.
+- Both windows' lists are sized by the height of their rows; they showed fewer rows than intended.
+
+### Known state
+
+- Seen under Xvfb with software OpenGL: the window opened from the menu on a +3 with a disc in its drive, listing that disc, another and a file that is not a disc. The states and the buttons are covered by tests on real files (written, changed outside, both; the two-press questions; Save as new; a blank disc; two machines and Copy), not by a +3 saving from BASIC under the window. Not seen on a Mac.
+- A disc dropped on the window or given with `-disk` is not checked against the other machines' drives (T-67).
+- One drive, A:, as before.
+
+## [0.30.0] - 2026-11-17
+
+The SD Cards window, and with it a second Next in the same window.
+
+### Added
+
+- **The SD Cards window** (`sdcards_gui.go`; SD Card menu, **Manage Cards...**). It lists the card images in the folder of the Next's files, each with its size, whether a Next boots from it and who has it: free, a slot of this machine, or a slot of another machine. From it: boot (or restart) from another card, put a card in the second slot or take it out, copy a card to a new file with a progress bar, make an empty card of 280 MB or 1 GB, and add an image from another folder. It is made of zenui's `List`, `ButtonBar` and progress bar.
+- **A second Next.** A card image is in one slot of one machine at a time. Choosing ZX Spectrum Next from the Machine menu while another machine has the boot card no longer refuses: the SD Cards window opens and asks for a card of this machine's own. Copy the boot card, boot from the copy, and the window has two Nexts. Closing the window leaves the machine as it was.
+
+### Changed
+
+- **Insert Card in Slot 2** refuses a card that is in another machine, and a Next that starts while another has ZenZX's own card leaves its second slot empty and says so.
+- The start-up line and the SD Card menu name the card that is actually in slot 1; they named `next-card.img` whatever it was.
+
+### Fixed
+
+- **A correction to 0.28.0's and 0.29.0's notes.** Both said the window had been compared with the earlier build "with the Machine menu open". In those runs the pointer was two pixels short of the top edge and the menu bar never came down, so what was compared was the window without a menu, twice. Done again with the menu open: start-up and the open Machine menu are the same picture in 0.27.0 and now.
+
+### Known state
+
+- Seen under Xvfb with software OpenGL: a Next booted to NextZXOS, a 48K added from the dock and asked to become a Next, the window opening with the boot card shown as machine 1's, the 1 GB copy with its bar, booting from the copy, and both machines at NextZXOS's welcome screen in the dock; and the window opened from the menu on a single Next and closed with Escape. The cards were write-protected throughout (`-sdcard-readonly`), so two Nexts writing to their own cards at once has not been exercised. Not seen on a Mac.
+- **Copy** copies the file as it is at that moment. A card that a running machine is writing to can be copied in a half-written state; the window does not stop the machine.
+- Escape does not close an open dropdown of the menu bar (it does close the windows, and does not end the program while a menu is open). 0.27.0's note said it closed "the open menu or window"; for a dropdown that was not so then either. T-68.
+
+## [0.29.0] - 2026-11-17
+
+Several machines in one window, and a dock to flip between them.
+
+### Added
+
+- **The machine dock.** Rest the mouse at the bottom edge of the window, or press `Alt+M`, and a dock rises from the bottom the way the menu bar comes down from the top, with a live picture of every running machine and a **New** tile. The picture under the pointer grows. Click one, or choose it with the arrow keys and `Enter`, and it grows out of the dock until it fills the screen, eased in and out with the curve the menu bar slides on; that machine is then in front. `Delete` closes the chosen machine, `Escape` the dock. `machinedeck_gui.go`; the manual's "Several machines".
+- **Any number of machines.** One is in front: it has the screen, the sound and the keyboard, and the menu bar acts on it. The others run on behind it, silent. A new machine is the model of the one in front and starts from power-on.
+- This is the first use of what 0.28.0 made possible: the window's one display and its one sound device are handed from machine to machine with `SetDisplay` and the audio's `SetDevice`.
+
+### Known state
+
+- Beside a Next, **New** makes a 48K, and the Machine menu refuses a second Next while one is booting from the SD card: two machines cannot share a card image.
+- A script given with `-script` drives whichever machine is in front.
+- Seen under Xvfb with software OpenGL: the dock opened by the edge and by `Alt+M`, a machine added, typed into and flipped away from and back, three 128K machines in three different states, a machine closed, `Escape` closing the dock and not the program, and a pointer left resting at the edge not reopening it. With one machine and the dock never opened the window is the same picture as 0.28.0's, pixel for pixel. Not seen on a Mac, and the sound passing from one machine to the next has not been heard.
+- The dock is ZenZX's own for now. It draws through zenui's renderer and theme, and the place for it as a widget is zenui, with zenplay as its second user.
+
+## [0.28.0] - 2026-11-17
+
+The machine can be imported. The root package is a Go library, `github.com/ha1tch/zenzx`, and the two programs are thin commands over it. The first three of the four stages of `docs/MACHINE_MAP.md` (T-39); the programs behave as they did.
+
+### Changed
+
+- **The root package is `package zenzx`**, not `package main`. `RunGUI(args)` and `RunHeadless(args)` are what the two `main` functions were, each with its own flag set; `cmd/zenzx` and `cmd/zenzx-headless` call them and do nothing else. The build scripts, the Makefile and CI build those two directories. Building by hand is `go build ./cmd/zenzx` and `go build -tags headless ./cmd/zenzx-headless`; `go build .` now only compiles the library.
+- **The version is linked into `github.com/ha1tch/zenzx.version`**, where it was `main.version`. The build scripts pass it as before.
+- **The core no longer prints.** What the machine has to say goes to a sink set with `SetLogOutput`, and its opt-in traces and script warnings to one set with `SetTraceOutput` (`logging.go`). Both discard until set. The two programs set standard output and standard error, so they print what they printed.
+- **One audio engine, with a device.** `AudioManagerOto` existed twice, the real one in the GUI build and a silent stub in the headless one. There is now one `AudioEngine` (`audio_engine.go`) in every build, which plays through an `AudioDevice` when it is given one (`SetDevice`) and is silent, doing no work, when it is not. The GUI program gives it the oto device. oto allows one context in a process, so the devices share it: more than one machine can play.
+- **The display is an interface.** `DisplayManager` also existed twice. The core draws through `Display` (`display_core.go`); a machine starts with a display that draws nothing, and the GUI program gives it the window's with `SetDisplay`.
+
+### Added
+
+- **Two machines in one program, tested** (`twomachines_test.go`): a 48K and a 128K machine, with different things typed at different times, are each run alone, then in turns, then at the same time. Each must end with the RAM, registers and picture it ends with alone.
+- **`scripts/check_import.sh`** (`make check-import`, and a CI step): a module made on the spot imports the package with `-tags headless,purego`, runs a 48K machine from a ROM it reads itself, reads the picture back, and fails if the library printed anything.
+- **`docs/MACHINE_MAP.md`, `docs/machine_clusters.json` and `tools/depmap`**, from zenplay, where they were made for the 0.9.0 tree; measured again before and after this release.
+
+### Fixed
+
+- **Sound can be switched on again after being switched off.** Switching it off closed the audio context and switching it on tried to make a second one, which oto refuses, so sound stayed off for the rest of the session with a message on the terminal. The shared context is suspended and resumed instead. Found by reading the code while splitting it; not heard, since there is no sound card here.
+
+### Known state
+
+- What an embedder can reach is small: `NewZenZX`, the ROM loaders that take bytes, `Reset`, `RunFrame`, `DecodeDisplay`, `SetDisplay` and the audio's `SetDevice`. Choosing a model, the Next's wiring, snapshots from bytes and input are still done by the two programs with unexported names. The exported `Machine` over those is stage 4, and T-39 stays open at ◐ for it.
+- Compared with 0.27.0: the headless program prints the same in nine runs (five models, a snapshot, a tape, a script, the Next booting from a card) and writes the same screenshot; the GUI's window is the same picture, pixel for pixel, at start-up, with the Machine menu open and after a key, under Xvfb with software OpenGL.
+- Not verified here: sound on a real sound card after the audio change; the two-machine test under the race detector on more than the 2 cores this was run on.
+- A snapshot saved by the headless program records the machine's volume settings as the GUI's defaults (0.8, 0.5, 0.5) where the stub recorded 1.0; sound is still recorded as off, since the headless program switches it off.
+- The oto code is in two files, `audio_oto.go` (the shared context) and `audio_device_oto.go` (the device), because the edit journal tracks both names and has no way to be told a tracked file was removed on purpose (T-66, which also records that the archive's manifest has to be put back in the repository's order after `relcore`).
+
+## [0.27.0] - 2026-11-16
+
+ZenZX is on zenui, the toolkit it shares with zenimate and zenplay.
+
+### Changed
+
+- **The menus, dialogs and windows are `github.com/ha1tch/zenui` 0.2.0**, and the BDF font reader is zentools' `pkg/bdf`. This tree's own copies are gone: `pkg/zenui`, `pkg/zenuiraylib`, `pkg/zxpalette` and `pkg/bdf`. A program that imported them imports `github.com/ha1tch/zenui`, `zenui/zenuiraylib`, `zenui/zxpalette` and `github.com/ha1tch/zentools/pkg/bdf`. Closes T-38.
+- **It was a merge.** What this copy had gained since zenui was extracted went into zenui 0.2.0 first: `MenuBar.SetLabel` and `LabelFor` (the SD Card menu), the Next's colour levels as compared with CSpect, and, as widgets any host can use, the Help and About window (`zenui.TextModal`), the progress bar and its figures (`DrawProgressBar`, `ProgressText`), `WrapText`, `FitTail` and the translucent panel (`ScaleAlpha`). `markdownmodal_gui.go` and `nextsetup_gui.go` use them from there; the first-start dialog for the Next is otherwise as it was.
+
+### Fixed
+
+- **Escape closes the open menu or window and not the program.** It ended the emulator whatever was open, Help included, whose own text says Escape closes it. With nothing open Escape quits as before, and `-noesc` still disables that.
+
+### Removed
+
+- **From the repository's root:** five tape images of commercial games and six quick-save files, which nothing referred to; `zenzx-formatted.dsk` (the Floppy Disk menu makes a blank disc); `build_bsd.sh` and `build_example_bsd.sh`, of which `scripts/retired` has the same files. `.gitignore` now keeps quick saves and screenshots written beside the program out of a commit.
+- **Moved to `scripts/retired`:** `_bsd.sh` and `Dockerfile` (T-07), and `release.sh`, `syncver.sh` and `zxspectrum.txt`, the release tooling from before `repoman relcore`. `ztrace_next.sh` is `scripts/ztrace_next.sh`.
+- **From `scripts/retired`:** its copies of `build.sh`, `build_linux.sh` and `build_windows.sh`. They were the same files as the live ones in the root, which the README, the manual and CI call; the note there that called them superseded was wrong and is corrected.
+
+### Known state
+
+- `TESTING.md` is generated again; it was last generated for 0.4.65.
+- This is the first release cut with `repoman relcore`'s own archive step. Its exclusion of `.git/*` reached one level only, and the first archive carried the repository's git directory; `.repoman.json` now excludes it at every depth, and the examples' build output, and no longer excludes every `.png`, which left the README's pictures and the examples' art out. The archive now holds exactly the tracked files. The first one was not delivered.
+- Compared with the build before the change, under Xvfb with software OpenGL: the Machine menu, Help at its top and at its end, About and the Next's first-start dialog are the same picture, pixel for pixel.
+- The GUI-tagged tests: 445 pass. They were 458; the 13 that are not here test the Help window and `WrapText` and are zenui's now, with the code. The headless suite and `./pkg/...` pass.
+- Not seen: the first-start dialog while it downloads (its bar is `DrawProgressBar` now; the dialog's test of what it draws passes), and the windows on a Mac.
+- zenui is not published: `go.sum` has the hash of the 0.2.0 tree delivered with this release.
+
+## [0.26.0] - 2026-11-16
+
+4 MB and DMA+: the Next is an issue 5 board (the KS3) with core 3.03.00.
+
+### Added
+
+- **4 MB of memory** (`nextphys.go`): the machine's memory by its physical address, 22 bits. The MMU still pages 224 pages of 8K, as on every board; the two megabytes above 0x200000 have no page numbers and are reached by DMA+ only, which is how the issue 5 board has them.
+- **DMA+ (zxnDDMA)** on port 0x6B (`nextdma.go`), from the guide on the distribution's card (`/docs/zxnDDMA/zxnddma.gde`): the extended address bytes (0xD7, 0xDB), the flags (0xDF: physical addresses, 2D, transparent, fill, Layer 2 X and Y, the hidden screen), row length and rows (0xE3, 0xE7), a stride for each port (0xEB, 0xEF), the transparent colour (0xF3) and the fill value (0xF7). Port 0x0B has none of it and drops those bytes.
+- **`-next-issue=5|4|2`** (both builds): the board. 5 is the default; 4 and 2 have 2 MB and drop address bit 21, so higher addresses wrap.
+
+### Changed
+
+- **The core version the Next reports is 3.03.00** (NextREG 0x01 and 0x0E; it was 3.02.03): programs that ask for DMA+ check for it.
+- **The DMA as the guide corrects it**, for every program: a length of 0 moves one byte on port 0x6B; a reset (0xC3) keeps the start addresses, the direction, the port types, the mode and the length, and puts back the timings; cycle length 11 is four cycles; WR4 asking for an interrupt control byte with no address stops the decoder until the machine is reset, as on the board.
+
+### Known state
+
+- The guide's nine examples, assembled from their sources with sjasmplus 1.24.1 (built for this, not kept), run from the second card and draw what their texts say. `zxnddma_compare` finds DMA+ and times its five ways of drawing at 7.2, 15.6, 8.1, 2.1 and 2.1 ms; the guide's figures from an issue 5 are 7.2, 15.6, 8.2, 2.1 and 2.1 ms.
+- NextZXOS boots and runs the card's programs and ZenZX's examples as before with the new core version (guards G-04, G-06).
+- Not compared with a machine or with CSpect 4.5, which does not run here. What is left out is T-64.
+
+## [0.25.0] - 2026-11-16
+
+New empty SD cards.
+
+### Added
+
+- **New Empty Card** in the SD Card menu: a size, 280 MB or 1 GB, then a name in the folder of the Next's files. The card is made empty, formatted FAT32 with the card builder that makes the boot card, and put in the second slot. A name that is already taken is refused.
+- **`-next-new-card=PATH`** (both builds): makes an empty 280 MB card and exits; `.img` is added to a name without an extension.
+
+### Known state
+
+- An empty card made this way was put in the second slot of a Next booted from the distribution's card: NextZXOS showed it as drive D, made a folder on it and saved a BASIC program to it, and another FAT reader (pyfatfs) then found both. The file took 576 KB of disk before and 584 KB after.
+- The 1 GB size was made and read back by the tests' own reader; it was not put in a running Next.
+
+## [0.24.0] - 2026-11-16
+
+A second SD card, an SD Card menu for the Next, and a `next` folder.
+
+### Added
+
+- **The Next's second SD card slot** (`sdcard2.go`): port 0xE7 bit 1 selects it, as bit 0 does the first. NextZXOS gives a card there drive D. `-sdcard2=PATH` (both builds) puts an image in it; `none` leaves it empty.
+- **ZenZX's own card**, `zenzx-card.img` beside the boot files: a 280 MB FAT32 card (`nextcard.NewCard`) that takes about a megabyte of disk. A Next that boots NextZXOS starts with it in the second slot when it is there.
+- **The SD Card menu** (GUI, `sdcardmenu_gui.go`): while a Next that boots NextZXOS is running it is where the Floppy Disk menu is for the other machines. It shows the two slots and, for the second, has Insert Card in Slot 2... (a browser for `.img` files), Insert ZenZX's Card (Examples), Remove Card from Slot 2 and Card Info. A card changed while NextZXOS runs is seen after M and Y in its Browser.
+- **The `next` folder** (`next/README.md`): the first place the Next's files are looked for after `-next-files` and `NEXT_FILES`, where a download goes when ZenZX is started beside it, and where the SD Card menu's browser opens. `make next-card`, `scripts/get_next_card.sh` and `run_next_divmmc.sh` use it. `thirdparty` is still looked in.
+
+### Changed
+
+- **`-next-examples` and `-next-add`** put their files on ZenZX's own card, making it when needed, and no longer write the card the Next boots from again. In 0.23.0 they copied to `/zenzx` on that card; anything put there stays there.
+
+### Known state
+
+- Seen under NextZXOS from the distribution's card: the second card is drive D at start; put in while the Browser is open it appears after M and Y, and taken out it is gone after the same; each example starts from it (G-06 now runs them that way).
+- The SD Card menu was looked at in the GUI under Xvfb: the label, the two slot lines, the card browser. Its actions are covered by a test; clicking each in a window was not done here.
+- Not there: a way to change the card in the first slot from the menu, write-protecting each slot separately (`-sdcard-readonly` is for both), and a message in the window when a card is changed (it is printed to the terminal).
+
+## [0.23.0] - 2026-11-16
+
+Three example programs for the Next, and a way to put programs on the card.
+
+### Added
+
+- **Examples for the Next** (`examples/next`): `gallop`, `fuji` and `orbit`, each a `.nex` file that uses several of the Next's features together. `gallop` has Muybridge's horse, as 16-colour sprites whose patterns the DMA streams, crossing a Bierstadt painting on Layer 2, with copper bands and text-mode tilemap captions in the border. `fuji` has Hokusai's Red Fuji as a tilemap over a 320x256 Layer 2 sky that the copper scrolls in four bands, with the palette going from day to dusk. `orbit` has the Moon going behind and in front of the Earth by changing the layer order, in the Next's own interrupt mode with a CTC timer. They are written in Z80N assembly for zenas, their pictures are encoded and the `.nex` files built with zentools' `zx`, and `examples/next/build.sh` builds them on Linux and macOS with those two tools alone. The pictures are from Wikimedia Commons, all public domain; `examples/next/README.md` lists each with its source.
+- **`-next-examples`** and **`-next-add=FILE,FILE`** (both builds, `nextadd.go`): copy the examples, which are inside the program, or any files to the folder `/zenzx` of the card the Next boots from, and exit. The rest of the card is kept (`nextcard.AddFiles`).
+- A dormant guard, G-06 (`TestNextZXOSRunsTheExamples`): the examples are put on a copy of the card and each is started from NextZXOS.
+
+### Fixed
+
+- **Sprite positions go round at 512**, as jnext shows them: a sprite at X 504 has its right-hand half at the left of the frame, which is how a sprite comes in from the left edge. It used to be drawn only where it was, so it appeared at the left all at once.
+
+### Known state
+
+- Each example shows the same picture in ZenZX and in jnext 1.3.0, started with `.nexload` from the NextZXOS command line; `gallop` was also started from the Browser. They were not run in CSpect or on a Next.
+- Found while making them, and worked round in the examples' build: `zx` does not dither to the Next's three bits a channel (zentools' own T-09), so the paintings are dithered when they are prepared; a 320x256 loading screen makes a NEX V1.3 file, which the `.nexload` on the distribution's card refuses, so `fuji` carries its sky as banks; `zx next nex build -bank` takes one file for each bank, so that sky is cut into five with `dd` first.
+
+## [0.22.0] - 2026-11-16
+
+Snapshots started from NextZXOS: the Multiface.
+
+### Added
+
+- **The Next's Multiface** (`nextmultiface.go`, T-52): its ROM, which the firmware already loaded from the card, and its 8K of RAM go over the bottom 16K when a Multiface NMI is taken, and RETN takes them away again. NextREG 0x02 bit 3 asks for the NMI; the Multiface's two ports (0x3F and 0xBF for the +3 kind NextZXOS chooses, the others by NextREG 0x0A) page it out and in while the NMI is served, and on the +3 kind the enable port gives back the paging ports' last values and the border. With NextREG 0xC0 bit 3 the NMI is stackless: the return address goes to NextREG 0xC2/0xC3 and RETN takes it from there. NextZXOS starts a snapshot this way, so `SPECTRUM "file.snx"` and a snapshot chosen in the Browser now run.
+
+### Fixed
+
+- **IM 2 with a table of two bytes** (`im2vector.go`, T-60): the handler's address is read from I*256 plus the whole vector byte, 0xFF from the ULA, as the Z80 does. The CPU core clears bit 0 of the vector first, which only shows with a program that sets just the two bytes that are read and not a table of 257 equal ones. This is on every model, not only the Next. It is put right here until the core is.
+- DivMMC's entry points no longer fire on the Multiface ROM's own code while it is paged in.
+
+### Known state
+
+- The palette cycling demo (`/demos/PaletteCycle`) runs from NextBASIC and from the Browser: its text, then each picture with its colours cycling. The card's three other snapshots start too: Pogie to its first screen, The Hollow Earth Hypothesis to its title, OnlyYou6ch to its level meters.
+- Neither reference runs the demo, so there is nothing to compare it with: jnext 1.3.0 is back at the welcome screen, CSpect 3.3.1.0 starts the snapshot and stays at a black screen.
+- Not there: a key for the Multiface's NMI button in the front ends (the menu it would show draws: it was seen while this was being worked on), the DivMMC NMI of NextREG 0x02 bit 2, the I/O traps of NextREG 0xD8. Not tried: the Multiface kinds other than the +3 (T-61).
+
+## [0.21.0] - 2026-11-16
+
+The Next's own interrupt mode, and the CTC.
+
+### Added
+
+- **Hardware IM 2 mode** (`nextint.go`, T-59): with NextREG 0xC0 bit 0 set an interrupt waits until the CPU takes it, and the vector says which source it was: the top three bits from NextREG 0xC0, then 0 for the line, 3 to 10 for the CTC channels, 11 for the frame. NextREG 0xC4 and 0xC5 enable the sources (0xC4's two are the same as NextREG 0x22's), and 0xC8 and 0xC9 read which have interrupted, a 1 written clearing a bit. The lowest source waiting is taken first.
+- **The CTC**: four channels on ports 0x183B, 0x193B, 0x1A3B and 0x1B3B, programmed as the Zilog part is. A timer counts the 28 MHz clock through a prescaler of 16 or 256 down from its time constant; a counter counts the pulses of the channel before it; reading the port gives the count.
+
+### Known state
+
+- Six more of the card's programs were run beside jnext with the same keys, into their games: Santa's Chimney Challenge, Revival Survival, Halls of the Things, the widescreen image demo, the tilemap test and Spectron 2084. All show the same screens in both. That is eleven programs the same as jnext's, and nothing found wrong in this round.
+- TX-1696, which turns this mode and a CTC channel on, shows the same screens as before and now reaches each at the same step as jnext; without the CTC it ran ahead.
+- Not heard: any sound. Not there: the UARTs, a CTC interrupt in the ordinary mode, and the chain that holds a lower source back while a higher one's handler runs (T-59 stays open for these).
+
+## [0.20.0] - 2026-11-16
+
+4-bit sprites and LoRes, found by running the games beside jnext.
+
+### Added
+
+- **4-bit sprite patterns** (`sprite.go`): attribute 4 bit 7 on an anchor sprite, with N6 in bit 6 choosing which half of the pattern slot; a relative sprite has its anchor's kind and its own N6 in bit 5. A nibble is a pixel, the palette offset is the colour's high four bits, and the low four bits of NextREG 0x4B are the transparent nibble. They were drawn as 8-bit patterns, which is what made TX-1696's logo, menu and ship a scatter of small wrong shapes: that whole screen is sprites.
+- **LoRes** (`nextlores.go`): NextREG 0x15 bit 7 puts the 128x96 picture in the ULA's place, a byte a pixel from the two 6144 byte blocks of bank 5, or in Radastan mode (NextREG 0x6A) a nibble a pixel with the palette offset, from either display file. NextREG 0x32 and 0x33 scroll it. ScrollNutter's plasma and bars are LoRes; the ULA's memory was being drawn in their place.
+
+### How it was found
+
+- The programs ZenZX had trouble with were run in jnext and in ZenZX with the same keys, from the NextZXOS command line with `.nexload`, into their games, and jnext's layers were captured one at a time where the two differed. Warhawk, Nextoid, AngryBloaters and The Lords of Midnight are the same as jnext's into the game itself. TX-1696, started from its own folder, differed on every sprite; ScrollNutter differed from the moment its background came on.
+- ScrollNutter was then run in CSpect too: CSpect, jnext and ZenZX show the same thing at each stage.
+
+### Known state
+
+- Nothing was found wrong with the DMA or with the order of the layers in these programs.
+- TX-1696 turns on the Next's own interrupt mode and a CTC channel, neither of which is emulated (T-59, new). Its first screens and its game are nonetheless the same as jnext's.
+- The palette cycling demo, a snapshot started from NextZXOS, runs in neither: jnext is back at the welcome screen after it, ZenZX is at a black screen (T-52).
+- The comparisons of games are by eye, at moments that are not the same frame in two emulators.
+
+## [0.19.2] - 2026-11-16
+
+Documents: jnext agrees with CSpect.
+
+### Corrected
+
+- 0.19.1 said that on show512 jnext differs from CSpect. It does not. That run started the program with jnext's `--load`, which puts it on top of a NextZXOS that is already running; started as it was in CSpect and ZenZX, from the NextZXOS command line with `.nexload` after a boot through the firmware, jnext's picture is the same as CSpect's on every pixel.
+
+### Known state
+
+- jnext 1.3.0 against CSpect 3.3.1.0, each booted through the firmware and typed into: the NextZXOS welcome screen and show512 are the same on every pixel. The copper list that waits for horizontal 0 of each line gives the same bars, the full width of the frame, in all three emulators. With the WAIT's horizontal position going from 0 to 47, jnext also draws each line whole, and shows a line's own colour up to position 39 and the line before's from 40; ZenZX changes over at 36, and CSpect is irregular from 34. So jnext meets CSpect's standard wherever the two were compared, and it is the reference with source to read when CSpect's behaviour has to be explained. CSpect stays the standard for the picture.
+
+## [0.19.1] - 2026-11-16
+
+Documents: a second reference emulator.
+
+### Known state
+
+- **jnext runs here as a reference.** jnext 1.3.0 was built without its GUI and runs headless on the same SD card, taking a screenshot after a number of frames. Eight of the card's programs were run in it beside ZenZX. Warhawk, Nextoid, AngryBloaters, The Lords of Midnight, Night-Knight and Spectron 2084 show the same screens in both, by eye. ScrollNutter does not: jnext has its logo and sprites on black, ZenZX has them over a grey screen of noise, which is the LoRes layer that ZenZX does not draw (T-51). On show512 jnext differs from CSpect and ZenZX, which agree with each other: its text has a magenta ground where theirs is black. `docs/next-programs.md` has the table.
+- jnext is used as a program that is run, as CSpect is. Nothing of its source is in ZenZX.
+
+## [0.19.0] - 2026-11-16
+
+The Next's DMA.
+
+### Added
+
+- **The zxnDMA** (`nextdma.go`, T-58), on port 0x6B and, in the Z80 DMA's mode that moves one byte more, on port 0x0B. It is programmed as the Z80 DMA is: the seven write registers with their parameter bytes, load, continue, enable and disable, the read sequence and the status byte. It moves blocks between memory and ports in either direction with each address counting up, down or staying. A block with no prescaler goes at once and its CPU cycles (the two ports' cycle lengths for each byte) are charged to the instruction that started it, so a long one runs past the end of the frame. With a prescaler a byte goes every 4 x prescaler T-states of the 3.5 MHz clock while the CPU runs, which is how samples are played.
+
+### Fixed by it
+
+- Warhawk's title and high score table are drawn on a cleared screen; Nextoid's menu is clear of noise; AngryBloaters shows its title and its table one at a time; The Lords of Midnight's screens after the title are drawn right. The README has Warhawk and AngryBloaters among its screenshots now.
+
+### Known state
+
+- Before writing it, what the games send was read from a build that printed it: fills of the screen and its attributes from one byte, copies of 16K blocks (the copy onto itself one byte on, which fills), 256 byte blocks from memory to port 0x5B for sprite patterns, and streams to the NextREG data port. All of it is in the tests.
+- Not compared with CSpect: 3.3.1.0 shows a black screen for Warhawk, and 4.5.1.0 does not start under the Mono that is installed. T-58 stays open for that and for the sound of a timed transfer, which was not listened to.
+- ScrollNutter still draws wrongly: it uses LoRes (T-51). TX-1696 is still a black screen.
+
+## [0.18.1] - 2026-11-16
+
+Documents: a short README, with the Next in it.
+
+### Changed
+
+- **The README is an introduction**: what ZenZX is, the machines, six screenshots of a Next (the firmware's boot screen, the NextZXOS menu, the Browser, and three of the card's games), how to build and run, and a table of the documents. What it used to hold at length is in new documents: `docs/gui.md` (the menu bar, `machines.json` and `settings.json`, keys, drag and drop), `docs/headless.md` (the debugging workflow, loading binaries and screens) and `docs/development.md` (versioning, releases, continuous integration, the source's layout). The headless flag table, which the manual also had, is the manual's alone.
+- **`docs/next-programs.md`** (new) lists the programs on the Next's card that were tried and what each does.
+- The manual names the DMA among what a Next lacks and points at the new documents.
+
+### Known state
+
+- Of eight of the card's programs started for the screenshots, Night-Knight and Spectron 2084 draw right and The Lords of Midnight draws its title right. Warhawk, Nextoid, AngryBloaters and ScrollNutter draw wrongly. Those four all send transfers to the Next's DMA, which is not emulated (T-58, new, the first thing to do for the games); ScrollNutter also uses LoRes, which is not drawn (T-51). TX-1696 gave a black screen and was not started from its own folder, which it loads from.
+
+## [0.18.0] - 2026-11-16
+
+Joysticks and the mouse, gone over.
+
+### Fixed
+
+- **The Sinclair joysticks did nothing in the GUI.** The joystick's keys were pressed in the keyboard matrix and the keyboard handler, which runs after it, cleared the matrix every frame. That is every Sinclair mode, the +2, +2A and +3's own two ports included, which are what those models get by default. A joystick's keys are now kept apart from the host keyboard's and joined when the keyboard port is read (`joyports.go`), so neither releases the other's.
+- **The Kempston mouse's Y counter ran the wrong way**: it rose as the mouse moved down the screen. It rises as the mouse moves up, as the Next's ports.txt says and as CSpect does.
+- `-mouse amx`, there since 0.4.17, was missing from the flag's help and from the manual.
+
+### Added
+
+- **A Next's joystick ports are what the machine chooses** (`-joystick auto`, NextREG 0x05): Kempston 1 or 2, an MD pad on either port, Sinclair on either set of keys, or Cursor, for each port separately. NextZXOS sets them at start. A Next's Kempston port has a second fire button in bit 5 and an MD pad has A and START in bits 6 and 7. Before, a Next had no joystick unless `-joystick` named one.
+- **A Next has its mouse** (`-mouse auto`): a Kempston mouse with the wheel in bits 7-4 of port 0xFADF, the three buttons as CSpect returns them (7 with none pressed), and NextREG 0x0A bit 3 to swap left and right. `-mouse amx` is refused on a Next, which has no such interface.
+- **The Cursor joystick** (`-joystick cursor`): keys 5 6 7 8 0 (T-13).
+- The gamepad's right and left face buttons and its right middle button, for the second fire button, A and START where the machine reads them.
+
+### Known state
+
+- The AMX mouse was already there (0.4.17, T-14): interrupts through IM 2 as AMX Art's own driver takes them. A Next does not have one.
+- Checked against CSpect from NextBASIC: the mouse's three ports with the pointer moved and each button held. The buttons and the direction of both counters agree. How far the counters move for a given movement of the host's pointer does not (T-57).
+- None of this has been tried with a real mouse, or with a gamepad in any mode but Kempston on a 48K. T-57 (new) lists what has not been tried and what a Next has that is not modelled: user defined keys, the ports' I/O mode, the extra buttons of a six button pad, the mouse's sensitivity.
+
+## [0.17.0] - 2026-11-16
+
+The Next's line interrupt, and a frame of 311 lines.
+
+### Added
+
+- **The line interrupt** (`nextlineint.go`, T-54): NextREG 0x22 bit 1 with a line in 0x22 bit 0 and 0x23 raises a second interrupt in the frame, on the line before the one asked for as the beam leaves the pixel area, for as long as the frame interrupt lasts. The line is counted as NextREG 0x1E/0x1F counts it, NextREG 0x64 included. Setting the line again further down the frame, as a handler does to split the screen more than once, gives another interrupt in the same frame. Bit 2 of NextREG 0x22 turns the frame interrupt off, and bit 7 reads back while the ULA asserts it.
+
+### Fixed
+
+- **A Next's frame is 311 lines of 228 T-states** (70908), where it was the 48K's 69888 with 228 T-state lines: 306 lines. A copper WAIT or a line interrupt for lines 306 to 310, the last five of the top border, was never answered, and the top border's lines were numbered five too low. The 128K machines still have the short frame (T-55, new).
+
+### Known state
+
+- Checked against CSpect 3.3.1.0 by counting interrupts from NextBASIC during a loop: with the line interrupt on the count doubles in both (CSpect 94 to 191, ZenZX 89 to 181), and with the frame interrupt off as well it is back to the single count in both (93 and 89). The loop takes 5% fewer frames here than in CSpect; the cause is not known (T-56, new).
+- The copper list and show512 are still the same as CSpect's pictures on every pixel with the longer frame.
+- Not modelled: the Next's own interrupt mode with its vectors, enables and status (NextREG 0xC0 to 0xCF).
+
+## [0.16.1] - 2026-11-16
+
+Copper bars are the full width of the frame, as in CSpect.
+
+### Changed
+
+- **What changes part of the way down the frame changes by whole lines.** CSpect is the reference for a Next's picture, and it draws each line whole, from the state near the end of the line's right border. ZenZX 0.15.0 changed at the pixel the beam was at, and the copper's horizontal 0 is the left edge of the pixel area, so a list that waits for horizontal 0 of each line left the 32 pixels of left border, and one pixel more, in the colour of the line before: a step at the start of every bar. Now a change made on a line before the beam leaves its right border shows on all of that line, and a later one from the next line. The copper itself still runs to a quarter of a pixel.
+
+### Known state
+
+- The copper list of 0.15.0's comparison (WAIT line,0 on each of 192 lines) is now the same as CSpect's picture on every pixel, and show512 still is.
+- A second list with the WAIT's horizontal position going from 0 to 47 is the same as CSpect for positions 0 to 33. From 34 on CSpect alternates between a line's own colour and the line before's in a pattern that does not depend on the position; ZenZX shows the line's own colour for 34 and 35 and the line before's from 36. 33 of the 192 lines differ.
+
+## [0.16.0] - 2026-11-16
+
+The Next's CPU runs at the speed it is asked for.
+
+### Added
+
+- **NextREG 0x07 changes the CPU's speed**: 3.5, 7, 14 or 28 MHz (`nextspeed.go`, T-53). It was stored and nothing more. The frame, the lines, the copper, the sound and the tape stay in 3.5 MHz T-states; an instruction takes a half, a quarter or an eighth of them. The register reads the speed back in bits 5-4 as well as bits 1-0, and a reset puts it back to 3.5 MHz.
+
+### Changed
+
+- **NextZXOS is as quick as on the machine**, since it turns the speed up for its own work: the firmware hands over after about 450 frames where it was 2250, and the main menu is there after about 760. Scripts that wait a number of frames for NextZXOS wait longer than they need to; none waits too little.
+- While the speed is turned up the emulator runs up to eight times the instructions in a frame. Here that is about 2.5 ms a frame at 28 MHz, and the GUI holds 50 frames a second.
+
+### Known state
+
+- show512 is now the same as CSpect's picture on every pixel, all 512 colours: at 28 MHz the demo writes its second palette in the gap between the halves of its picture, as it was written to.
+- Memory contention is charged at any speed and divided with the rest; the machine has it only at 3.5 MHz.
+
+## [0.15.0] - 2026-11-16
+
+The copper, and a frame that can change part of the way down.
+
+### Added
+
+- **The copper** (`nextcopper.go`): NextREG 0x60 and 0x63 load its program, 0x61 and 0x62 hold the write address and the start control (stop, start from the top, start from where it was, start and go back to the top at the beam's (0,0)), and 0x64 moves the line count, for NextREG 0x1E/0x1F as well. WAIT and MOVE follow the beam at the copper's own 28 MHz, so a MOVE is half a pixel. A reset stops it and keeps its program.
+- **The frame is drawn in pieces** (`nextraster.go`). Just before the copper or the CPU changes something the picture depends on, the part of the frame the beam has passed is composed from the state as it still is, to the pixel. What the front ends show is those pieces and, for the rest of the frame, the state at that moment. A palette rewritten half way down the screen now shows both palettes; a sprite moved after the beam has drawn it shows twice.
+- **The border is striped again on a Next** when a program or a tape loader changes its colour during the frame: the change is one more thing the frame is drawn up to.
+
+### Changed
+
+- A frame in which nothing changes is composed once, when it is shown, as before. A frame that does change is composed once in all, in pieces; in the headless build that is 3 to 7 ms of work for each such frame that was not done before, shown or not. The lean frame used while a tape loads in turbo keeps no picture.
+
+### Known state
+
+- Compared with CSpect 3.3.1.0 on a copper list typed in NextBASIC, 192 lines each with its own paper colour: the same picture except the left border and first pixel of each line. CSpect changes whole lines; here the change is where the copper's horizontal 0 is, the left edge of the pixel area, as the Next's documentation has it.
+- show512 differs from CSpect on twelve lines now, where it was the whole top half: the demo asks for 28 MHz to write its second palette in the gap between the halves, and the CPU runs at 3.5 MHz whatever NextREG 0x07 holds (T-53, new).
+- The line interrupt of NextREG 0x22 and 0x23 is not raised (T-54, new). A write by the CPU is placed at the start of its instruction, up to 40 pixels early.
+
+## [0.14.1] - 2026-11-16
+
+Colours compared with CSpect, and two faults found by it.
+
+### Fixed
+
+- **NextREG 0x44 can be read back.** It returns the second byte of the pair, the lowest bit of the entry's blue. NextZXOS reads its colours through NextREG 0x41 and 0x44 and writes them again through 0x44; the read gave 0, so every colour lost that bit and white came out as the warm grey 0.14.0 described as what the registers hold. The palette NextZXOS ends up with is now the starting one: white 5,5,5 of 7, bright white 7,7,7.
+- **Three bits of colour become eight by repeating them** (0, 36, 73, 109, 146, 182, 219, 255), as CSpect shows them; `v*255/7` rounded down gave 72, 145 and 218 for three of the eight levels.
+
+### Changed
+
+- **A Next is always drawn by the frame compositor**, in both builds, with or without NextZXOS and whether or not a layer is on. Its colours are its palettes' (white is #B6B6B6, where the classic machines' drawing has #C8C8C8), so the picture no longer changes colour when a layer comes on. A headless screenshot of a Next is always the 320x256 frame (640x256 in Timex hi-res or with a double resolution layer).
+
+### Known state
+
+- Compared with CSpect 3.3.1.0 run under Mono with the same ROMs and distribution: the NextZXOS welcome screen has the same seven colours, and the card's show512 demo is identical pixel for pixel except the top half of its colour grid. The demo rewrites the Layer 2 palette part of the way down the screen to show 512 colours at once; ZenZX composes the frame once, at its end, and shows the second half's colours in both halves (T-51).
+- On a Next the GUI no longer draws the border stripes of a tape loading: the frame's border is one colour (T-51).
+
+## [0.14.0] - 2026-11-16
+
+Sprites show, and palette changes show. Programs load their sprites through three ports that were not there, and the classic picture ignored the Next's ULA palette.
+
+### Added
+
+- **The sprite ports** (`spriteports.go`): 0x303B chooses the sprite and the pattern address, 0x57 takes a sprite's four or five attribute bytes and moves on to the next sprite, 0x5B takes pattern data. Until now sprites could only be set up through the NextREG mirrors, and patterns not at all outside the tests, so no program's sprites appeared. Also NextREG 0x75-0x79 (attributes with the sprite number going up after each write) and lockstep (NextREG 0x09 bit 4).
+- **ULANext** (NextREG 0x42 and 0x43 bit 0): the attribute byte split into ink and paper by a mask, inks from palette entry 0 and papers and the border from 128.
+- **`-nextreg-log=LIST`** (both builds): prints every write to the listed NextREG registers to stderr, hex numbers separated by commas, or `all`. Off by default.
+- `-next-dump` prints palette entries with all nine bits, as three hex digits.
+
+### Changed
+
+- **The classic picture goes through the Next's ULA palette** whenever that palette is not at its starting values, or ULANext is on: the frame compositor then draws the picture, border included, as it does when a layer is on. NextZXOS sets the ULA palette itself, so under NextZXOS the picture is now always the 320x256 frame, in both builds, and `LAYER PALETTE` and other palette changes show at once.
+- **Under NextZXOS white is a warm grey**, RGB 5,5,4 of 7, and bright white 7,7,6. NextZXOS writes its colours through NextREG 0x44 with the blue's lowest bit 0; the fixed Spectrum colours used before had it 1. This is what the registers hold and has not been compared with a real machine (T-51).
+
+### Fixed
+
+- **In the GUI the frame's border was always black**: it was given the border colour of the start of the frame from the display manager, which nothing sets; it now takes the machine's.
+
+### Known state
+
+- Run from the card in the headless build: `spriteTest.bas` (64 sprites from `dksprite.spr`) and `spriteFeatures.bas` (a composite sprite, a sprite in the border); a three line palette program with `LAYER PALETTE`. In the GUI build: `spriteTest.bas`, at 50 frames a second under software OpenGL.
+- A snapshot started from NextBASIC (`SPECTRUM "file.snx"`) ends at address 0 with a black screen, which is how the card's palette cycling demo starts (T-52).
+- 4-bit sprite patterns, sprite collision and reversed sprite priority are not modelled (T-51).
+
+## [0.13.0] - 2026-11-16
+
+The Next's picture is drawn whole. One compositor draws the 320x256 frame, border included, for both builds; the firmware's loading screen, which showed only its left half, is the first thing it puts right.
+
+### Added
+
+- **The Next's frame compositor** (`nextframe.go`, `ComposeNextFrame`). A Next's display is 320x256, with the classic picture 32 pixels in and 32 down. The compositor draws all of it: Layer 2 in its three modes (256x192 on the classic picture, 320x256 and 640x256 over the whole frame) with its clip window and its scroll registers (NextREG 0x16, 0x17, 0x71); the sprites, placed in the frame's coordinates, with their clip window (NextREG 0x19), "sprites over border" and the clipping of it (NextREG 0x15 bits 1 and 5); the tilemap over the whole frame in 40 and 80 columns; the ULA with its Timex modes, its clip window (NextREG 0x1A) and the border, in the Next's ULA palette; the layer order of NextREG 0x15; the global transparency colour for Layer 2 and the ULA; and the fallback colour where nothing is opaque. The frame is 640 pixels across when a layer with double horizontal resolution is on.
+- **NextREG 0x19 and 0x1A**, the sprites' and the ULA's clip windows, and NextREG 0x1C in full: every bit restarts its window's sequence, and a read gives the four write positions.
+- `nextframe_test.go`: where each layer sits, clip windows, scrolling, the six layer orders, transparency, the fallback colour; and a benchmark (3.6 ms a frame at 320 across, 6 to 8 ms at 640, on the sandbox).
+
+### Changed
+
+- **Both builds show the frame whenever a Next has Layer 2, the sprites or the tilemap on.** The GUI shows it as one texture over the whole picture area, in place of its cell drawing, its border, and the earlier drawing of Layer 2 and the sprites a pixel at a time on the GPU; with the border hidden it shows the classic picture's part. The firmware's loading screen went from about 13 frames a second to 50 under software OpenGL. A headless screenshot of a Next with a layer on is the frame: 320x256 or 640x256, where it was 256x192 or 512x192 with the layers cut to the classic picture.
+- **Sprites are placed as on the hardware**: their coordinates are the frame's, so (32,32) is the classic picture's corner. They were drawn 32 pixels up and to the left of that.
+- **The classic picture is 32 pixels down in the GUI's window, on every machine**; it was 28. The window's 256 lines were split 28 above and 36 below; they are now 32 and 32, which is where a Next has the picture in its frame, so nothing moves when a Next turns a layer on.
+
+### Fixed
+
+- **The firmware's loading screen showed only its left half** (T-48), in both builds. It is Layer 2 at 320x256. In that mode the clip window counts X in units of two pixels, so the firmware's 0 to 159 is the whole width and was taken as the left 160 pixels; and the picture starts at the frame's corner, in the border, where it was drawn from the classic picture's corner and cut to 256x192.
+- **Layer 2 did not scroll**: NextREG 0x16, 0x17 and 0x71 were stored and not used.
+- **A layer under the ULA never showed in the GUI**, which drew only the layers above it; and with the border hidden Layer 2 and the sprites were displaced.
+
+### Known state
+
+- Run from the card in the headless build and looked at: the firmware's loading screen, Daybreak (Layer 2), ScrollNutter (Layer 2 scrolling), show512 (Layer 2 with a palette), and the tilemap demo, which now fills the frame. In the GUI build: the loading screen, and the same compositor through `TestGLNextPicture`.
+- The frame is drawn once, from the state at the end of each frame, so what a program changes part of the way down the screen shows its last value everywhere; LoRes, the blending layer orders, the ULA's scrolling and the Layer 2 priority bit are not drawn (T-51).
+- The drawing code the compositor replaced is still in the tree, unused by the front ends, for one release (T-50).
+
+## [0.12.0] - 2026-11-16
+
+The Next sets itself up. Started for the first time, it offers to download its SD card and ROMs, builds and verifies the card, and boots NextZXOS; from then on it finds the files and starts without asking.
+
+### Added
+
+- **The Next gets its boot files by itself, once.** Started without them (`-model=next`, or ZX Spectrum Next in the Machine menu), the GUI shows a dialog that explains what is needed, where it will be kept and where it comes from, with both addresses editable, and downloads nothing until it is confirmed. A progress bar follows the download and the building of the card; the downloads are checked against their SHA-256 and the finished files verified before the Next starts from its boot ROM. The files go to `zenzx/next` in the user's configuration folder and are found there from then on. `zenzx-headless -next-setup` does the same without a window. `-next-files=DIR` names another folder, `-next-classic` keeps the +3 ROMs.
+- **`pkg/nextcard`**: the download, a FAT32 reader and builder, and the verification, in Go, so that preparing the card needs neither Python nor pyfatfs. The card it builds has the 4K clusters, `timing=0`, short names made again from the long ones, and a free space record written from the FAT.
+- **The Machine menu switches to and from a Next with its boot chain** (`nextchain.go`): choosing the Next attaches boot ROM, DivMMC and card and starts from the boot ROM; choosing another model detaches them.
+- **`-next-files=DIR`**, **`-next-classic`** (both builds) and **`-next-setup`**, **`-next-distribution=URL`**, **`-next-bootrom-url=URL`** (headless): where the boot files are, a Next without them, and the download without a window.
+- **The files are looked for beside the program too** (`thirdparty/` next to the binary), after `-next-files`, `NEXT_FILES` and `./thirdparty` and before the per-user folder, so a start from a desktop or another folder finds what `make next-card` made.
+
+### Changed
+
+- **The first-start window is drawn as the Help and About windows are**: the selected theme's backdrop and panel, slightly see-through over the running machine, the same text size, a close box, and a body that scrolls (wheel, arrow keys, Page Up and Down, scrollbar) when the window is too small for it. The address fields, the progress bar and the buttons stay fixed below the body. The address fields take typing, Backspace, Tab and a paste (Ctrl+V, Cmd+V), and show the end of a long address.
+- **No window when the files are there and usable.** At every start the three files are checked (`nextcard.Usable`): both ROMs 8K, the card a FAT32 volume the firmware accepts with `TBBLUE.FW` on it. Usable files start the Next at once. Files that are there and are not usable are passed over, and the window then says which folder and why.
+- **`run_next_divmmc.sh` no longer logs by default.** It passed `-divmmc-debug` on every start, which writes a line to the terminal for each byte exchanged with the SD card and slowed the Next down a great deal. `NEXT_DEBUG=1 sh run_next_divmmc.sh` (or `-divmmc-debug` on either binary) brings the logging back.
+- **The audio path's warnings are off unless `ZENZX_AUDIO_DEBUG` is set**: speaker history truncated, CPU cycle counter going backwards or jumping. The Next resets its CPU when the firmware hands over, which printed there while the audio lock was held.
+
+### Known state
+
+- Every DivMMC, SD card and NextREG message in the emulation is behind `-divmmc-debug`, and the FDC's behind `-debugfdc`; nothing else prints from the machine's inner loops. Without logging the headless build runs the whole boot to the main menu, 3,010 frames, in about 1.5 s.
+- What is slow in the GUI on a Next is drawing, not logging: Layer 2 and the sprites are drawn a pixel at a time on the GPU, so the firmware's loading screen runs well below 50 frames a second under software OpenGL (T-48).
+
 ## [0.11.0] - 2026-11-16
 
 One ZenZX again. Two lines had grown apart from 0.9.0: 0.9.1 and 0.9.2 with the Next boot work, and 0.10.0 with `.szx` loading, the lazy Next page store and AY gating. This release is their merge; everything in the 0.10.0, 0.9.2 and 0.9.1 entries below is in it.
@@ -21,7 +1109,13 @@ One ZenZX again. Two lines had grown apart from 0.9.0: 0.9.1 and 0.9.2 with the 
 - **The DivMMC's programmable entry points** (`divmmc_entries.go`): NextREG 0xB8-0xBB choose which opcode fetches map the interface in, whether only with ROM 3 at 0x0000, and whether at once or after the opcode; 0x1FF8-0x1FFF unmaps after its opcode. The acknowledge cycle of an interrupt is no longer taken for a fetch at 0x0038. NextREG 0x09 bit 3 clears MAPRAM, and port 0xE3 reads back on the Next.
 - **The alternate ROM and ROM lock, NextREG 0x8C** (`nextaltrom.go`): two more ROM images in SRAM banks 6 and 7, written through the ROM's addresses and then run in its place; the lock bits hold a ROM whatever the paging ports say; a soft reset takes bits 3-0 into bits 7-4. NextREG 0x02 reads back the kind of the last reset.
 - **`TestNextZXOSBoots`** (`next_boot_test.go`), the boot chain against the real firmware, and unit tests for config mode, the paging register, the entry points, the alternate ROM and the screen cache that need no third-party files.
+- **The SD card can be written** (`sdcard_write.go`): CMD24, CMD25 and CMD13, with CMD16 and ACMD23 accepted. Both front ends open the image for writing, so the firmware and NextZXOS change it as they do a real card; `-sdcard-readonly` write-protects it, and an image that cannot be opened for writing is write-protected by itself. A program saved from NextBASIC is on the image afterwards (T-43, closed).
+- **The tilemap** (`nexttilemap.go`) and **the Timex screen modes** (`nexttimex.go`), in the headless build's picture: the tilemap in 40 and 80 columns with text mode, clip window, scrolling and its combination with the ULA, and screen 1, hi-colour and hi-res through port 0xFF or NextREG 0x69. In 80 column and hi-res modes the picture, and so a screenshot, is 512x192. NextBASIC's editor displays in 64 and 85 columns and the card's tilemap demo runs. Both front ends take this picture from one function (`nextsoftula.go`): the GUI, whose standard picture is drawn on the GPU cell by cell, shows it as a texture whenever a Next is in a Timex mode or has the tilemap on.
+- **GL tests** (`gl_gui_test.go`, `TestGLNextPicture`): they open a window and read back what was drawn, for the Layer 2 palette textures, a Layer 2 picture in bank 8, the standard screen, Timex hi-res and the tilemap. They run when `ZENZX_GL_TESTS` is set; a virtual display with software OpenGL is enough (dormant guards G-03 and G-05).
+- **`-next-dump`** (headless) prints the Next's registers, memory mapping, DivMMC state and the start of each palette at the end of a run.
 - **`scripts/next_card.py`** makes the SD card from the official emulator distribution (`sn-emulator-26.11.zip`): it formats the card again as a valid FAT32 volume with 4K clusters, copies every file, and sets `timing=0` in `config.ini` so the firmware does not stop at its video-mode test. It also writes out the distribution's `enNxtmmc.rom`. Needs `pip install pyfatfs`.
+- **`make next-card`** (`scripts/get_next_card.sh`) downloads the distribution, checks its SHA-256 and runs `scripts/next_card.py`; `make run-next` starts the machine; `make next-card-repair` corrects an existing card in place. `thirdparty/` is ignored by git.
+- **`TestNextZXOSSavesToCard`** (next_save_test.go, with guard G-04): boots NextZXOS, saves a program from NextBASIC and reads the directory entry and the file back from the card image.
 
 ### Changed
 
@@ -33,12 +1127,21 @@ One ZenZX again. Two lines had grown apart from 0.9.0: 0.9.1 and 0.9.2 with the 
 
 - **Next: the renderer's screen cache no longer overwrites RAM.** When the displayed bank changed (port 0x7FFD bit 3), the cache was copied back into the bank, as on the classic models where the cache is the displayed bank. On the Next writes go to RAM first, so this overwrote bank 7 with bank 5's picture. The cache now follows RAM on the Next, and only writes to the displayed bank reach it.
 - **Next: Layer 2 is drawn only when it is on.** It was composited over the ULA picture on every Next, from a reading in T-29 that no enable bit was documented. The Next's `ports.txt` gives it: port 0x123B bit 1, alias NextREG 0x69 bit 7, off after a reset. A program that drew Layer 2 without turning it on, which the hardware would not show, is no longer shown.
+- **Next: NextREG 0x12 and 0x13 are 16K bank numbers** with reset values 8 and 11, as the Next's `registers.txt` gives them; they were read as 8K page numbers with reset value 0 (T-42).
 - T-41 closed: the boot chain has a repeatable check (see `docs/RESOLVED.md`).
+
+- **A script's keys reach the machine in the GUI** (T-45). The GUI copies the host keyboard into the key matrix every frame, after the script had put its keys there, so `key`, `type` and `press` did nothing in the GUI build on any model. While a script has keys down the host keyboard is now left out (`Scheduler.OwnsKeyboard`).
+- The start-up line for `-model=next` no longer says there is no NextZXOS boot chain.
+- **The card's free space record** (T-49). `scripts/next_card.py` left the FSInfo sector as the formatting library wrote it for the empty volume, so NextZXOS reported the whole card as free (1022M on a card with 902M free) and was told the first free cluster was 2. The script now writes both values from the finished FAT.
+- **`run_next_divmmc.sh` rebuilds a stale `./zenzx`.** It built the binary only when there was none, so a binary from an earlier version, without card writes, kept being used. Both front ends now say at start-up whether the card is write-protected, and warn when the image could not be opened for writing.
+- **Next: NextREG 0x15 resets to 0x00**, the layer order S L U, as `registers.txt` gives it; the table held 0x08 (S U L), which kept Layer 2 under the ULA until a program wrote the register (T-47).
+- **The GUI-tagged tests run and pass** (T-46). They had only ever been compiled. One started a real browser through `rl.OpenURL` and kept `go test` from ending; three expected the 640x256 Layer 2 mode to count with Layer 2 off; one read the machine menu wrongly. `go test .` without the `headless` tag now passes on a machine with a display.
 
 ### Known state
 
 - **NextZXOS boots** from the 26.11 card made by `scripts/next_card.py`: the boot ROM loads TBBLUE.FW, the firmware loads the ROMs into SRAM, chooses the machine and resets into it, and NextZXOS starts from the card and shows its welcome screen, its main menu (v2.10, 1792K) and the Browser listing the card. Checked in the headless build; the GUI build has not been run with it. `TestNextZXOSBoots` repeats the boot against the real files (dormant guard G-04, `ZENZX_NEXT_FILES`).
-- Not there yet, each filed: the card is read-only, so nothing can be saved (T-43); the tilemap and the Timex modes are not drawn, so the editor's 64 and 85 column modes and many programs will not display (T-44); NextREG 0x12 and 0x13 are read as 8K pages where the hardware takes 16K banks (T-42). The Multiface and the NMI buttons are not modelled.
+- The same in the GUI build, run on a virtual display with software OpenGL: the welcome screen, the main menu, NextBASIC's editor in 64 columns and the card's tilemap demo.
+- Not there yet: the Multiface and the NMI buttons are not modelled.
 - With the boot ROM and no card the firmware reports "Error initializing SD card!", and with an empty card "Error opening TBBLUE.FW file", as it should.
 
 ## [0.10.0] - 2026-11-12
@@ -204,435 +1307,25 @@ One ZenZX again. Two lines had grown apart from 0.9.0: 0.9.1 and 0.9.2 with the 
 
 ## [0.6.15] - 2026-09-15
 
-### Fixed
-
-- **Next-mode MMU RAM capacity corrected from 768K to the real 1792K
-  ceiling (T-28, part 1 follow-up).** The initial T-28 implementation
-  capped `nextTotalPages` at 96 (768K), wrongly treating T-28's own
-  "at least the 768K-1MB unexpanded-machine tier" wording as a target
-  ceiling rather than the floor it actually is. Confirmed directly
-  against jnext's `Mmu::rebuild_ptr` (`src/memory/mmu.cpp`) that real
-  hardware's NR 0x50-0x57 registers reserve values 0xE0-0xFF (32 of
-  256) as a sentinel range gated before any RAM lookup -- never
-  ordinary addressable RAM regardless of how much physical RAM is
-  fitted -- leaving 224 ordinary page values (0x00-0xDF) as the true
-  ceiling: 1792K, not a flat 2048K. `nextTotalPages` raised from 96 to
-  224, `nextExtraRAM` from 80 to 208 pages (1664K of new backing
-  store, plus the existing 128K of aliased classic-bank storage). Added
-  `nextReservedPageBase = 0xE0` and a new `nextPageIsReserved` helper
-  so the 0xE0-0xFF reserved range is checked explicitly in
-  `nextPageRead`/`nextPageWrite`, rather than merely falling outside
-  `nextTotalPages` by accident of array bounds -- correct regardless
-  of any future change to `nextTotalPages`. `memory_test.go`'s
-  `TestNextMMUOutOfRangePage` extended to assert the ordinary/reserved
-  boundary directly (the last ordinary page, `nextTotalPages-1` =
-  0xDF, is real working storage; `nextReservedPageBase` and above is
-  not). No behavioural change to any existing 48K/128K/+3/TS2068 code
-  path -- `isNext` still gates the entire Next-mode addressing path,
-  defaulting false.
-
-## [0.6.14] - 2026-09-15
-
-### Fixed
-
-- **NEXTREG opcode no longer routed through the port-0x243B select
-  latch (T-33, in progress).** `EnableZ80N()` now wires zen80's new
-  `Z80.NextregWrite` hook to a new `nextRegOpcodeWrite(reg, value)` in
-  `nextreg.go`, which writes the named register directly via a shared
-  `nextRegWriteDirect` helper -- the same helper `nextRegWriteSelected`
-  now calls after reading `selected` first. Previously the `NEXTREG`
-  opcode (`ED 91`/`ED 92`) was indistinguishable from a raw port `OUT`
-  sequence and silently clobbered whatever register a prior port-based
-  select had latched; on real hardware, and per jnext's own fix
-  history (GH #54), the opcode never touches that latch. Regression
-  coverage: `TestNextRegRawPortAndInstructionAgree` split into
-  `TestNextRegRawPortAndInstructionAgreeOnValue` (keeps the
-  still-true "both paths write the same value" assertion) plus a new
-  `TestNextRegOpcodeDoesNotTouchSelectedReg`, which exercises the
-  opcode path directly and asserts the port-0x243B selected register
-  is unchanged afterwards. Requires zen80 v0.5.7 (adds the
-  `NextregWrite` hook); T-33 stays open at partial completion until
-  that zen80 version is reachable via `go get` from its own origin and
-  the full suite is re-verified against the real published module
-  rather than a local development checkout.
-
-- **NextREG 0x00 (machine ID) default corrected from `0x00` to `0x0A`
-  (T-34).** The read-only machine-identification register's reset
-  value now matches the VHDL `g_machine_id` board-generic default
-  documented for ZX Spectrum Next hardware, rather than an
-  uninitialised-looking `0x00`. No behavioural change beyond the
-  single default byte; access mode (read-only) and every other
-  register default are unchanged.
-
-## [0.6.13] - 2026-09-15
+This minor version (0.6.0 - 0.6.15, 2026-08-25 to 2026-09-15) made tape
+loading accurate against real hardware and laid the first groundwork for the
+Next. Its per-patch detail is in
+[`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md); in summary:
 
 ### Added
 
-- **ZX Spectrum Next: NextREG port handler (T-27, wave `ti0.r1`).**
-  `nextreg.go` adds a real register file behind the two fully-decoded
-  NextREG ports, `0x243B` (select) and `0x253B` (data), reachable
-  identically via a raw port `OUT` and via zen80's `NEXTREG`
-  instruction (`ED 91`/`ED 92`) -- confirmed by a regression that
-  exercises both paths against the same register and checks they
-  agree, rather than assuming correctness from reading `z80n.go` alone.
-  Covers machine identification (`0x00`/`0x01`, read-only), reset
-  (`0x02`), machine type (`0x03`), CPU speed (`0x07`), two peripheral
-  configuration registers (`0x08`/`0x09`), the sprite/layer priority
-  register (`0x15`, defaulting to the documented "S L U" ordering),
-  the Layer 2 clip window (`0x18`, its own four-value X1/X2/Y1/Y2
-  write sequence), and all eight MMU slot registers (`0x50`-`0x57`,
-  stored and read back correctly; not yet wired to actual paging --
-  that lands with `ti0.r2`/T-28). Registers outside this set
-  store-and-ignore rather than erroring, so coverage can grow
-  incrementally in later waves without a behavioural cliff. Per-register
-  access modes (R/W, read-only, write-only) taken from the SpecNext
-  wiki's I/O port documentation and cross-checked against a second
-  independent source; the one behaviour not directly documented
-  anywhere consulted (whether the register-select port reads back the
-  currently selected register number) is implemented as the common,
-  widely-adopted behaviour and flagged as such in the code comments.
-  Wave `ti0.r1` (`docs/WAVE_TRACKING.md`) now 3/3, done; T-27 closed
-  (see RESOLVED.md).
-
-## [0.6.12] - 2026-09-14
-
-### Changed
-
-- **Repository tooling: gorepoman shim directory removed.** The
-  `repoman/*.py` shims introduced in 0.6.11 (thin forwarders to the
-  `gorepoman` binary) are gone entirely -- `Makefile`, `.repoman.json`,
-  both GitHub Actions workflows, `pkg/version/version.go`, and the docs
-  (README/MANUAL/TRACKING/KNOWN_ISSUES) now call the `repoman` binary
-  directly. Verified identical behaviour on every call site before
-  removal (`make check-register`, `make check-gomod`, `make sync`,
-  plus `go build`/`go vet`/`go test` on the cgo-free headless path).
-
-### Added
-
-- **ZX Spectrum Next support: Tier 0 planning.**
-  `docs/NEXT_SUPPORT_DEVELOPMENT_PLAN.md` documents the seven floor
-  requirements for reasonably claiming Next emulation (Z80N as a real
-  machine mode, NextREG port handler, extended MMU, Layer 2, hardware
-  sprites, Next palette, NEX file loading), plus a separate technical
-  description of the Tier 1 and Tier 2 feature sets beyond that floor.
-  No functional emulation code changed -- planning and tracking only:
-  register items T-27 through T-32 and waves `ti0.r0` through `ti0.r6`
-  (19 items total) in `docs/TRACKING.md` / `docs/WAVE_TRACKING.md`.
-
-## [0.6.11] - 2026-08-29
-
-### Changed
-
-- **Repository tooling migrated from vendored Python `repoman` to
-  `gorepoman`** (github.com/ha1tch/gorepoman v0.13.4): all twelve
-  `repoman/*.py` entry points (`ed.py`, `register.py`, `relcore.py`,
-  `guards.py`, `syncver.py`, `roles.py`, `str_replace_extended.py`,
-  `selftest.py`, `gomod.py`, `add_wave.py`, `wave_progress.py`,
-  `doctor.py`) replaced with thin shims forwarding to the `repoman`
-  binary (`$REPOMAN_BIN` or `$PATH`); every existing invocation
-  (`Makefile` targets, `.repoman.json` release steps) verified working
-  unchanged, both directly and through `make check-register`/`make
-  check-gomod`. `config.py` left in place as intentional dead code (no
-  CLI equivalent; nothing imports it once every script above it is a
-  shim). Binary checksum-verified against the published
-  `checksums.txt` before use; `repoman selftest` green (130/135, 5
-  deferred -- no live Go toolchain in this environment).
-  `README.md` and `docs/MANUAL.md`'s "Versioning and releases"
-  sections updated to describe the shim-forwards-to-gorepoman shape
-  instead of the retired vendored-Python description.
-
-## [0.6.10] - 2026-08-29
+- Tape/ULA accuracy: precise 48K ULA contention, a floating bus, EAR idle
+  feedback, and a coherent frame timebase, with permanent cross-emulator
+  trace instrumentation and a tape-corpus harness (`contrib/tape-corpus-harness/`)
+  to measure real-world loading coverage.
+- ZX Spectrum Next: the NextREG port handler and the Tier 0 support planning
+  that the later Next work built on.
 
 ### Fixed
 
-- **T-26 closed** (see RESOLVED.md): zen80 v0.5.5 confirmed pushed and
-  tagged on GitHub -- checked directly (`git ls-remote`) and via the
-  real Go module proxy (`.../@v/v0.5.5.info`), not taken on report.
-  `go.mod`'s local `replace github.com/ha1tch/zen80 => <local path>`
-  (0.6.9's known limitation) removed; the dependency was re-pulled from
-  a clean module cache with a real `go.sum` checksum, and the
-  memory-read/port-write/watchpoint behavior it gates (Wave 1 items 4
-  and 9) was re-verified against the published module rather than
-  assumed identical to the local dev copy that originally proved it.
-  `repoman/gomod.py check` now clean. Wave 1 is genuinely 100% (10/10),
-  not the 8/10-plus-two-pending-external it was at 0.6.9.
-
-## [0.6.9] - 2026-08-28 (interim)
-
-### Added
-
-- **Trace harness generalization, Wave 1 (T-26)**: `zzz_trace_harness_test.go`
-  restructured around `ZTRACE_SETUP` (`tape`/`snapshot`/`bin`/`boot-only`)
-  and `ZTRACE_MODEL`, instead of the single hardcoded boot+tape-load
-  path. New: `ZTRACE_FROM_RESET` (trace from the reset vector -- default
-  step budget for this mode, 1,000,000, is a measured number, not a
-  guess: 48K boot-to-ready is 768,551 steps over 87 frames per
-  `BootDetector`); `ZTRACE_M1LOG`/`M` lines and `ZTRACE_CALLSTACK`/`S`
-  lines (new `zzz_trace_callstack_test.go`, CALL/RST/RET/RETN/RETI
-  classification with real conditional-call/ret evaluation, not just
-  opcode matching); `ZTRACE_READS`/`R` lines and `ZTRACE_OLOG`/`O`
-  lines (memory reads and port writes -- see caveat below);
-  `ZTRACE_STOP_A/BC/DE/HL/SP` and `ZTRACE_STOP_WADDR` stop/watchpoint
-  conditions; `ZTRACE_COVERAGE_OUT`; `ZTRACE_SNAPSHOT_OUT` (`.zxs` via
-  `SaveSnapshot`, `.z80`/`.sna` via `SaveZ80`/`SaveSNA`, centralized in
-  a `disarm()` helper so every stop path triggers it consistently);
-  `ZTRACE_SYMFILE` (new `zzz_trace_symbols_test.go`, pasmo-format
-  parser confirmed against a real `zenas --sym` build, annotates P/W/R/S
-  address fields without replacing the raw hex).
-- Every new piece verified with real data this session, not just
-  build-clean: hand-checked port encoding, CALL/RET stack round-trips,
-  a stop condition firing at the exact expected step, a coverage count
-  matching a manual trace count exactly, a real zenas-assembled program
-  annotated with its own labels. Two bugs caught by this testing and
-  fixed before release: `ZTRACE_BINSTART` was silently misparsed as
-  decimal (now reuses the CLI's own `ParseAddr`/`ParseAddrSigned`, hex
-  or decimal, matching `-binaddr`/`-binstart` exactly); non-tape setups
-  defaulted `ZTRACE_ENTRY` to a tape-specific address that never
-  matched anything, so `ZTRACE_SETUP=snapshot` never armed at all
-  until fixed to default to wherever the loaded state left PC.
-
-### Known limitation
-
-- Memory-read/port-write tracing (and the watchpoints depending on it)
-  need zen80's new `DebugMemReadHook`/`DebugIOOutHook`
-  (`docs/proposals/zen80-tracing-hooks.md`), not yet a tagged zen80
-  release -- `go.mod` currently points at a local, unpushed zen80
-  checkout via `replace` (same pattern as the existing 0.6.7 entry for
-  an earlier unpushed dependency). `repoman/gomod.py check` correctly
-  flags this (`ERROR replace-absolute-path`); this release accepts
-  that known-red gate rather than shipping without the feature or
-  faking the check. Resolve by pushing/tagging zen80 v0.5.5 and
-  removing the `replace`.
-
-## [0.6.8] - 2026-08-28
-
-### Fixed
-
-- **T-05 -- `fdc_read_test.go` depended on a sandbox-only absolute path**
-  (see RESOLVED.md): the FDC controller regression test (`TestFDCReadMatchesDisk`)
-  loaded `/mnt/user-data/uploads/artist.dsk` and silently skipped when
-  absent, so it never ran outside the specific sandbox session that had
-  that file -- including in CI, where the skip looked indistinguishable
-  from a pass. Replaced with a checked-in fixture, `testdata/synthetic.dsk`,
-  built by a new `TestGenerateSyntheticDSK` (skipped by default; opt in
-  with `ZENZX_REGEN_TESTDATA=1`) that drives the fixture's SEEK, FORMAT
-  TRACK, and WRITE DATA sequence through the FDC765 controller's own
-  command interface -- the same path real +3DOS format/write software
-  exercises -- rather than assembling DSK bytes by hand. The test now
-  runs unconditionally as part of the default suite; `ZENZX_TEST_DSK`
-  still allows pointing it at a real captured image locally. G-02, the
-  dormant guard tracking this test's coverage, is retired as a result
-  (see KNOWN_ISSUES.md) -- the check is no longer dormant.
-
-## [0.6.7] - 2026-08-27
-
-### Fixed
-
-- go.mod required v0.1.0/v0.2.0 while replace pointed local checkouts
-  at v0.5.1/v0.6.0 -- fixed to match. Replaces still needed until both
-  are pushed.
-
-## [0.6.6] - 2026-08-27
-
-### Fixed
-
-- **T-25 -- GUI build's `-tapemode` never accepted `turbo`** (see
-  RESOLVED.md): `zenzx_gui.go`'s flag parsing only ever recognised
-  `accurate`, silently falling back to `fast` for anything else,
-  including `turbo`. Wired up to match `zenzx_headless.go`'s already-
-  correct pattern exactly: a proper three-way `switch` on
-  `TapeAccurate`/`TapeTurbo`/`TapeFast`, and the main loop now calls
-  `zx.RunTurboAwareFrame(blockedOnRealMemory)` instead of a bare
-  `RunFrame()` -- the same function every one of this session's own
-  turbo-mode correctness work (T-19's 128K fix, the Chase H.Q.
-  investigation) already exercised and validated via the headless
-  build, now reachable from the GUI too. One real, user-visible
-  consequence of turbo's existing (headless-proven) design, not a new
-  limitation: the GUI will visibly freeze during a turbo-mode load
-  rather than show incremental loading stripes, then jump to the
-  final state once the tape finishes -- turbo's screen buffer is
-  frozen throughout the fast path by design, documented already in
-  `docs/TAPE_LOADING_HANDOVER.md`.
-
-## [0.6.5] - 2026-08-27
-
-### Changed
-
-- Filed T-25 (GUI build's `-tapemode` never gained a `turbo` case;
-  silently falls back to `fast` rather than erroring) -- the defect
-  0.6.4's documentation fix surfaced but didn't itself resolve.
-
-## [0.6.4] - 2026-08-27
-
-### Fixed
-
-- **README.md and docs/MANUAL.md were stale relative to shipped
-  behaviour, in ways that stated things plainly wrong, not just
-  outdated:**
-  - Both claimed memory contention "affects every model" (i.e.
-    doesn't exist anywhere) -- true when T-16 was open, false since
-    0.6.0. Corrected to the real current state: precise for 48K
-    (~0.33% memory / ~0% I/O measured position-error bounds), an
-    address-range approximation for 128K (T-20, open).
-  - `-tapemode`'s documentation listed only `fast`/`accurate` in both
-    files, omitting `turbo` entirely despite it being a shipped,
-    tested feature since before this changelog's visible history.
-  - Investigating the fix surfaced a real, previously undocumented
-    asymmetry: **`turbo` mode only works in the headless build.**
-    `zenzx_gui.go`'s own flag parsing never gained a `turbo` case --
-    passing `-tapemode=turbo` to the GUI silently falls back to
-    `fast`. Documented accurately in both files rather than papered
-    over; not fixed here, since wiring it up is a code change beyond
-    a documentation pass.
-  - Neither file mentioned `contrib/tape-corpus-harness/` or
-    `docs/TAPE_LOADING_HANDOVER.md`, both new this cycle. Added to
-    Project Layout and Known Issues in both README.md and MANUAL.md,
-    including T-22/T-23/T-24 as headline items -- T-24 in particular
-    is the single highest-priority open item in the whole register.
-
-## [0.6.3] - 2026-08-27
-
-### Changed
-
-- **`docs/TAPE_LOADING_HANDOVER.md` updated for the state actually
-  shipped in 0.6.2**: the corpus harness section now reflects that
-  `contrib/tape-corpus-harness/` is built, run, and verified end to
-  end (two real bugs found and fixed doing so -- `-shot-interval`
-  being a no-op once a script drives the run, and missing required
-  frame offsets on script action lines), not merely designed. The
-  harness's variant-picking limitation (picks a tape alphabetically,
-  doesn't know if it's a working one) is now stated in the handover
-  narrative itself, not only the harness's own README, since it
-  directly bears on how much to trust any corpus-wide number the
-  tool produces today.
-
-## [0.6.2] - 2026-08-27
-
-### Added
-
-- **`docs/TAPE_LOADING_HANDOVER.md`**: a synthesis of the multi-day
-  tape-loading investigation (fast/turbo/accurate mode characteristics,
-  measured corpus results, and open questions), written for whoever
-  picks this work up next. Two new register items came out of it:
-  T-23 (fast mode's ROM-trap only accelerates the standard LD-BYTES
-  routine -- no benefit once a custom/protected loader takes over,
-  confirmed with the Chase H.Q. corpus) and T-24 (no mode's
-  self-reported completion signal has proven trustworthy on its own --
-  turbo, fast, and the corpus report's own heuristic have each been
-  observed to report success on a load that was actually wrong).
-- **`contrib/tape-corpus-harness/`**: a standalone tool for measuring
-  real-world tape-loading coverage and speed, in its own Go module
-  with no import relationship to zenzx in either direction (`go list
-  ./...` from the repo root does not see it). Downloads its own corpus
-  at runtime from a public preservation source
-  (archive.org/details/zxspectrum-top-100 -- the same collection
-  `cmd/tapereport` already pointed at) rather than assuming one is
-  present, and drives `zenzx-headless` entirely as a subprocess via
-  `-script`, with no access to internals. Replaces earlier ad hoc
-  investigation code that lived in the main package and assumed a
-  pre-existing local corpus directory -- that code is removed; nothing
-  depending on third-party game content ships as part of zenzx itself
-  or its test suite. See that directory's own README for usage and
-  the honest limits of its screenshot-diffing completion signal.
-
-## [0.6.1] - 2026-08-26
-
-### Added
-
-- **Permanent cross-emulator trace instrumentation**: `TestTraceHarness`
-  (`zzz_trace_harness_test.go`) and `TestPulseDump`
-  (`zzz_pulsedump_test.go`), both opt-in and skipped by default. The
-  harness records PC/register sequences, memory-write deltas
-  (address/old/new), and port-read results against zen80's
-  `DebugPCHook`/`DebugMemWriteHook`/`DebugIOInHook`, all filterable by
-  step range, PC range, and writing-PC, so a divergence against a
-  reference emulator or an independently generated pulse stream can be
-  localized to the instruction without ad hoc instrumentation each
-  time.
-
-### Fixed
-
-- **A trailing TZX pause could be encoded with an inverted excursion
-  and a parity shift**: `genCustomPulses` inlined a pre-fix pause
-  pattern that an earlier pause-level fix had missed at this one call
-  site, producing a 1ms HIGH excursion where the spec requires LOW and
-  flipping the entry level of everything downstream. Verified fixed
-  by an independent, from-scratch TZX-spec pulse generator: the
-  generated stream now matches expectation pulse-for-pulse across a
-  full 828,282-pulse tape, zero mismatches.
-- **A zero-length pulse (a pure level flip, no duration) could be
-  deferred past a `Tick` call's cycle budget**, leaving its transient
-  level observable for one instruction on the next `Tick` before
-  collapsing. Zero-length pulses now collapse immediately regardless
-  of remaining budget.
-
-## [0.6.0] - 2026-08-25
-
-### Added
-
-- **ULA contention modeling, 48K precise** (closes T-16 -- see
-  RESOLVED.md for what was wrong and how it was resolved). contention.go
-  implements the WoS FAQ model: memory pattern {6,5,4,3,2,1,0,0} from
-  cycle 14335 over 0x4000-0x7FFF, and I/O per the FAQ port table with
-  the "Yes" rows as four cascaded C:1 rounds (each round's delay shifts
-  the next check's position). Wired through zen80 0.5.0's new
-  offset-corrected contention hooks; measured position-error bounds
-  ~0.33% (memory) and ~0% (I/O) on real Speedlock-loader execution. The
-  128K variant is a documented address-range approximation (T-20).
-- **Floating bus** (floatingbus.go): unattached port reads return the
-  byte the ULA fetches at the current frame-relative T-state, mirroring
-  FUSE's spectrum_unattached_port; idle 0xFF outside fetch cycles;
-  gated off for +2A/+3 (no bus there) and TS2068. Granularity and 128K
-  caveats filed as T-21.
-- **EAR idle feedback** (io.go): with the tape not playing, bit 6 of a
-  ULA-port read presents the level fed back from the last ULA OUT --
-  Issue 3 (default): OUT bit 4; Issue 2 (new `issue2` flag): bits 4|3;
-  +2A/+3: always low. Speedlock-class hardware checks probe exactly
-  this. While the tape plays, it drives bit 6 as before.
-
-### Changed
-
-- **Coherent frame timebase**: /INT is asserted at the START of each
-  frame for 32 T-states (`InterruptLength`), the PAL frame is the real
-  69888 cycles (`ULAFrameCycles`), and a true per-frame origin
-  (`frameOrigin`) anchors contention, the floating bus, border
-  striping, and snapshot restore. Previously RunFrame ran 70000-cycle
-  frames with INT at the END while contention wrapped the cumulative
-  counter mod 69888 -- two timebases precessing 112+ T-states per
-  frame, leaving the contention window at a continuously rotating
-  phase. TS2068 keeps its 58688 frame with the shared pulse length.
-- **Test baselines updated for deliberate behaviour changes**: eight
-  joystick-test constants (ULA idle now includes bit 5, hardware's
-  0xBF); ts2068 timing assertions (per-model end-of-frame threshold no
-  longer exists); five tape tests rewritten from pulse-shape
-  assertions to semantic ones (pause levels, durations, stop timing,
-  next-block-starts-LOW parity).
-
-### Fixed
-
-- **TZX pause blocks now sit LOW per the spec** (and libspectrum's
-  END_OF_BLOCK_NEXT_LOW): hold the entry level ~1ms, LOW for the
-  remainder, next block starts LOW -- with the entry level derived
-  from stream parity and a zero-length flip restoring parity.
-  Measured on Batman's stream, the previous SpecIde-shape encoding
-  played four of five long pauses entirely HIGH, including the 3587ms
-  pause at the exact tape position where its loader was first observed
-  stalling. (Not, in the end, that title's root cause -- T-22 tracks
-  the continuing investigation -- but a genuine spec violation.)
-- **ULA port reads: bits 5 and 7 now read high** (idle 0xBF), matching
-  real hardware and FUSE; bit 5 previously read low.
-
-### Release notes
-
-- Dormant guard G-02 (FDC read against a real DSK image) skipped this
-  release: its gating image (/mnt/user-data/uploads/artist.dsk, see
-  T-05) is absent from this environment. G-01 (GUI link build) is
-  exercised by this release's gui-check step.
-- The release test gate now excludes the 31-game corpus harness
-  (`TestBatchThreeModeCompare`) by name in the manifest: it is
-  investigation tooling run in its own batched campaigns, not a unit
-  gate, and its ~6-minute runtime was stalling releases. The 135 unit
-  tests remain the gate.
+- TZX pause blocks now sit LOW per the spec; ULA port reads return bits 5 and 7
+  high; the GUI `-tapemode` accepts `turbo`; and a sandbox-only absolute path in
+  `fdc_read_test.go` was removed.
 
 ## [0.5.1] - 2026-08-24
 
@@ -740,2609 +1433,29 @@ One ZenZX again. Two lines had grown apart from 0.9.0: 0.9.1 and 0.9.2 with the 
 
 ## [0.4.65] - 2026-08-21
 
-### Added
-
-- **`go-sanity` release gate**, wired into `.repoman.json` right after
-  `register` and before the more expensive `gui-check`/`build`/`test`
-  steps: `python3 repoman/gomod.py check` fails the release if `go.mod`
-  carries a `replace` directive pointing at an absolute local filesystem
-  path (the exact shape of a real incident on another project -- a
-  hardcoded sandbox path reached a downstream team's committed go.mod),
-  and separately confirms `go.sum` is complete enough for a plain `go
-  build -mod=readonly` with no extra magic. Verified against this
-  repository's own `go.mod`/`go.sum`: `GOMOD CHECK OK`. `repoman/`
-  synced to 0.8.0, which introduces this tool.
-
-## [0.4.64] - 2026-08-21
+This minor version (0.4.0 - 0.4.65, 2026-06-29 to 2026-08-21) built the GUI's
+menu bar and theming, the scripting assertions, and the reference manual. Its
+per-patch detail is in
+[`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md); in summary:
 
 ### Added
 
-- **Memory assertions in zenscript** (`wait-mem`, `expect-mem`) and a new
-  **`sym`** verb to support them: `sym <path>` loads a pasmo/zenas-format
-  `.sym` file into a name -> address table; `wait-mem <symbol|addr> <op>
-  <value> [timeout=...]` blocks the timeline until a live memory value
-  satisfies the comparison (`= != < > <= >=`), then rebases, exactly the
-  same block-and-rebase contract as `wait-screen`/`wait-attr`; `expect-mem`
-  is the non-blocking instant-assert counterpart to `expect-screen`. Symbol
-  resolution falls back to a literal address when no table is loaded or the
-  name isn't found, so both verbs work with or without `sym`. This closes
-  the gap the "Recipes: probing machine state" section of `docs/zenscript.md`
-  previously worked around with a snapshot-save-plus-manual-byte-offset
-  dance -- that recipe remains documented for whole-region dumps, but a
-  single named value is now one line: `wait-mem cur_map != 0 timeout=10s`.
-- **`shot`'s new `zoom=N` argument** (1-16, default 1): upscales a capture
-  by an integer factor via nearest-neighbour sampling before writing the
-  PNG -- hard pixel edges, no blending, for inspecting sprite/tile detail
-  too small to read at native 256x192.
-- **`docs/MANUAL.md`**: a new organised reference (18 sections, full CLI
-  flag tables for both binaries pulled directly from `flag.String`/
-  `flag.Bool` source rather than transcribed from prose) complementing
-  `README.md`'s narrative account. Linked from the README's own top.
-
-Verified end-to-end against a real build (`oakhollow.bin`, not a synthetic
-fixture): a `.zen` script loaded 365 symbols via `sym`, `wait-mem kn_x >
-120` correctly matched and rebased at frame 113, and a separate `wait-mem
-cur_map != 0` correctly timed out and logged clearly rather than hanging
-when genuine tree collision blocked the driven character's path -- both
-the match and the timeout path exercised, not just the happy case. `shot
-... zoom=6` produced pixel-exact nearest-neighbour captures confirmed
-against the source framebuffer. `go build`, `go vet -tags headless .`, and
-`repoman/selftest.py` (64/64) all pass. `gofmt` flags no new violations
-introduced by this change (the pre-existing `scheduler.go`/`script.go`
-non-conformance is T-06, already on the register).
+- The GUI menu bar: Machine (models grouped by manufacturer, switched live),
+  Custom ROM, Tape, Floppy Disk (with "Open DSK Image..." and a live controller
+  state), Snapshot, View, and Theme, with checkmarks, checkboxes, submenus,
+  group headings, and the logo/rainbow dropdown (Help, About, homepage, fixed
+  bar). The Machine menu's layout became configurable via `machines.json`.
+- Switchable themes (Dark, Light, Spectrum) with a bundled-BDF-font submenu and
+  X1/X2/X3 font zoom, plus a `-theme` flag.
+- `docs/MANUAL.md`, the organised reference with full CLI tables; zenscript
+  memory assertions (`wait-mem`, `expect-mem`, `sym`) and `shot zoom=N`; and the
+  `go-sanity` release gate.
 
 ### Fixed
 
-- **`relcore.py`'s archive step could write a duplicate `MANIFEST.sha256`
-  entry** into the checkpoint zip: the exclude list never treated the
-  manifest itself as reserved packaging output, so a working tree that
-  already had one on disk (e.g. extracted from a prior checkpoint) got it
-  swept in as an ordinary source file, then overwritten a second time by
-  the builtin's own fresh manifest -- two same-named entries in one zip,
-  found via this release's own packaging run. Added `MANIFEST.sha256` to
-  `release.archive.exclude` in `.repoman.json`, alongside the other
-  packaging-output exclusions it already lists (`.release-state.json`,
-  `release-*.log`). Verified: a re-run of the archive step now produces
-  exactly one `MANIFEST.sha256` entry.
-
-### Known gaps carried into this release
-
-- **G-01** (GUI link build) and **G-02** (FDC read against a real DSK
-  image) are stale as of this release -- neither exercised, since this
-  session's sandbox has no CGO/raylib/ALSA toolchain and no fixture DSK
-  image available, and neither guard's subject matter (GUI linking, disk
-  I/O) was touched by this release's changes. Recorded here rather than
-  silently skipped, per the release gate: run `./build.sh` (G-01) and
-  `go test ./... -run TestFDCRead` (G-02, see T-05 for its own sandbox-path
-  caveat) to close them out.
-
-## [0.4.63] - 2026-08-19
-
-### Changed
-
-- **The "Spectrum 128" theme is "Spectrum" now**, identifiers and
-  display name both: `zenui.ThemeSpectrum128` -> `zenui.ThemeSpectrum`
-  (constant value `"Spectrum 128"` -> `"Spectrum"`), `Spectrum128Theme()`
-  -> `SpectrumTheme()` (matching `DarkTheme`/`LightTheme`'s own naming
-  exactly). Applied everywhere the theme is actually named -- Go
-  identifiers throughout `pkg/zenui` and every call site, the
-  `-theme` CLI flag's accepted values and usage text, `settings.json`'s
-  own schema and stored value, README and Help's own descriptions --
-  while deliberately leaving untouched every reference to the real
-  Sinclair 128K/+2/+3 hardware that inspired the theme (its own doc
-  comment, "Spectrum 128K" snapshot-format labels, "ZX Spectrum 128k"
-  Machine-menu model labels): those describe real machines, not the
-  theme's own name, and renaming the theme doesn't change what
-  hardware it's modelled on. `CHANGELOG.md`'s own history is
-  deliberately not rewritten -- past entries correctly describe what
-  the theme was called at the time.
-- **`-theme=Spectrum 128` (the old, space-containing form) is no
-  longer recognised** -- a genuine, deliberate behaviour change, not
-  merely updated documentation: it now falls back to Dark with a
-  warning, the same as any other unrecognised value, rather than
-  still resolving to the Spectrum theme. Caught because a test
-  asserting the opposite would have actually failed if left as-is
-  (`normalize` strips spaces before comparing, so `"Spectrum 128"`
-  normalises to `"spectrum128"`, which no longer matches `"spectrum"`)
-  -- confirmed with a dedicated regression test instead of just
-  deleting the now-wrong assertion silently.
-- Also added, noticed missing while touching this area: `help.txt`
-  never documented the `-settings` flag from the previous release.
-  Added.
-
-### Fixed
-
-- **A duplicated `[0.4.62]` changelog entry**, found while preparing
-  this release: an earlier, truncated session's own account of its
-  `machines.json` work had already been committed to this file before
-  this session discovered and built on top of it, and a second,
-  independently-written `[0.4.62]` entry got appended later without
-  checking for the first. Consolidated into one accurate entry with
-  verified (not merely asserted) test counts, rather than left as two
-  overlapping, partially-double-counted accounts of the same release.
-
-76 substitutions applied via a scripted, ordered rename (most-specific
-pattern first, to avoid `ThemeSpectrum128`/`Spectrum128Theme` partial-
-matching each other) across 13 files, verified with a full build and
-test pass immediately after. 1 new regression test confirms the old
-`"Spectrum 128"` input form now correctly falls back to Dark instead
-of silently continuing to resolve to the renamed theme; 2 test cases
-for the old form's previous behaviour removed from `TestParseThemeFlag`
-since that behaviour no longer exists to test.
-
-## [0.4.62] - 2026-08-19
-
-### Added
-
-- **The Machine menu's layout is configurable via `machines.json`**,
-  not hardcoded -- a flat list of `separator`/`title`/`model`/
-  `submenu` nodes (new `pkg/machineconfig` package), letting groups,
-  sub-headings, and one level of real hover-opened submenu be
-  arranged however wanted (`submenu` capped at one level of nesting --
-  matching what `zenui.MenuBarSelection`'s own `SubIndex` can actually
-  report back, a second level would have nowhere to report through).
-  Every `model` node's own `id` must be one of the fixed `-model`
-  identifiers, and every one of them must appear exactly once across
-  the whole file -- structural shape validated against a
-  [queryfy](https://github.com/ha1tch/queryfy) schema (new dependency,
-  v0.3.2, fetched via the established offline module-proxy procedure
-  and confirmed working with a standalone test binary before touching
-  the real project); a separate completeness check (a whole-document
-  relationship queryfy's own per-node schema can't express) confirms
-  the identifier coverage -- together, this is what "rearrange freely,
-  but the identifiers stay the same" actually means enforced, catching
-  a duplicated or accidentally-omitted model before either becomes a
-  confusing runtime symptom. A copy is embedded in the binary as the
-  default; a valid `machines.json` next to the executable overrides it
-  entirely, an invalid one is reported and skipped in favour of the
-  embedded copy rather than treated as fatal (a broken *embedded*
-  default fails loudly instead, since that would be a bug in the
-  binary itself, not a user configuration problem). `machines.json` at
-  the project root is the real default configuration, replicating the
-  existing Sinclair/Amstrad/En Español/Timex grouping exactly.
-- `menubar_gui.go`'s Machine menu construction rebuilt around this:
-  new recursive `buildMachineNodes` (walks a `machineconfig.Node` tree
-  into parallel `zenui.Item`/flag slices, recursing once into any
-  `submenu` node's own items), new `machineSubmenuFlags` field for
-  submenu-level dispatch (`sel.SubIndex` resolves through it), and the
-  Machine dispatch logic extended to handle a real submenu selection,
-  not just the flat-list case every other node type still produces.
-- **Theme, font, font zoom, display scale, and the fixed-menu-bar
-  state persist across sessions to `settings.json`** (new
-  `pkg/settingsconfig` package; same embedded-default-with-disk-
-  override pattern, also queryfy-validated), written atomically (temp
-  file + rename) every time one of them changes via a menu. New
-  `-settings=PATH` flag points at a different file. An explicitly
-  passed `-theme` or `-scale` flag always wins outright over whatever
-  settings.json has saved; leave either unset and the persisted value
-  is used instead of that flag's own hardcoded default -- resolved via
-  two new, deliberately pure and independently testable helpers
-  (`resolveExplicitOrPersisted`/`Int`) rather than left as untestable
-  logic inline in `main()`. The running `-model` and FPS/border
-  visibility are deliberately not persisted (an explicit model should
-  never be silently overridden by a stale save; FPS/border are
-  session-level diagnostic toggles, not the kind of preference most
-  applications carry across restarts).
-
-### Changed
-
-- **Replaced an earlier, more limited implementation of the Machine-
-  menu-configuration feature**, discovered mid-session (a
-  `groups`/`subgroups`/`models` schema, already using queryfy and
-  already wired in, with its own tests): that schema only supported
-  "flat models OR flat subgroups" per group, with no real hover-opened
-  submenu capability. `pkg/machineconfig`'s node-tree schema supports
-  separator/title/model/submenu as independently combinable options in
-  any order, which more literally delivers "arrange however you want,
-  including submenus, separators, and titles" as three genuinely
-  separate, freely-combinable choices rather than two fixed shapes.
-  `machines.json` itself was rewritten to the new schema, replicating
-  the exact same grouping and labelling as before -- an internal
-  representation change, not a menu redesign.
-
-### Fixed
-
-- **`newAppMenuBar`'s font checkmark was still hardcoded to Sinclair**
-  regardless of which font actually got loaded at construction --
-  caught while wiring settings.json's own initial font through: a
-  non-Sinclair starting font (from a loaded `settings.json`) would
-  load and render correctly but show the checkmark on the wrong menu
-  item. Fixed to check against the actual resolved starting font.
-- **A theme-name inconsistency in `pkg/settingsconfig`'s own test
-  fixtures**: `"Spectrum128"` (no space) didn't match
-  `zenui.ThemeSpectrum128`'s real constant value, `"Spectrum 128"`
-  (with a space) -- not a functional bug (the fixtures were
-  self-consistent against their own local, synthetic valid-themes
-  list), but misleading for anyone reading the tests later. Corrected
-  in the fixtures and in this session's own new test that hit the same
-  assumption.
-
-42 new tests: 14 in `pkg/machineconfig` (valid config, malformed JSON,
-unknown node type, unknown model id, missing required fields, rejected
-double-nesting, missing/duplicate model detection including inside a
-submenu, and all four `Load` disk/embedded/fallback paths); 16 in
-`pkg/settingsconfig` (already complete when discovered mid-session and
-re-verified here rather than rewritten: the same shape of coverage
-plus atomic-save round-tripping and overwrite behaviour); 2 in
-`menubar_checkmarks_test.go` confirming `buildMachineNodes` and the
-dispatch logic both handle a real submenu correctly end-to-end (a path
-the default `machines.json` itself doesn't exercise, since it has no
-submenu nodes); 5 covering the initial-settings-driven construction
-path (including the font-checkmark regression above) and
-`saveSettings`'s no-op-without-a-path and actually-persists-current-
-state behaviour; 5 for the CLI precedence helpers' own cases. 3
-existing Machine-menu-structure tests rewritten against the new
-node-tree schema (one of them had silently referenced an undeclared
-variable and would never have compiled).
-
-## [0.4.61] - 2026-08-19
-
-### Fixed
-
-- **Historical correction: the Machine menu's Spanish-market group no
-  longer attributes all four models to Investrónica.** It didn't make
-  all of them. Researched properly rather than assumed: the 48k is
-  Sinclair's own design, merely distributed and locally assembled/
-  localised in Spain by Investrónica; the 128k was genuinely designed
-  by Investrónica itself (with Sinclair's permission), launched in
-  Spain months before the UK got it; the +2 and +3 are Amstrad's, the
-  +2 specifically "the first computer launched under the new owner"
-  after Amstrad's 1986 acquisition of Sinclair. The group's own title
-  is "En Español" now, not "Investronica S.A. Spain", and each model
-  sits under its own indented sub-heading naming its actual maker
-  (Sinclair, Investrónica, or Amstrad) -- the one group in this menu
-  that spans three manufacturers rather than one. New
-  `machineSubManufacturer` type and a `SubGroups` field alongside
-  `machineModelGroups`' existing `Models` (exactly one of the two set
-  per group; every other group -- Sinclair Research Ltd, Amstrad plc,
-  Timex -- still uses the flat `Models` list unchanged), with the
-  construction loop and Machine-menu dispatch both extended to walk
-  either shape.
-
-5 new tests: each Spanish model is attributed to its correct actual
-manufacturer (not just to *a* manufacturer), the three sub-manufacturer
-headings render as indented Title items, the old inaccurate group
-title no longer appears anywhere in the menu, plus the existing
-structure and model-coverage tests extended to walk both the flat and
-nested group shapes rather than assuming every group is flat.
-
-## [0.4.60] - 2026-08-19
-
-### Changed
-
-- **The About box sizes its own window height to fit its content**,
-  rather than always filling most of the screen the way Help still
-  does (Help always needs scrolling regardless of screen size, so
-  screen-filling gives it the most room; About is short and fixed-
-  length, where that would leave most of the panel empty). New
-  `markdownModal.autoHeight bool` (a third `newMarkdownModal`
-  parameter, `true` for About, `false` for Help): the panel height
-  becomes an estimate -- line count times the body's own line height,
-  plus title and padding -- rather than `screenH - 4*pad`. Estimate,
-  not a guaranteed exact fit: correct as far as this layout already
-  goes (every other size here is already line-count * line-height
-  derived too), but real text rendering could in principle wrap or
-  round slightly differently. Still capped at the screen height and
-  floored at the same minimum Help already has, for the pathological
-  case of content longer than the screen.
-
-6 new tests: an auto-height panel is shorter than a full-height one
-and doesn't fill the screen, its height matches the content estimate
-exactly, it never needs scrolling (visible >= total), it respects the
-minimum-height floor for very short content, it's still capped at the
-screen height for content too long to fit, and Help's own layout is
-completely unchanged by any of this. Plus 2 existing tests extended
-to confirm the right autoHeight value is actually wired through
-`handleLogoMenuResult` for each of Help and About.
-
-## [0.4.59] - 2026-08-19
-
-### Changed
-
-- **Help/About: client area 85% opaque, backdrop 20% less dark, text
-  and widgets stay fully opaque.** New `scaleAlpha` helper and
-  `modalPanelOpacity`/`modalBackdropDarkening` constants in
-  `markdownmodal_gui.go`, applied only to this modal's own panel and
-  backdrop fills -- not a change to `theme.Panel`/`theme.Backdrop`
-  themselves, which every other dialog (the disk-image browser, Form/
-  Modal, MessageBox) also draws with, and which weren't part of this
-  request. Panel: 85% of whatever `theme.Panel`'s own alpha already
-  is (currently 0xff/fully opaque across every theme, so effectively
-  0xd8 today, but computed relative to the theme rather than
-  hardcoded in case that changes). Backdrop: 80% of the theme's own
-  alpha, i.e. 20% less dark, relative to each theme's differing
-  starting point (0xa0 for Dark/Default, 0x50 for Light, 0xf0 for
-  Spectrum128) rather than one fixed value for all four. Title,
-  close-box, body text, and the scrollbar are untouched (already
-  fully opaque in every theme) -- ordinary alpha compositing means a
-  fully-opaque draw on top of a semi-transparent one still renders
-  fully solid, so no extra "opacity: 1" needed on those calls, they
-  simply weren't touched.
-
-6 new tests: `scaleAlpha`'s own arithmetic (including the zero-factor
-edge case), the panel and backdrop alpha values computed correctly
-relative to all four themes' own starting alphas, `draw` actually
-using the adjusted values rather than the theme's raw ones, and every
-text draw call staying at full alpha.
-
-## [0.4.58] - 2026-08-19
-
-### Fixed
-
-- **Critical: `MenuBar.SetItems` recreated the entire open dropdown's
-  `Menu` from scratch on every call**, wiping `itemRects` (only
-  repopulated by the next `Draw`) and keyboard-selection state every
-  single time -- fatal for a host calling `SetItems` every frame a
-  dropdown might be open, the established pattern
-  `refreshCustomROMItems`/`refreshViewItems` both use. Reported as
-  "all the items under the View menu appear disabled, or don't
-  respond" -- the real mechanism: each frame, `refreshViewItems`
-  called `SetItems`, which called `openLabel`, which built a brand
-  new `Menu` with empty `itemRects`; that same frame's own `Update`
-  then hit-tested the mouse against those empty rects and always
-  missed, so no item could ever register as hovered or clicked, the
-  entire time the dropdown was open. `SetItems` now updates the
-  already-open `Menu`'s items in place (`mb.menu.cfg.Items = items`)
-  instead of recreating it -- `layout()` already recomputes
-  `itemRects` fresh from `cfg.Items` on every `Draw` regardless of
-  item count, so this is picked up correctly on the very next frame;
-  an out-of-range `selected`/`hover` left over from a shorter new
-  list was already handled safely elsewhere (`itemEnabled`'s own
-  bounds check, and `hover` is recomputed fresh from the current mouse
-  position every `Update` regardless). This also silently affected
-  Custom ROM the same way whenever its own dropdown was open, though
-  that hadn't been reported.
-
-Verified the fix is meaningful, not tautological: temporarily
-reverted `SetItems` to the old recreate-on-every-call behaviour and
-confirmed the new regression tests actually fail against it,
-reproducing the reported symptom exactly (a click on a known-good
-item rect gets rejected) before restoring the fix and confirming they
-pass again.
-
-3 new tests in `pkg/zenui`: `itemRects` staying populated (and
-stable) across repeated `SetItems` calls on an open dropdown without
-an intervening `Draw`, a click still correctly registering under
-those same conditions, and `SetItems` on a *closed* dropdown updating
-its configured items without opening it.
-
-## [0.4.57] - 2026-08-19
-
-### Changed
-
-- **Font is a submenu of Theme now**, not its own top-level bar label
-  -- Theme's dropdown holds Dark/Light/Spectrum128, a separator, then
-  "Font" with the six bundled faces and (below their own separator)
-  Zoom X1/X2/X3 as nested SubItems. Dispatch is a new special case in
-  Update (`sel.ItemIndex == len(zenui.Themes)+1`, computed the same
-  way at construction and here rather than hardcoded twice) reading
-  `sel.SubIndex` into a new `b.fontActions` field, since Font's
-  actions no longer live under a `b.actions[barX]` entry the way every
-  other menu's still do. The gradient overlay/rainbow/logo hot zone
-  all anchor to `MenuBar.LabelsEndX()` -- whatever the last label
-  actually is -- rather than to "Font" by name, so they needed no
-  code changes at all now that Theme is genuinely the last label;
-  verified this directly with a test rather than assumed it. New
-  `Menu.Items()` (pkg/zenui) and `MenuBar.LabelCount()` accessors,
-  added to make this properly testable.
-- **The logo/rainbow dropdown, reordered and with a checkbox.**
-  "Fixed menu bar" is a checkbox now (`Checked: &b.fixed`, the same
-  direct-pointer pattern the View menu's own checkboxes use), first
-  in the list; order is now Fixed menu bar, ZenZX website (renamed
-  from "View ZenZX Homepage"), Help, About... (renamed from "About").
-  New `applyFixedState` helper supplies the window-resize side effect
-  after `Item.Toggle` has already flipped `b.fixed` directly, invoked
-  from a new `Toggled` case in the logo menu's own Update handling
-  (which, unlike `Accepted`, keeps the menu open -- the point of a
-  checkbox).
-- **Tape, Floppy Disk, and Snapshot menus reorganised** with
-  separators, matching the Machine menu's own earlier precedent:
-  Tape splits into playback (Play/Stop, Rewind) and settings/info
-  (Accurate/Fast Mode, Show Info); Floppy Disk into mount (Open DSK
-  Image..., Insert Blank Disk), save (Save Disk, Save Disk As...),
-  and current-disk operations (Eject Disk, Disk Info); Snapshot into
-  save operations (Quick Save, Quick Load, Save Timestamped) and
-  info/diagnostics (Snapshot Info, Run Diagnostics).
-
-### Added
-
-- **View menu zoom.** New `DisplayManager.SetScale(n)` jumps directly
-  to a specific multiplier (validated against
-  `maxMultiplierThatFits()`), unlike `ScaleUp`/`ScaleDown`'s one-step-
-  at-a-time behaviour. View's dropdown gained a separator and X 1/
-  X 2/X 3 items -- checked against the current scale, disabled above
-  what the current monitor fits -- rebuilt every frame the bar is
-  shown via a new `refreshViewItems` (the same `SetItems`-based
-  pattern `refreshCustomROMItems` already established), since
-  `Item.Disabled` has no pointer-based live-update mechanism the way
-  `Checked` does, and the scale itself can change outside the menu
-  entirely (`PgUp`/`PgDn`).
-
-17 new tests this pass, plus 6 existing tests updated for the
-restructured mechanics (not counted as new): `SetScale`'s validation
-and no-op-when-unchanged behaviour, `refreshViewItems`' structure/
-checked-state/disabled-state, the zoom dispatch actually calling
-`SetScale`, the logo menu's new order and the Fixed item's checkbox
-structure, Font's submenu structure and dispatch-index computation
-matching construction, a real font selection through `fontActions`,
-and the new separator groupings (and, for Floppy Disk, that the
-reordered actions still match their reordered labels) in all three
-reorganised menus.
-
-## [0.4.56] - 2026-08-19
-
-### Fixed
-
-- **Critical: the emulated machine silently lost keyboard input any
-  time the menu bar was merely visible, whether or not anything was
-  actually open.** `appMenuBar.Active()` included `b.state !=
-  barHidden` -- true the entire time the bar is shown, sliding, or
-  fixed, not just while a dropdown/dialog/menu/modal is genuinely
-  open and consuming input. Since `zenzx_gui.go`'s main loop gates
-  `zx.HandleInput()` on `!bar.Active()`, this meant: the mouse merely
-  drifting near the top edge during normal play (triggering the
-  idle-at-edge auto-show) silently stopped keyboard input to the
-  Spectrum until the bar auto-hid again -- explaining reports of
-  keyboard input working "sometimes" -- and permanently while the bar
-  was fixed, since a fixed bar never leaves the shown state at all.
-  `zenui.MenuBar.Active()` itself was already correct
-  (`openIndex >= 0`, meaning "a dropdown is actually open"); the bug
-  was specifically `appMenuBar`'s own wrapper adding the visibility
-  check on top. Fixed by removing it -- `Active()` now reflects only
-  `b.widget.Active()`/`diskDialog`/`logoMenu`/`activeModal`, matching
-  exactly "does something here actually want this frame's input",
-  which is what both of `Active()`'s two callers in `zenzx_gui.go`
-  (the demo-overlay trigger-key guard and the `HandleInput` gate)
-  already wanted. `bar.Update` itself is unconditional every frame
-  regardless of `Active()`'s value, so the bar's own hover-to-open
-  and click handling are unaffected by this fix -- only whether the
-  emulated machine simultaneously receives input changes.
-
-3 new tests: `Active()` correctly false across every bar visibility
-state (hidden, sliding in, shown, sliding out) with nothing open,
-correctly false even while fixed with nothing open, and correctly
-true when the logo menu is open regardless of the bar's own
-visibility state.
-
-## [0.4.55] - 2026-08-19
-
-### Added
-
-- **Fixed menu bar grows/shrinks the window to accommodate itself,
-  animated.** New `DisplayManager.reservedTopHeight`/
-  `SetReservedTopHeight`, reusing the exact `updateTargetSize`/
-  `isAnimating`/`UpdateWindowSize` mechanism border-toggling already
-  uses -- the window animates to its new size the same way. Getting
-  this right meant fixing three separate places in `Render()` that
-  assumed content started at Y=0: the destination rect (offset down,
-  height reduced, so content shifts rather than stretches into the
-  reserved strip), and `borderV` in both the with-border and
-  without-border branches (an absolute window-space Y, which needed
-  the identical offset to stay aligned with the now-shifted content --
-  easy to miss, since it's computed independently of the destination
-  rect it needs to match). Wired into the logo menu's Fix/Hide action.
-- **The Spectrum 128 rainbow's remaining 1px black seam between
-  colour bands is gone.** Switched each scanline segment from
-  `DrawLine` to `FillRect` -- unambiguous pixel coverage, where
-  raylib's line drawing apparently wasn't (confirmed visually, not
-  assumed; this is the second rainbow-adjacent rendering quirk this
-  project has hit from `DrawLine` specifically, after the earlier
-  checkered-artifact one).
-- **A second, horizontal gradient overlaid on the Spectrum 128 bar's
-  vertical one**, composited with multiply blend mode, over the same
-  right-side region the rainbow occupies: white (no darkening) at
-  that region's left edge, black (matching the base gradient's own
-  bottom colour) at the window's right edge -- darkening increases
-  toward the rainbow's own corner. New `Renderer.
-  FillRectGradientHMultiply` method (raylib's `BeginBlendMode(
-  BlendMultiplied)` + `DrawRectangleGradientH`), keeping this
-  portable through the same interface-extension approach every other
-  raylib-specific capability in this widget layer has gone through,
-  rather than a host-side escape hatch. New `Theme.UseGradientOverlay`/
-  `GradientOverlayLeft`/`GradientOverlayRight` fields; drawn
-  immediately after the base gradient and before labels/rainbow/logo,
-  so those stay at full brightness rather than also being darkened.
-- **The logo/rainbow dropdown is now always right-aligned to the
-  window's own right edge**, regardless of the hot zone's own width
-  -- a zero-width anchor at `screenW - rightMargin`, the same
-  positioning trick `openSubmenu` already uses, rather than `Menu`'s
-  own default "left-align within the anchor if it fits" behaviour
-  (which is what was actually happening before: the hot zone is wide
-  enough that the narrow logo menu always fit starting from its left
-  edge).
-
-### Fixed
-
-- **Spectrum 128 theme colours, three changes**: menu separators are
-  now grey (new `Theme.SeparatorColour`, applied uniformly across
-  every theme, only Spectrum128 actually differing from its own
-  Border colour -- black-on-white would have been near invisible);
-  checkmarks are a darker, standard-brightness green
-  (`0x00c800`, was bright `0x00ff00`); checkboxes get their own fixed
-  blue (`0x0000c8`, new `Theme.UseCheckboxColour`/`CheckboxColour`,
-  mirroring the existing `UseCheckmarkColour` pattern) so the two
-  indicator kinds read as visually different at a glance, not just by
-  shape.
-- **Spectrum 128 bar gradient one further notch more contrasted**:
-  top colour 25% -> 40% grey (`0x40`->`0x66`), the same 15-percentage-
-  point "notch" size used throughout this theme's earlier tuning
-  passes; the bottom was already pure black, the floor.
-
-14 new tests this pass (3 existing tests also updated for the changed
-checkmark/gradient/rainbow-encoding values, not counted as new):
-`SetReservedTopHeight`'s target-height math and animation-triggering
-(plus its no-op-when-unchanged case), the Fix/Hide menu action
-actually reserving/releasing the height, right-alignment holding
-across four very different screen widths, the rainbow's adjacent-band
-edge-pixel-sharing directly, the new separator/checkbox colours
-(including confirming the other three themes don't opt into either
-override), and the gradient overlay's values, draw-call presence
-(and absence for non-opted-in themes), and draw-ordering relative to
-the labels.
-
-## [0.4.54] - 2026-08-19
-
-### Added
-
-- **A dropdown menu associated with the rainbow/logo decoration** on
-  the right of the bar -- click it directly (no hover needed): Fix/
-  Hide menu bar, Help, About, and View ZenZX Homepage. Hardcoded
-  (`appMenuBar.openLogoMenu`/`handleLogoMenuResult`) rather than built
-  through the same `zenui.MenuBarItem`/actions machinery every other
-  menu uses, since the decoration isn't really a menu bar label and
-  there are only ever these four fixed choices -- a `*zenui.Menu` is
-  still what actually renders it, just constructed directly instead of
-  via `MenuBarConfig`. The click zone is computed from
-  `MenuBar.LabelsEndX()` to the screen's own right edge, generously
-  covering both the rainbow and the ZSP logo regardless of which
-  theme is active, without needing to export either decoration's
-  internal geometry functions just for hit-testing.
-- **Fix/Hide menu bar**: new `appMenuBar.fixed` field bypasses the
-  idle-at-edge auto-hide check entirely when set, keeping the bar
-  permanently shown; turning it on also shows the bar immediately.
-- **Help and About**, both a scrollable markdown-lite reader
-  (`# H1`/`## H2` headings, indented shortcut tables, mouse-wheel/
-  drag scrollbar, Escape/close-box/click-outside to dismiss) adapted
-  from zenimate's own `helpModal`
-  (`cmd/zenimate-gui/helpmodal.go`, same author, likewise Apache
-  2.0 -- the same project `pkg/zenui`/`pkg/bdf`/`pkg/zxpalette`/
-  `pkg/zenuiraylib` originally came from), generalised
-  (`markdownmodal_gui.go`) to take a title and content string
-  directly instead of one embedded `help.txt`, so both share a single
-  implementation rather than two near-identical copies. Content is
-  new: `help.txt` covers every menu, keyboard shortcut, and
-  command-line flag; `about.txt` covers version (the `__VERSION__`
-  placeholder substituted from the existing build-time `version`
-  variable at open time, not a fresh import -- avoided a real naming
-  collision with an existing package-level `version` var along the
-  way), the project's homepage link, and licence/attribution.
-- **View ZenZX Homepage** opens `https://ha1tch.github.io/zsp/
-  projects/zenzx` via `rl.OpenURL`.
-
-### Fixed
-
-- **Redundant "Toggle" removed from three menu labels.** "Toggle
-  FPS"/"Toggle Border" (View menu, both checkboxes since an earlier
-  release -- the checkbox itself already conveys the toggle, the word
-  was redundant) are now "FPS Counter"/"Border Display"; "Toggle Mode
-  (Accurate/Fast)" (Tape menu) is now "Accurate/Fast Mode", matching
-  the "Pause/Resume" convention already established elsewhere in the
-  Machine menu.
-
-A real crash surfaced and got fixed during this release's own
-testing, not shipped: calling `Draw` with the real, raylib-backed
-renderer from a headless test segfaults (no live GL context for its
-actual drawing calls) -- something no test in this codebase had done
-before. Fixed by adding a small no-op `zenui.Renderer` implementation
-scoped to this test file, used wherever a test needs `Draw` called
-(to populate layout state like `LabelsEndX`/`ItemRect`) without
-touching real raylib drawing calls at all.
-
-7 new tests: the logo hot zone's exact geometry, the logo menu's item
-count, Fix/Hide toggling and the bar actually showing when fixed,
-Help/About opening with the correct title and (for About) the
-version placeholder correctly substituted, the auto-hide bypass
-condition itself, and `Active()` correctly reporting true for both
-the logo menu and an open modal.
-
-## [0.4.53] - 2026-08-19
-
-### Added
-
-- **Menu: group headings ("tiny titles").** `Item.Title bool` marks an
-  item as a small, dim, non-selectable heading -- drawn in
-  `theme.DimText` at one scale step smaller than the menu's own
-  (`Menu.titleScale`, floored at 1), with a more compact row height
-  than a normal item (one `padY`, not two). Never hoverable, clickable,
-  or keyboard-navigable, the same way `Separator` already isn't
-  (`itemEnabled` now excludes both). Meant to pair with `Separator` to
-  divide a menu into labelled groups; indenting the items belonging to
-  a group is left to the caller (leading spaces in their own `Label`),
-  not something this field does automatically.
-- **The Machine menu now groups models by manufacturer**, using the
-  new Title/Separator combination instead of the hover-opened
-  Standard/Spanish/Timex submenus from an earlier release: Sinclair
-  Research Ltd (the original 48k/128k, before Amstrad's 1986
-  acquisition), Amstrad plc (+2/+2A/+3), Investronica S.A. Spain (the
-  Spanish-localised variants, made under licence), and Timex (the
-  US-market Timex Sinclair variant) -- each its own heading and
-  separator, with the models listed directly beneath, indented and
-  under their own display names ("ZX Spectrum 48k") rather than the
-  raw `-model` flag string. New `machineModel` type pairs each flag
-  with its display label; `machineModelGroups` is keyed by
-  manufacturer now, not the old three-way split. Selection dispatch
-  is a direct index lookup into a new parallel `machineModelFlags`
-  slice (Title/Separator rows carry `""`) rather than the
-  group/sub-index computation submenus needed -- simpler now that
-  there's no nesting to resolve.
-
-9 new tests this pass (1 replaces a prior test whose submenu-structure
-assumptions no longer applied; 1 existing test updated for the new
-`machineModel` struct without changing what it actually asserts):
-title row height/non-highlighting/non-clickability/keyboard-skip
-behaviour, title text colour and scale (including the floor-at-1
-case), the flat Machine menu's exact structure (separator/title/model
-ordering and the parallel `machineModelFlags` correctness), and a
-direct flag-lookup check for a specific model's row.
-
-## [0.4.52] - 2026-08-19
-
-### Fixed
-
-- **The Spectrum 128 rainbow was still wrong -- right triangles, not
-  parallelograms, confirmed directly from a screenshot.** The previous
-  fix's real bug: each band was clipped to a fixed-position,
-  stripeW-wide column, but the line drawn into it shifted left by up
-  to `height` pixels every row -- the clip's own fixed left edge
-  truncated the shifted-away portion, and the right edge shrank
-  naturally with it, producing a triangle that narrowed toward zero
-  width at the bottom row instead of a constant-width parallelogram.
-  Rebuilt from an exact specification (an ASCII diagram of the target
-  pixel pattern, reproduced pixel-for-pixel in a new test): for each
-  row, draw four separate lines, one per colour band, each a fixed
-  `RainbowBandWidth` pixels wide, with the whole four-band group
-  shifted one pixel further left than the row above. No clipping
-  anywhere -- the geometry function now reserves enough room on the
-  left up front for the full shift, so every line is already the
-  right width and position by construction, nothing needs to be cut
-  down afterwards. `RainbowBandWidth` and `RainbowScanlines` are now
-  plain exported package variables (defaults 16 and 24, matching the
-  bar's own height) rather than values derived from a dynamic
-  available-space calculation -- simpler, and directly tunable without
-  touching the drawing logic.
-
-### Added
-
-- **Checkmarks are Spectrum green in the Spectrum 128 theme.** New
-  `Theme.UseCheckmarkColour`/`CheckmarkColour` fields: when set, a
-  checkmark's tick uses this fixed colour instead of the item's own
-  computed text/selection colour, so the "current setting" indicator
-  reads as a stable colour that doesn't shift with hover. Only
-  Spectrum128Theme sets it (bright green, `0x00ff00`, matching the
-  palette's existing use of bright variants elsewhere); every other
-  theme is unaffected, still using the item's own computed colour as
-  before this field existed.
-- **Empty (unchecked) checkboxes are grey, uniformly across every
-  theme.** New `Theme.CheckboxEmptyColour` field (`0x808080`, neutral
-  grey, set the same way on all four themes) -- an unchecked
-  checkbox's own box outline now always uses this colour rather than
-  the item's computed text colour; a checked box (and its cross) is
-  unaffected, still using the computed colour as before.
-
-12 new tests: the rainbow's geometry directly against the exact
-example diagram (reconstructed pixel-for-pixel from recorded draw
-calls and compared string-for-string against all five example rows),
-the fit/no-fit boundary at the shift-reserved margin, confirmation
-that no clipping happens anywhere in the new implementation, scanline
-count correctly capped by the bar's own height even when
-`RainbowScanlines` is set larger, the Spectrum128 checkmark colour
-override and every other theme's absence of it, and the checkbox grey
-value applying to the empty state only, not the checked one.
-
-## [0.4.51] - 2026-08-19
-
-### Fixed
-
-- **Alt+B and the View menu's Border checkbox no longer disagreed on
-  what "toggling the border" means.** `ToggleBorder` doesn't just flip
-  a bool -- it also calls `updateTargetSize` (sets `isAnimating =
-  true`, driving a real window-resize animation via
-  `UpdateWindowSize`). The checkbox's direct-pointer wiring
-  (`Item.Toggle` flipping `zx.display.showBorder` directly) only ever
-  did the bool half; the animation never fired from the menu. Fixed by
-  changing the Border action closure -- already reached by the
-  generic dispatch on every `Toggled` event, confirmed, not just
-  `Accepted` -- from a no-op to calling `updateTargetSize` itself, so
-  Item.Toggle supplies the flip and this closure supplies the second
-  half, matching Alt+B exactly rather than just agreeing on the bool.
-- **The Spectrum 128 rainbow's diagonal lines produced a checkered
-  artifact, not a clean edge** -- confirmed by the person's own numpy
-  analysis of the actual rendered output, not assumed. Replaced
-  diagonal `DrawLine` calls with dense per-row horizontal scanlines:
-  each row draws one full-width horizontal line, shifted left by
-  exactly `row` pixels from the row above, clipped per band. Scanline
-  rasterisation is unambiguous in a way sparse diagonal lines spaced
-  2px apart apparently weren't -- there's no possible gap or overlap
-  between adjacent rows to produce a checkerboard.
-- **Checkmark and checkbox indicators no longer look identical.**
-  `Item.Toggle` distinguishes them properly now: checkboxes
-  (non-mutually-exclusive options) always show an outlined box, with
-  a cross mark drawn inside when checked; checkmarks (mutually
-  exclusive options) show nothing at all when not selected, a tick
-  mark when selected. Previously both used the same filled/outlined
-  square regardless of which kind of choice the item represented.
-- **Submenus now always draw a full border, including the top edge,
-  regardless of the active theme's `DropdownBorderSkipTop`.** That
-  setting means "this dropdown opens directly under the bar, so a top
-  edge would just double the bar's own bottom edge" -- a statement
-  about a top-level dropdown's relationship to the bar that's never
-  true for a submenu, which opens beside a parent item instead. New
-  `Menu.isSubmenu` field, set only by `openSubmenu`, makes the
-  distinction.
-- **Checkbox/checkmark indicators sat hard against the dropdown
-  panel's own left border.** The indicator's X was computed from
-  `rec.X` directly, ignoring `padX` entirely. Now positioned after
-  `padX` first, then centred within the gutter -- the same left
-  margin every item's own text already gets.
-
-### Added
-
-- **Menu separators** (`Item.Separator bool`): a thin horizontal
-  divider row, never hoverable-as-selected, clickable, or
-  keyboard-navigable (extends the existing `itemEnabled` check the
-  same way `Disabled` already does, so every interaction path that
-  already respects Disabled correctly skips separators too, with no
-  further changes needed). Required rewriting `Menu.layout` to use
-  per-item variable row heights instead of a uniform `itemH` -- a
-  separator's own row is shorter than a normal item's, not the full
-  text-plus-padding height.
-- **Submenus open 4px to the left of the parent row's own right
-  edge**, overlapping it slightly rather than sitting exactly flush.
-- **ZSP logo rotation slowed to 1 second per frame** (was a third of
-  a second) -- too fast once actually seen running; a full
-  three-arrangement cycle now takes three seconds, not one.
-- **Spectrum 128 bar gradient darkened two more notches**: top colour
-  55% grey -> 25% grey (`0x8c`->`0x40`, two more 15-percentage-point
-  reductions); the bottom was already pure black, the floor.
-
-17 new tests this pass (2 replace prior tests whose assumptions no
-longer applied after the checkbox/checkmark rewrite): the Border
-animation regression itself, rainbow scanline count/orientation/shift-
-per-row, checkmark tick-only-when-checked and checkbox
-box-always-cross-when-checked behaviour, the left-margin padding fix,
-submenu full-border and 4px-position correctness, and six separator
-tests covering row height, non-highlighting, non-clickability,
-keyboard-navigation skipping, line-not-text drawing, and total menu
-height reduction.
-
-## [0.4.50] - 2026-08-19
-
-### Added
-
-- **ZSP (Zen Spectrum Project) logo on the bar, Dark and Light themes
-  only, in the same right-of-labels slot the Spectrum 128 rainbow
-  uses.** Two colour-halves, each two ascending three-block "teeth"
-  (bottom-left to top-right -- x increases and y decreases together
-  as the block level rises, matching the reference exactly), rotating
-  through three colour arrangements every third of a second (a full
-  cycle takes one second). Colours measured directly from the three
-  reference images provided (numpy exact RGB extraction): standard-
-  brightness yellow/cyan, then two bright pairs (green/magenta,
-  cyan/red) -- reproduced exactly as given rather than normalised to
-  one brightness level. Drawn entirely through `FillRect` (new
-  `pkg/zenui/zsplogo.go`), not a bitmap or a transparent image -- the
-  "prefer procedural rectangle drawing over an image asset" approach
-  explicitly requested, and the same approach the Spectrum 128
-  rainbow already uses.
-- **`Input.DeltaTime float32`**, populated from `rl.GetFrameTime()` at
-  the single shared point every widget's input already flows through
-  (`zenuiraylib.Input()`) -- benefits any future widget with its own
-  animation timing, not just this one. `MenuBar` accumulates it into a
-  new `logoElapsed` field across `Update` calls, driving the colour
-  rotation; the accumulator runs regardless of which theme is active,
-  so switching to Dark/Light mid-session doesn't reset the rotation
-  phase to whichever arrangement happened to be first.
-- **`Theme.ShowZSPLogo bool`** -- `true` for Dark/Light, explicit
-  `false` for Spectrum128Theme and DefaultTheme, following the same
-  per-theme-field convention `ShowBarRainbow`/`UseBarGradient` already
-  established.
-
-### Verified
-
-- **The Spectrum 128 rainbow's existing geometry and colours
-  independently re-confirmed against a newly provided, purpose-built
-  reference asset (`spectrum128.png`)** -- pixel-measured the same way
-  as the original boot-screenshot verification: four equal-width
-  bands, the same red/yellow/green/cyan order, a true 45-degree
-  diagonal (shift equal to the strip's own height). Both references
-  agree completely; no code changes were needed, only the doc comment
-  updated to record the independent confirmation.
-
-9 new tests: ZSP logo colour-triple exact match, block proportion
-(1:2 width:height, matching the reference logo's own 45x90 block
-ratio), geometry's not-enough-room and too-short-for-blocks refusals,
-fill count and per-half colour correctness, the ascending-staircase
-direction itself, colour-index advancement from accumulated
-`DeltaTime`, and the logo drawing nothing at all when the active
-theme doesn't request it.
-
-## [0.4.49] - 2026-08-19
-
-### Fixed
-
-- **Spectrum 128 theme's bar gradient 15% darker.** Top colour 70%
-  grey -> 55% grey (`0xb2`->`0x8c`); the bottom was already pure
-  black, the floor, so it couldn't get darker.
-- **`Menu.subResult` was never initialised, defaulting to Go's zero
-  value (0) rather than -1.** Discovered while wiring the Machine
-  menu's submenus: a plain top-level item at index 0 could be
-  mistaken for "submenu item 0 was chosen" by anything checking
-  `SubResult() >= 0`. `NewMenu` now sets `subResult: -1`, matching
-  every other "not applicable" field it already initialises the same
-  way (`result`, `subOpen`, `hover`, `selected`).
-- **`MenuBar.Update` didn't handle `Toggled` at all** -- it fell
-  through the switch's cases entirely, returning `ok=false` and
-  leaving the host with no way to learn a checkbox item was clicked
-  even though the underlying bool had already flipped correctly. Now
-  returns the selection with `ok=true`, matching `Accepted`, but
-  without calling `Close()` -- the dropdown stays open, since that's
-  the entire point of a checkbox. Extended `MenuBarSelection` with a
-  new `SubIndex` field (mirroring `Menu.SubResult` one level up) so a
-  submenu choice is fully expressible at the bar level too.
-
-### Added
-
-- **Checkmarks on Theme, Font, Font zoom, and Machine's current
-  model.** Each menu's items hold a `*bool` into a small map on
-  `appMenuBar` (`themeChecked`/`fontChecked`/`zoomChecked`/
-  `modelChecked`), built once at construction and updated in place --
-  never rebuilt -- whenever `ApplyTheme`/`ApplyFont`/`ApplyZoom`/a
-  model switch runs, so a menu re-opened later always shows the
-  correct current selection.
-- **Machine menu reorganised into Standard/Spanish/Timex submenus**
-  (replacing the old flat 10-item list), each carrying its own
-  checkmark. Selection dispatch reads the new `MenuBarSelection.
-  SubIndex` to resolve which model within which group was picked.
-- **View menu's Toggle FPS/Toggle Border are checkboxes now, not
-  one-shot actions.** Wired directly to `zx.display.showFPS`/
-  `showBorder` themselves (`Item.Checked: &zx.display.showFPS`,
-  `Toggle: true`) rather than a separately-synced copy -- the same
-  bool the existing `Alt+F`/`Alt+B` shortcuts already flip via
-  `ToggleFPS`/`ToggleBorder`, so the checkmark is correct regardless
-  of which path changed it, with no refresh step needed anywhere.
-  One accepted, documented trade-off: `ToggleBorder`'s own console
-  print doesn't fire when toggled from the menu specifically (`Item.
-  Toggle` flips the bool directly, bypassing that method) -- judged
-  acceptable since the checkbox itself now makes the state visible
-  without needing the console at all.
-- **`newAppMenuBar` now takes `zx *ZenZX` and the initial model**,
-  needed for the View checkboxes' direct wiring and the Machine
-  menu's initial checkmark respectively. Confirmed safe before
-  making the change: `zx` exists and the `-model` flag's own value is
-  stable well before `newAppMenuBar` is called in `zenzx_gui.go`'s
-  `main`, even though the actual ROM-loading switch statement runs
-  later.
-- **`zenui.MenuBar.ItemsFor(barIndex) []Item`** -- a small new
-  accessor for a host that needs to inspect an item's `Checked`
-  pointer or `Toggle` flag directly, used throughout this release's
-  own tests; mirrors `SetItems`' existing bounds-checking convention.
-
-14 new tests: Machine's submenu structure and model coverage, initial
-and post-switch checkmark correctness for Theme/Font/Zoom/Machine,
-the View checkboxes' direct-pointer wiring (including a same-address
-check, not just same-value), `Toggle` vs. plain-item distinction, a
-safety check that the otherwise-unreachable `barView` action-table
-entries are no-ops rather than nil (confirmed necessary once
-`MenuBar.Update` started returning `ok=true` for `Toggled`), and
-`MenuBar`'s own `Toggled`-keeps-dropdown-open behaviour directly.
-
-## [0.4.48] - 2026-08-19
-
-### Added
-
-- **Form: a grid-laid-out widget for labelled fields, checkboxes, and
-  text input.** `FormField.Row`/`Col` place a field in grid cells (not
-  pixels); `ColSpan`/`RowSpan` let one field cover more than one cell.
-  Column widths and row heights are computed from the fields that
-  occupy them (a field's own label, or `MinWidthCells` when that needs
-  to be wider than the label implies) and snapped up to
-  `FormConfig.GridSize` -- default 8px, as specified. A deliberate
-  simplification, documented rather than left to be discovered by
-  surprise: a field spanning multiple columns doesn't widen the
-  columns it spans, it gets the sum of whatever they already are --
-  a full constraint solver is more machinery than a form of a handful
-  of fields needs. Three field types: `FieldLabel` (static text),
-  `FieldText` (editable, append/backspace only -- the same convention
-  `Dialog`'s own filename field already established, no mid-string
-  cursor), `FieldCheckbox`. Tab cycles focus forward through
-  focusable fields, wrapping, skipping labels and disabled fields;
-  clicking a text field focuses it, clicking a checkbox toggles and
-  focuses it. Form itself never Accepts or Cancels -- it always
-  reports `Active`; that decision belongs to whatever hosts it.
-- **Modal: a generic dialog wrapping a Form with a backdrop and a
-  configurable button row.** `ModalConfig.Buttons` is an arbitrary
-  list of labels, left to right -- not limited to any fixed set.
-  `CancelButtonIndex`, if set, is the button Escape also triggers.
-  Genuine two-pass layout (`Form.layout` is pure computation, safe to
-  call twice): first learns the form's natural size, then repositions
-  it so the form-plus-buttons combination is centred on screen as a
-  whole, not just the form alone with buttons trailing off wherever
-  they land.
-- **MessageBox and MessageDialog: generic and purpose-specific
-  message/choice dialogs, built on Modal.** `NewMessageBox` is fully
-  generic (arbitrary button labels, for anything from a save-changes
-  prompt to a "pick a format" choice); `NewOKMessageBox`/
-  `NewYesNoMessageBox`/`NewYesNoCancelMessageBox`/
-  `NewOKCancelMessageBox` are convenience constructors with the
-  buttons and `CancelButtonIndex` pre-set. `MessageDialog` is a
-  straight type alias for `MessageBox` -- documented plainly as such,
-  not a distinct implementation pretending to a difference that
-  wasn't asked for -- with a parallel `NewXMessageDialog` constructor
-  set, for callers who know this concept by the other name. Both
-  names share every method (`Draw`/`Update`/`Status`/`Result`) via the
-  same embedded `*Modal`.
-
-### Fixed
-
-- A real bug caught during Menu's own checkbox/submenu testing (not
-  from this release, but worth restating here since it's the same
-  class of issue Form/Modal's layered Update calls could easily have
-  repeated): a status returned from a nested widget's `Update` must
-  not be allowed to fall through into the parent's own key handling
-  in the same call. Modal's `Update` (delegates to Form, then checks
-  its own Escape/button handling) and Menu's submenu delegation both
-  follow the same return-immediately discipline established when that
-  bug was fixed.
-
-All four widgets confirmed to have zero raylib references anywhere in
-their source -- grepped directly, not just built successfully -- the
-same portability standard every existing zenui widget already meets.
-
-35 new tests across `form_test.go` (18), `modal_test.go` (9), and
-`messagebox_test.go` (8): grid sizing and snapping, multi-column/multi-row
-layout, `ColSpan`, `MinWidthCells`, text typing/backspace/control-
-character filtering, tab navigation order, checkbox and text-field
-click behaviour, anchor vs. auto-centring, button positioning and
-click handling, `CancelButtonIndex` via both click and Escape, Form
-fields working correctly through Modal, a closed modal drawing
-nothing, every purpose-specific constructor's exact button
-configuration, and the `MessageDialog`/`MessageBox` constructor sets
-producing identical results.
-
-## [0.4.47] - 2026-08-19
-
-### Added
-
-- **Menu: checkmarks, checkboxes, and submenus.** All three extend
-  `Item` additively -- a menu that uses none of them draws and behaves
-  exactly as before.
-  - **Checkmarks**: `Item.Checked *bool` draws a small filled (checked)
-    or outlined (unchecked) square before the label, built from
-    `FillRect`/`StrokeRect` rather than a font glyph, since the
-    bundled bitmap fonts don't reliably have a dedicated check
-    character. Display-only -- clicking still selects and closes the
-    menu, the same as any item without `Checked` set. Gutter space is
-    reserved only if at least one item in the menu actually sets
-    `Checked`, so checkable and non-checkable items in the same menu
-    align consistently, and a menu using neither is laid out
-    identically to before this existed.
-  - **Checkboxes**: `Item.Toggle bool` (alongside `Checked`) makes
-    clicking flip `*Checked` and keep the menu `Active` rather than
-    closing it -- a new `Toggled` status, returned from `Update` for
-    that one frame without ever being stored into the menu's own
-    `Status()` (which stays `Active`), which is what lets a checkbox
-    be clicked more than once in the same menu-opening.
-  - **Submenus**: `Item.SubItems []Item` opens a nested `*Menu`
-    on hover -- not click, matching `MenuBar`'s own established
-    hover-opens/hover-switches behaviour -- positioned to the right of
-    its row (or left, with no new positioning logic: a zero-size
-    anchor placed at the row's right edge reuses `layout`'s existing
-    anchor-fallback maths unchanged). A parent row with `SubItems` is
-    never itself directly selectable, by hover or by click. New
-    `Menu.SubResult()` reports which submenu item was chosen,
-    separate from `Result()` (the parent row's own index) -- mirroring
-    how `MenuBarSelection` already separates bar-index from
-    item-index one level up. One level of nesting only; a submenu
-    item's own `SubItems`, if set, are ignored.
-
-A real bug turned up during testing and got fixed: Escape inside an
-open submenu correctly cancelled the submenu, but the same key press
-then fell through to the parent menu's own Escape check in the same
-`Update` call, cancelling the parent too. Fixed by returning
-immediately after closing a cancelled submenu rather than falling
-through -- hover detection catching up costs one extra frame, a better
-trade than double-consuming the same key press.
-
-11 new tests: checkmark/checkbox rendering and gutter reservation,
-toggle-stays-open and repeated-toggle behaviour, non-toggle items
-unaffected, submenu open-on-hover, parent-not-directly-selectable,
-choice propagation to the parent, the Escape-inside-submenu regression
-itself, and hovering a different submenu-having item switching
-correctly.
-
-## [0.4.46] - 2026-08-19
-
-### Fixed
-
-- **Architecture review: eliminated every remaining direct raylib call
-  from the UI widget layer.** The bar's gradient and rainbow
-  decorations previously bypassed the `Renderer` abstraction entirely
-  -- `menubar_gui.go` called `rl.DrawRectangleGradientV`/
-  `rl.BeginScissorMode`/`rl.DrawLine` directly, with `pkg/zenui`'s
-  `MenuBar.Draw` skipping its own background fill and trusting the
-  host to have already painted it first. `Renderer` gained two new
-  methods, `FillRectGradientV` and `DrawLine`, implemented in
-  `pkg/zenuiraylib.Renderer` and in every test double
-  (`noopRenderer`, `drawRecorder`); `MenuBar.Draw` now draws both
-  decorations itself, entirely through the interface -- the existing
-  `Clip`/`ClipEnd` methods already covered the rainbow's per-band
-  scissoring, no further interface change needed there. The rainbow's
-  geometry/colour logic and drawing (`rainbowGeometry`,
-  `rainbowColours`, `drawRainbow`) moved from `menubar_gui.go` into a
-  new `pkg/zenui/rainbow.go`; the host file lost roughly 100 lines and
-  every raylib call it used to make for either decoration.
-  `gui_demo_overlay.go`'s darkening backdrop had the same problem on a
-  smaller scale (`rl.DrawRectangle` called directly instead of through
-  `d.renderer.FillRect`) -- fixed the same way.
-  A full audit of every file that integrates with a zenui widget
-  (`menubar_gui.go`, `gui_demo_overlay.go`, `custom_roms_menu_gui.go`)
-  confirms the only raylib calls remaining anywhere in that layer are
-  input polling (`GetMouseX/Y`, `IsKeyPressed`) and frame/window
-  lifecycle (`BeginDrawing`, `WindowShouldClose`, `GetScreenWidth/
-  Height`) -- never widget content drawing. `display.go`,
-  `videorender_gpu.go`, and `input.go` are unaffected by this review
-  by design: they're the emulator's own screen-rendering and
-  emulated-keyboard pipeline, a genuinely separate concern from the
-  zenui widget system, not something this abstraction was ever meant
-  to cover.
-
-Existing tests migrated to their new home
-(`pkg/zenui/rainbow_test.go`) plus 2 new ones confirming `drawRainbow`
-actually clips per band and draws nothing when there's insufficient
-room -- both were previously untestable from the host side without a
-live GL context.
-
-## [0.4.45] - 2026-08-19
-
-### Added
-
-- **"Open DSK Image..." in the Floppy Disk menu** -- a live file
-  browser (`zenui.Dialog`, filtered to `.dsk`), mounted the same way
-  `-disk` does at startup but without needing to restart. Gated on
-  `zx.io.hasFDC` (true only for +3/Spanish +3, tracked live by
-  `switchModelLive` already): on any other model it prints a message
-  and does nothing rather than opening a dialog that would fail. The
-  dialog is driven independently of the bar's own state (`appMenuBar.
-  Update`/`Draw` both check it first, before the normal bar/dropdown
-  logic), matching the same "own its own lifecycle across frames"
-  pattern the Custom ROM two-step flow already established --
-  `Active()` also reports true while it's open, so the emulated
-  machine receives no keystrokes meant for the file browser.
-- **Disk Info now reports the actual floppy controller state**
-  (loaded filename, modified-but-unsaved) instead of a static
-  "restart with -disk=filename.dsk" message that's been outdated
-  since Open DSK Image made a restart unnecessary.
-
-4 new tests: Open DSK Image correctly refusing without a floppy
-controller and correctly opening with one, `Active()` reflecting the
-open dialog, and Disk Info not panicking across its different states.
-
-## [0.4.44] - 2026-08-19
-
-### Fixed
-
-- **The rainbow was wrong in both colour count and direction --
-  verified this time with numpy pixel analysis of an actual +3 boot
-  screenshot, not visual estimation.** The real title strip's rainbow
-  is four bands (red/yellow/green/cyan), not six -- there is no blue
-  or magenta band at all. Confirmed by classifying every pixel across
-  a wide row and column range: exactly four 16px-wide bands of pure
-  bright RGB (255,0,0 / 255,255,0 / 0,255,0 / 0,255,255), matching
-  this project's own `zxPalette` bright variants exactly. The diagonal
-  direction was also backwards: measuring the same colour boundary's
-  x-position across 16 rows showed it shifting *left* as y increases
-  (a "/" lean), not right -- `drawBarRainbow`'s line endpoints added
-  `height` to x instead of subtracting it. Both fixed;
-  `rainbowColours` is now 4 entries, `x2 := x1-height` not `x1+height`.
-  A first analysis pass had actually found the same numbers but missed
-  the shift entirely, because a debug filter suppressing long runs of
-  background colour also suppressed the one value (the shifting
-  black-prefix run length) that would have shown it.
-- **Spectrum 128 theme, further tuning:** row height down another 2px
-  at the default zoom (`ItemPadYPercent` 14 -> 7); dropdown bottom
-  padding increased via new `Theme.DropdownBottomPadding` (6px, every
-  other theme explicit 0) -- left/right padding was already correct
-  and untouched.
-
-### Added
-
-- **Vertical gradient bar background, Spectrum 128 theme only:** 70%
-  grey at the top fading to black at the bottom, via
-  `rl.DrawRectangleGradientV`, replacing the flat (twice-lightened)
-  Sidebar fill this theme used before. New `Theme.UseBarGradient`/
-  `BarGradientTop`/`BarGradientBottom` fields; `MenuBar.Draw` skips its
-  own flat background fill when `UseBarGradient` is set, expecting the
-  host to have already painted the gradient first (the same
-  raylib-in-the-host, signal-in-the-portable-package split
-  `ShowBarRainbow`/`drawBarRainbow` already established). New
-  `drawBarGradient` (`menubar_gui.go`), called from `appMenuBar.Draw`
-  before the widget itself so labels/border/dropdown layer on top of
-  the gradient rather than a flat fill covering it back up.
-
-8 new tests: the corrected rainbow colours against the measured
-reference values, the gradient skip/no-skip fill behaviour in both
-directions, the third-pass Spectrum 128 values, and a Dark/Light
-regression guard for the two new fields.
-
-## [0.4.43] - 2026-08-19
-
-### Fixed
-
-- **Spectrum 128 theme, third pass against a direct screenshot
-  comparison.** Border thickness 2px (down from the second pass's
-  still-heavy 3px). Bar's resting colour lightened a further step.
-  Item padding: a side-by-side pixel comparison against the real
-  "128 +3" menu box visible in the same screenshot showed its rows
-  barely taller than the text itself -- nothing close to the second
-  pass's 42%, which had overshot toward "generous" based on
-  recollection rather than the actual reference. Vertical padding
-  dropped to 14% (tighter than even this project's own 25% default
-  for every other theme); horizontal widened further to 75% per
-  direct feedback, in the opposite direction from vertical.
-
-### Added
-
-- **The classic Sinclair diagonal-stripe rainbow, on the right side of
-  the bar strip, Spectrum 128 theme only.** Six coloured bands of
-  45-degree parallel lines (`rl.DrawLine`, scissor-clipped per band --
-  not a bitmap, not a single filled shape), using this project's own
-  bright-palette RGB values (`zxPalette`, `videorender.go`) for
-  consistency with the emulator's own screen rendering. Drawn only
-  when there's at least 60px of free space after the last label, and
-  capped at 160px total width even on very wide windows, so it reads
-  as a compact decoration rather than stretching to fill whatever room
-  exists. New `Theme.ShowBarRainbow` field (Spectrum128Theme only;
-  every other theme explicit `false`) is the portable on/off signal
-  `pkg/zenui` carries; the actual raylib drawing
-  (`drawBarRainbow`/`rainbowGeometry`, `menubar_gui.go`) lives entirely
-  in zenzx's own GUI code, split into a pure geometry/decision
-  function and a thin raylib-calling wrapper so the "is there enough
-  room, and where do the bands land" logic is directly testable
-  without a live GL context. New `zenui.MenuBar.LabelsEndX()` exposes
-  where the last label ends, so a host can make exactly this kind of
-  "only if there's room" decision.
-
-10 new tests: `rainbowGeometry`'s space-check, sizing, and width-cap
-behaviour in isolation; `LabelsEndX` correctness; and the third-pass
-Spectrum 128 padding/border values alongside updated Dark/Light
-regression guards.
-
-## [0.4.42] - 2026-08-19
-
-### Fixed
-
-- **The GUI never actually started in Dark theme -- it started in
-  `zenui.DefaultTheme()`, a separate, older palette that predates the
-  Dark/Light/Spectrum128 preset system.** `newAppMenuBar` set
-  `themeName: zenui.ThemeDark` correctly, but initialized the actual
-  `theme` value from `zenui.DefaultTheme()` instead of
-  `zenui.LoadTheme(zenui.ThemeDark)` -- the two have diverged since
-  DarkTheme's own adjustments in 0.4.38 (a more distinct panel/field
-  pairing, a richer blue-violet selection). The bar looked right only
-  after explicitly picking a theme from the Theme menu once; before
-  that, `DefaultTheme()`'s original, unadjusted colours showed instead.
-  Fixed: `newAppMenuBar` now takes the initial theme as a parameter and
-  resolves it through `zenui.LoadTheme`, the same function the Theme
-  menu itself uses.
-- **Spectrum 128 theme, further tuning against direct feedback:**
-  border thickness brought down from 3px to 2px (the first pass read
-  too heavy); the bar's resting colour lightened a second time (from
-  the first pass's ~10%-lightened-from-black to a further lightening on
-  top of that); dropdown item padding widened from the tight
-  25%/50% (vertical/horizontal, matching every other theme) to
-  42%/65% -- a middle ground between that and the real menu's own more
-  generous spacing, not a full match (which would crowd the dropdown
-  vertically at short menus). New `Theme.ItemPadYPercent`/
-  `ItemPadXPercent` fields replace the previously-fixed `lh/4`/`lh/2`
-  formula; every other theme sets these to 25/50 explicitly, guarded
-  by a new regression test confirming Dark and Light are unchanged.
-
-### Added
-
-- **`-theme` command-line flag** (`Dark`/`Light`/`Spectrum128`,
-  case-insensitive, the space in "Spectrum 128" optional) sets the
-  startup theme directly, rather than always starting Dark and
-  requiring the Theme menu for anything else. An unrecognised value
-  warns and falls back to Dark rather than failing silently.
-
-6 new tests: the startup theme actually matching `zenui.LoadTheme`'s
-own value (not `DefaultTheme`), `-theme` flag parsing (case,
-whitespace, the optional space in "Spectrum 128", and the
-unrecognised-value fallback), and the Spectrum 128 padding/border
-adjustments alongside a Dark/Light regression guard.
-
-## [0.4.41] - 2026-08-19
-
-### Fixed
-
-- **Spectrum 128 theme, second pass on direct feedback against the
-  real 128K/+2/+3 menu.** Dark and Light are unchanged (confirmed
-  correct as shipped in 0.4.40).
-  - The top bar's "which menu is open" indicator was using the
-    dropdown's own cyan selection colour -- the real title strip is
-    always black, it never shows that highlight. New `Theme.BarSelFill`/
-    `BarSelText` fields, separate from `SelFill`/`SelText`, let the bar
-    and the dropdown use different highlight treatments where a theme
-    needs it. Spectrum 128: bar's resting colour lightened from pure
-    black to a ~10%-lighter near-black; the open label's own
-    background is pure black (darker than that resting colour), text
-    stays white. Dark and Light: `BarSelFill`/`BarSelText` set equal to
-    `SelFill`/`SelText`, so their bar's appearance is byte-for-byte
-    unchanged from before these fields existed -- guarded by a new
-    regression test (`TestDarkAndLightBarSelMatchesSelUnchanged`).
-  - Dropdown border was a flat 1px `StrokeRect` for every theme, no
-    thicker than the original menu's own noticeably heavier border
-    weight, and drawn on all four sides even though a bar-opened
-    dropdown always sits flush under the bar. New
-    `Theme.BorderThickness`/`DropdownBorderSkipTop` fields; new
-    `drawBorder` helper (four independent edge fills, letting the top
-    edge be selectively omitted -- `StrokeRect` draws all four sides in
-    one call with no way to skip just one). Spectrum 128:
-    `BorderThickness: 3`, `DropdownBorderSkipTop: true`. Dark and
-    Light: `BorderThickness: 1`, `DropdownBorderSkipTop: false` --
-    identical to the previous fixed `StrokeRect(..., 1)` call, guarded
-    by `TestDarkAndLightBorderUnchanged`.
-
-9 new tests: `drawBorder`'s own edge/thickness/skip-top behaviour in
-isolation, `Menu.Draw` correctly reading `BorderThickness`/
-`DropdownBorderSkipTop` from the active theme, `MenuBar.Draw` using
-`BarSelFill`/`BarSelText` for the open label, and the Dark/Light
-regression guards and Spectrum 128 correctness checks described
-above. `TestMenuBorderDrawnAfterSelectionFill` updated to identify
-border edges by colour rather than by a `StrokeRect` call that no
-longer exists in the drawing path.
-
-## [0.4.40] - 2026-08-19
-
-### Fixed
-
-- **Spectrum 128 theme: the cyan selection highlight overlapped the
-  dropdown's own black border.** `Menu.Draw` and `MenuBar.Draw` both
-  drew the border stroke before the item/label rows, and a highlighted
-  row's fill spans the same full width the border traces -- so the
-  fill painted over the border at the left/right edges. Fixed by
-  drawing the border last in both, on top of everything else, so it
-  always reads as an unbroken frame regardless of what's highlighted
-  underneath.
-- **Spectrum 128 theme: the top menu bar was white-on-black instead of
-  black-on-white, unlike the real 128K/+2/+3 menu's own title strip.**
-  `MenuBar.Draw` used `theme.Panel`/`Text` (the same pair the dropdown
-  panel below it uses) for the bar's own background/label colours.
-  Fixed: the bar now uses `theme.Sidebar`/`SideText` instead -- a pair
-  every theme already had, `Spectrum128Theme` already set correctly
-  (near-black/white) when the theme shipped, it just wasn't wired to
-  where it needed to be.
-- **Light theme: the selected menu item's text was unreadable against
-  the blue highlight.** Selected-row text used `theme.Text` (near-black
-  in Light) regardless of what it was drawn over. New `Theme.SelText`
-  field, used whenever a row is the highlighted one: white for Light,
-  matching its selection blue; a near-white already appropriate for
-  Dark's selection colour, made explicit; black for Spectrum 128,
-  matching the real menu's own cyan-highlighted row.
-
-### Added
-
-- **Font zoom: X1/X2/X3, three new items in the existing Font menu.**
-  Applies only to dropdown text/layout, never the bar strip itself,
-  which always draws at X1. `MenuConfig.Scale` and
-  `MenuBarConfig.Scale` (new, both optional, defaulting to the
-  package's existing fixed scale when unset) thread a per-dropdown
-  scale through `Menu`/`MenuBar` in place of the previously-fixed
-  `dlgScale` constant; `MenuBar.SetScale` changes it live, applied the
-  next time a dropdown opens rather than resizing one already open out
-  from under an in-progress interaction. X2 is the default -- picking
-  nothing changes nothing from what every dropdown already drew at.
-
-16 new tests across `pkg/zenui` and the menu bar wiring cover all of
-the above: border-drawn-after-fill ordering (both `Menu` and
-`MenuBar`), `SelText` actually being used for highlighted rows,
-`MenuBar` using `Sidebar`/`SideText` rather than `Panel`/`Text`, scale
-threading from `MenuBarConfig`/`SetScale` through to an opened
-dropdown, and the zoom menu's three actions each applying their own
-correct level.
-
-## [0.4.39] - 2026-08-18
-
-### Fixed
-
-- **Menu options could fire before the bar had fully unrolled,** opening
-  a dropdown anchored to the bar's mid-animation position rather than
-  its resting one -- the reported "menu floating mid-air while the bar
-  hasn't unrolled yet" behaviour. `appMenuBar.Update` called
-  `zenui.MenuBar.Update` (hover-to-open, click-to-select) unconditionally
-  every frame; hit-testing during `barSlidingIn`/`barSlidingOut` ran
-  against `labelRects` from whatever Y the bar's last, still-animating
-  Draw call had rendered at, not its final position. Fixed: widget
-  interaction is now gated on `b.state == barShown` -- fully, restingly
-  visible, not merely on screen. 2 new tests
-  (`TestUpdateSkipsWidgetInteractionWhileAnimating`,
-  `TestUpdateAllowsWidgetInteractionWhenShown`) confirm the gate holds
-  across every non-`barShown` state without panicking and doesn't block
-  the `barShown` path itself.
-
-## [0.4.38] - 2026-08-18
-
-### Added
-
-- **Switchable UI themes: Dark, Light, and Spectrum 128.** Two new
-  menus in the top menu bar, `Theme` and `Font`, both applying live --
-  every dropdown reads the current theme/font fresh each frame, so a
-  change takes effect everywhere immediately, no restart needed.
-  - **Dark** (`zenui.DarkTheme`, the default): the same scheme the bar
-    has always used, with two deliberate adjustments -- the dialog
-    panel/field pairing reads more distinct from each other, and the
-    selection highlight shifts from a flat blue to a richer
-    blue-violet.
-  - **Light** (`zenui.LightTheme`): a macOS Aqua-inspired scheme --
-    light grey panels, near-white fields, near-black text, the classic
-    Aqua selection blue.
-  - **Spectrum 128** (`zenui.Spectrum128Theme`): the real Sinclair
-    128K/+2/+3 boot menu's own palette, not a generic "retro" scheme --
-    white panel, black text, bright cyan selection, verified directly
-    against this project's own `docs/zenzx-model-catalog.pdf`.
-  - Font choices: the bundled Sinclair face (the default) plus five
-    more BDF faces newly bundled into `pkg/fonts` -- TomThumb, Spleen,
-    Cozette, Creep, and HaxorMedium.
-- New: `pkg/zenui/theme_presets.go` (`ThemeName`, `Themes`, `LoadTheme`,
-  `DarkTheme`/`LightTheme`/`Spectrum128Theme`) and `pkg/fonts`'s
-  `Name`/`All`/`Load` (mirroring the theme API's shape). 9 new tests
-  across both packages plus `menubar_gui_test.go`'s theme/font
-  application tests.
-
-### Fixed
-
-- **A real colour-multiplication bug in `pkg/zenuiraylib.BDFText`,
-  found while building theme switching.** Glyph textures were cached
-  with a fixed ink colour baked into their pixels at construction
-  time, then `Draw`'s separate tint parameter multiplied on top of
-  that at draw time. Harmless with the previous single, near-white
-  Dark theme, but would have been catastrophic with Spectrum 128's
-  black text as the baked-in ink -- every tint multiplying against
-  black renders black regardless of what colour was actually
-  requested. Fixed: glyphs now cache as white-on-transparent masks,
-  with colour coming entirely from the draw-time tint, the way a
-  tintable glyph atlas is supposed to work. `NewBDFText`'s signature
-  dropped its now-meaningless `ink` parameter accordingly.
-
-## [0.4.37] - 2026-08-18
-
-### Fixed
-
-- **Hi-colour mode now honours FLASH, matching real hardware.** Both
-  `videorender_hicolour.go`'s `Decode` and `videorender_gpu.go`'s
-  `hicolourVideoRenderer.RenderGPU` now swap ink/paper per 8x1 row on
-  the same `screen.flashEnabled`/`screen.flashTickTock` timer standard
-  mode already uses. The previous "FLASH is standard-only" design
-  comment was a mistaken description of a scope decision as if it
-  reflected real hardware behaviour -- it didn't. Corroborated by the
-  ZX-Uno manual's own attribute description for this mode
-  ("paper/ink/bright/flash attribute per each 8x1 pixels block") and
-  this project's own `docs/timex-modes.md`, both describing the
-  ordinary Spectrum attribute layout, FLASH bit included. Nothing
-  found suggests real hi-colour hardware disables or ignores it.
-  `docs/video-architecture.md` corrected to match.
-  `TestHicolourFlashIgnored` replaced with
-  `TestHicolourFlashSwapsInkAndPaper` and
-  `TestHicolourFlashDisabledNeverSwaps`, mirroring the equivalent
-  standard-mode guards added in 0.4.35.
-
-## [0.4.36] - 2026-08-17
-
-### Fixed
-
-- **Restored the original GPU texture-blitting renderer for the GUI's
-  live display, lost when the VideoRenderer abstraction (needed for
-  hi-colour and headless screenshot support) replaced it with a
-  portable CPU-side path.** The portable `Decode()` path -- still used
-  unconditionally by the headless build, and by any renderer without a
-  fast path -- is unchanged. But the GUI's live rendering now draws
-  through `FastGUIRenderer` (`videorender_gpu.go`) when the active
-  renderer implements it: 256 pre-baked bit-pattern textures (one per
-  possible bitmap byte, an 8x1 mask of which pixels are "on") and 16
-  pre-baked solid-colour textures, all GPU-resident and baked exactly
-  once in `InitializeAfterWindow` -- never re-uploaded per frame. Each
-  frame issues draw calls only: one tinted texture blit per attribute
-  cell (paper) and per bitmap byte (ink), composited directly onto the
-  window, no CPU-side pixel buffer and no intermediate render-texture
-  hop. This restores the exact technique this project's own v0.4.2
-  release used, verified directly against that release's source.
-  `standardVideoRenderer` and `hicolourVideoRenderer` both implement
-  it -- hi-colour's version is new, extending the same technique to
-  its own per-byte (rather than per-cell) attribute granularity.
-  Compile-time checks (`var _ FastGUIRenderer = ...`) guard both
-  against a future accidental signature drift silently falling back to
-  the slower path.
-- `DisplayManager.Render`'s signature changed from a pre-decoded
-  `*image.RGBA` to raw `(mem, screen)`, so the decision of whether to
-  decode at all now lives inside `Render` itself -- the CPU-side
-  `Decode()` no longer runs (and is immediately discarded) on frames
-  where the fast path is used.
-
-### Note on verification
-
-Headless build, all existing tests, and both build targets are
-confirmed clean, including a real CLI run of both standard and
-hi-colour modes through the still-unconditional `Decode()` path
-headless uses. The fast path itself draws directly via raylib calls
-with no CPU-readable intermediate, so its actual on-screen output
-needs visual confirmation with a real display, which this environment
-doesn't have -- verify by running the GUI build directly.
-
-## [0.4.35] - 2026-08-17
-
-### Fixed
-
-- **T-18: FLASH stopped blinking on every model, not just TS2068.**
-  `updateFlash()` was fully correct in isolation, but nothing called
-  it -- `display.go`'s `Render()` was missing the call its own design
-  comment documented as existing. Fixed by adding
-  `dm.screen.updateFlash()` as `Render`'s first line. 4 new tests
-  (`flash_regression_test.go`): standard-mode ink/paper swap
-  correctness, `flashEnabled=false` fully disabling FLASH rather than
-  just leaving it un-ticked, and `updateFlash`'s own 320ms timing
-  directly. See `RESOLVED.md` for the full record.
-
-## [0.4.34] - 2026-08-17
-
-### Changed
-
-- **Menu bar reveal distance widened from 5px to 10px** from the top
-  window edge -- still 100ms idle to trigger.
-- **Machine and Custom ROM now open on hover, not click** -- the bar's
-  dropdowns follow a traditional desktop menu bar's behaviour once any
-  dropdown is engaged: hovering a different label switches directly to
-  it, no click needed.
-- **The bar and its dropdowns are now general, reusable components,
-  not zenzx-specific code.** `pkg/zenui.MenuBar` (new) is a
-  renderer-agnostic horizontal strip of labels, each opening a `Menu`
-  (already shipped) -- it has no opinion about *when* or *how* it
-  appears on screen; that presentation policy (the idle-at-edge
-  trigger, the eased slide) stays entirely in zenzx's own
-  `menubar_gui.go` as the host's choice, not the widget's. 7 new tests
-  (`pkg/zenui/menubar_test.go`) covering label layout, hover-opens,
-  hover-switches-without-a-click, hovering the same label not
-  rebuilding its dropdown, accepted-selection correctness, forced
-  Close, and drawing at a non-zero (mid-slide) Y.
-
-### Added
-
-- **Four new populated menus: Tape, Floppy Disk, Snapshot, View** --
-  every one wired to the exact same functions the existing keyboard
-  shortcuts already call, not reimplemented:
-  - Tape: Play/Stop, Rewind, toggle Accurate/Fast, show info
-    (`Alt+P/R/T/I`).
-  - Floppy Disk: Save, Insert Blank, Eject, Save As, disk-loading info
-    (`F4`-`F8`).
-  - Snapshot: Quick Save/Load, Save Timestamped, snapshot info, run
-    diagnostics (`F9`-`F12`).
-  - View: toggle FPS, toggle border, show status (`Alt+F`, `Alt+B`,
-    `F3`).
-  - Machine also gained Reset and Pause/Resume alongside its existing
-    model list (`F1`/`F2`).
-  `ToggleTapeMode`/`PlayStopTape`/`RewindTape`/`ShowTapeInfo`/
-  `TogglePause` (`input.go`) are new, callable methods extracted from
-  what was previously inline logic inside `handleAltCombinations`/
-  `handleFunctionKeys` -- the keyboard shortcuts call the exact same
-  methods the menu does now, rather than the menu duplicating their
-  logic.
-- `zenui.MenuBar.SetItems`: replaces one top-level item's dropdown
-  contents at runtime (rebuilding it immediately if that item is the
-  one currently open) -- what makes Custom ROM's directory-listing-
-  dependent menu, and its own ROM-then-bank two-step flow, possible
-  without the general widget knowing anything about ROMs or banks.
-
-## [0.4.33] - 2026-08-17
-
-### Added
-
-- **A real, always-available top menu bar: live Machine switching and
-  live Custom ROM selection.** Hold the mouse still within 5px of the
-  top window edge for 100ms and the bar slides in (eased in-out over
-  220ms, not linear); move away with nothing open and it slides back
-  out. Two menus:
-  - **Machine** -- switches the running model live (`switchModelLive`,
-    `modelswitch_gui.go`): reloads the target's standard ROM set,
-    resets, and resets the joystick to that model's own default.
-    Mirrors the startup `-model` switch's ROM loading and +3 FDC
-    handling exactly, minus the CLI-only flags (`-disk`, `-noFdc`,
-    `-debugFdc`) that have no live equivalent. FDC is unconditionally
-    disabled first, then re-enabled only for plus3/spanishplus3, so
-    switching away from +3 doesn't leave it running against a ROM set
-    that no longer expects it.
-  - **Custom ROM** -- same two-step ROM-then-bank flow as
-    `-custom-roms-menu`, applied live (`applyCustomROMLive`) rather
-    than only at startup.
-  Unlike `-custom-roms-menu` and the demo overlay (`Shift+F1-3`), both
-  of which block their own frame loop, the bar runs inside the main
-  loop itself -- CPU stepping and the Spectrum's own screen never
-  pause while it's open. Only `zx.HandleInput` is skipped for that
-  frame, withholding keyboard input from the emulated machine without
-  touching anything else.
-  New: `menubar_gui.go` (`menuBar`, `easeInOutCubic`, idle-at-edge
-  detection). 5 new tests (`menubar_gui_test.go`) covering the easing
-  curve's endpoints/monotonicity/ease shape, hit-testing, and the
-  bar-label-to-dropdown index mapping.
-
-## [0.4.32] - 2026-08-17
-
-### Added
-
-- **A demo overlay proving the widget system runs live over the running
-  emulator, not just at startup.** `Shift+F1`/`F2`/`F3` show a bogus
-  dropdown menu, animated notification, and file-open dialog
-  respectively, drawn over a darkened emulator screen while the
-  Spectrum keeps running underneath -- CPU stepping and its own screen
-  updates never pause. Only keyboard input to the emulated machine is
-  withheld while a demo widget is active (`zx.HandleInput` is skipped
-  outright for that frame, not filtered), so nothing leaks through by
-  accident.
-- `DisplayManager.SetPreEndDrawHook` (`display.go`): lets a caller draw
-  on top of a frame `Render` just produced, still inside its
-  `BeginDrawing`/`EndDrawing` bracket. Real, necessary fix along the
-  way -- an initial version called the overlay's draw after `Render`
-  returned, which is outside that bracket and doesn't land on the
-  frame actually presented in raylib. The hook exists specifically so
-  callers don't have to duplicate `Render`'s own begin/end handling.
-- New: `gui_demo_overlay.go` (`demoOverlay`, `newDemoOverlay`,
-  `TriggerMenu`/`TriggerDialog`/`TriggerNotification`) -- built on the
-  `pkg/zenui`/`pkg/zenuiraylib` widgets already shipped in 0.4.30/
-  0.4.31, darkening via `zenui.Theme.Backdrop`, the same dim layer
-  `Dialog`/`Menu` already draw against when used normally.
-
-## [0.4.31] - 2026-08-17
-
-### Added
-
-- **`pkg/zenuiraylib.OSD`: an animated on-screen status caption.** A
-  message rises from the bottom-right corner, holds, then fades over
-  a fixed travel distance, with small animated spark sprites scattered
-  around it -- the same confirmation style used for menu selections.
-  `Start`/`Update`/`Draw`/`Active` mirror the calling convention
-  `zenui.Menu` already uses (drive it once per frame, check status).
-  Wired into the GUI build's custom ROM menu: picking a ROM now plays
-  a brief "Loaded X -> bank N" caption after the menu closes, reusing
-  the same font/renderer the menu itself just drew with rather than
-  loading a second copy.
-
-## [0.4.30] - 2026-08-17
-
-### Added
-
-- **The GUI build's custom ROM menu (`-custom-roms-menu`) is now drawn
-  on screen instead of prompted at the terminal.** Same two-step flow
-  as before -- pick a ROM, then (for multi-bank models) pick which
-  bank -- but rendered as an actual on-screen menu through the
-  Sinclair bitmap face (the ZX Spectrum 48K ROM's own 8x8 character
-  set), matching the visual language the rest of the toolchain uses.
-  The headless build has no window to draw into and keeps the stdin
-  prompt (`custom_roms_menu.go`, unchanged).
-- New packages, all under `pkg/`: `zenui` (renderer-agnostic dialog/
-  menu widgets -- imports nothing beyond the standard library and
-  `pkg/zxpalette`), `bdf` (a standalone BDF bitmap font reader),
-  `zxpalette` (the ZX Spectrum colour palette and attribute-byte
-  encoding), `fonts` (embeds the Sinclair bitmap face), and
-  `zenuiraylib` (the raylib-specific text renderer and `zenui.Renderer`/
-  `Input` adapter -- the only one of these that imports raylib, kept
-  separate so the headless build never needs to link against it).
-  `pkg/zenui`/`pkg/bdf`/`pkg/zxpalette` carry real test coverage
-  already; `pkg/fonts` gets 2 new tests confirming the embedded font
-  decodes correctly.
-- `custom_roms_menu_gui.go`: the GUI-side driver (`runGraphicalCustomROMMenu`,
-  `runMenuLoop`) wiring the above into the same `OverrideROMBank`
-  mechanism `-rom0` through `-rom3` and the headless menu already use.
-
-## [0.4.29] - 2026-08-17
-
-### Added
-
-- **`custom-roms/` and `-custom-roms-menu`: an interactive selector for
-  alternate ROM variants.** `custom-roms/` is for language-translated
-  and other regional variants of the standard set (empty by default,
-  distinct from `rom/`, the standard embedded set). `-custom-roms-menu`
-  scans it, lists every `.rom` file found with its size, prompts for a
-  selection, and -- for multi-bank models -- asks which bank it should
-  replace, applying it through the same `OverrideROMBank` mechanism
-  `-rom0` through `-rom3` already use. Applied last, after every other
-  ROM-loading path, so an interactive selection always wins over
-  whatever `-model`/`-rom`/`-romN` already set up.
-  `-custom-roms-dir <path>` points the selector elsewhere if needed.
-  An empty directory, a skipped selection (0), or invalid input all
-  leave the standard ROM set in place rather than erroring out --
-  none of these are failure states.
-  New: `custom_roms_menu.go` (`listCustomROMs`, `runCustomROMMenu`,
-  `readInt`). 7 new tests (`custom_roms_menu_test.go`), including
-  end-to-end CLI verification across single-bank and multi-bank models,
-  an empty directory, and an out-of-range selection.
-- `custom-roms/README.md`: usage for the new directory and selector.
-
-## [0.4.28] - 2026-08-17
-
-### Added
-
-- **The standard ROM set is now embedded directly in the binary.**
-  Every `.rom` file in `rom/` (`go:embed rom/*.rom`, `embedded_roms.go`)
-  is compiled into the executable, so a distributed release no longer
-  needs a separate `rom/` folder shipped alongside it. Verified by
-  booting all 10 models to a screenshot from a completely empty
-  directory with `-romdir` pointed at a path that doesn't exist --
-  every one falls back to the embedded copy correctly.
-- `resolveROMBytes` (`embedded_roms.go`): filesystem-first, embedded-
-  fallback resolution for a named ROM. Deliberately filesystem-first,
-  not embed-first -- this keeps every existing local development and
-  test workflow that already points `-romdir` at a real checkout
-  working completely unchanged; the embed is consulted only when a
-  named file isn't found on disk.
-- `LoadROMBytes`/`Load128KROMBytes`/`LoadPlus3ROMBytes`/
-  `LoadTS2068ROMBytes`: byte-data primitives behind the existing
-  path-based loaders, which are now thin wrappers around them. This is
-  what let the standard `-model` loading path and the embed share one
-  code path instead of two parallel ones.
-- Not embedded, deliberately: documentation (`.txt`), the reference hex
-  dump (`48.rom.hex`), and the Z80 exerciser test programs (`zexall`/
-  `zexdoc` `.com`/`.z80`) -- none of these are consulted by `-model`'s
-  own loading path, so bundling them would only grow the binary for no
-  runtime benefit.
-
-### Fixed
-
-- **`zenzx_gui.go`'s `plus2a` case was silently broken.** It pointed at
-  `plus2a-0.rom` through `plus2a-3.rom`, files that never existed in
-  `rom/` -- every +2A launch via the GUI binary was silently falling
-  through to a generic +2 ROM with a "not fully accurate" warning,
-  never the real thing. Fixed to load the genuine +3 ROM set (the
-  correct approach, matching real +2A hardware sharing the +3's
-  motherboard, and matching what `zenzx_headless.go` already did
-  correctly). Also fixes two `Load128KROM` calls in the same file that
-  mixed `./rom/` and `../rom/` prefixes for their two file arguments --
-  a bug that only ever worked by accident depending on the working
-  directory the GUI binary happened to be launched from.
-
-## [0.4.27] - 2026-08-17
-
-### Added
-
-- **Per-bank ROM overrides: `-rom` and `-rom0` through `-rom3`.**
-  Previously `-rom` was a single-file, all-or-nothing override that
-  replaced `-model`'s own ROM loading entirely -- it had no way to swap
-  just one bank (e.g. only +3DOS on an otherwise-standard +3) and no
-  way to specify more than one file at all. Now `-model`'s own standard
-  ROM set always loads first, and overrides layer on top of it:
-  - `-rom` takes a comma-separated list of paths, positionally mapped
-    to bank 0, 1, 2, 3 (up to however many banks the selected model
-    actually has).
-  - `-rom0`/`-rom1`/`-rom2`/`-rom3` each override exactly one bank,
-    leaving every other bank as `-model` loaded it -- the mechanism
-    for the "just swap +3DOS" case directly.
-  - Both compose: `-rom` fills in from bank 0 first, then any `-romN`
-    individually overrides that specific bank regardless of what `-rom`
-    already did.
-  - Per-model bank-count validation (`zenzx.maxROMBank`): a 48K model
-    only has bank 0, 128K/+2 has banks 0-1, +2A/+3 has banks 0-3,
-    TS2068 has its own two banks (bank 0 = 16K Home, bank 1 = 8K
-    Extension -- validated at their own real sizes, not assumed
-    uniform). An out-of-range or wrong-sized override is a warning, not
-    a fatal error -- the standard ROM for that bank stays in place and
-    the emulator keeps running.
-  New: `memory.go`'s `SetROMBank` (the in-place single-bank primitive)
-  and `zenzx.go`'s `OverrideROMBank`/`maxROMBank`. 9 new tests
-  (`rombank_test.go`).
-
-## [0.4.26] - 2026-08-17
-
-### Fixed
-
-- **Investigated and confirmed: Kempston Mouse does not take over
-  either Kempston joystick port, and all three can coexist.** Kempston
-  Mouse is a genuinely separate physical device from Kempston Joystick
-  -- confirmed by a first-hand account on Spectrum Computing's forums
-  from someone who owned one: "a custom interface" with its own
-  dedicated ports, not something that plugs into a joystick port at
-  all. Its ports (`0xFADF`/`0xFBDF`/`0xFFDF`, low byte `0xDF`) share no
-  address with either Kempston joystick port (`0x1F`, `0x37`). The
-  precise reason this can go wrong on *some* real hardware but not
-  others: the ZX-VGA-JOY interface's own design documentation names it
-  directly -- interfaces using incomplete address decoding (checking
-  only a few bits, not the full byte) could accidentally collide with a
-  Kempston Mouse plugged in alongside one; "Best is use full 8-bit
-  address decoding" avoids it entirely. zenzx already does exactly
-  that for every relevant port, confirmed by reading the actual
-  dispatch code, not assumed. `TestKempstonMouseCoexistsWithDualKempstonJoysticks`
-  (`joystick_test.go`) proves it: both Kempston joystick ports and a
-  Kempston mouse, all active simultaneously, all independently correct.
-- **Found and fixed a real gap while investigating this**: the startup
-  validation rejecting `-joystick kempston` with `-mouse amx` (both
-  genuinely use port `0x1F`) never covered `-joystick kempston-both`,
-  which also uses `0x1F` for its first sub-port and has the identical
-  conflict. Extended the check in both `zenzx_headless.go` and
-  `zenzx_gui.go`. `kempston2` alone (port `0x37` only) is correctly
-  unaffected -- confirmed no real conflict exists there.
-- `mouse.go`'s package documentation extended with the full
-  investigation and its sources, so this doesn't need re-deriving next
-  time the question comes up.
-  2 new tests (`joystick_test.go`).
-
-## [0.4.25] - 2026-08-17
-
-### Added
-
-- **Second Kempston port** (`JoystickKempston2`/`JoystickKempstonBoth`,
-  port `0x37`) -- confirmed real, but genuinely different in kind from
-  the +2/+3's built-in dual Sinclair ports added in 0.4.24: no stock
-  Sinclair/Amstrad/Timex machine ever had a second Kempston port, so
-  `-model`'s `auto` default never selects it. It belongs to modern
-  "neo-Spectrum" platforms -- ZX-Uno, ZX-Tres, the Omni, and the ZX
-  Spectrum Next (originally codenamed TBBlue) -- confirmed directly
-  against the Next's own official I/O port register documentation
-  (`specnext.com/tbblue-io-port-system`: register 0x05, "Kempston 2
-  (port 0x37)"), cross-checked against a separate, independent
-  source's own port numbering (the modern "KEMPSTON_MAX 2" hobbyist
-  interface's documented "Kempston Port 55" -- 55 decimal = `0x37`
-  hex). `kempston2` selects the second port alone; `kempston-both`
-  drives both simultaneously from two host gamepads, mirroring
-  `sinclair-both`'s existing pattern. Explicit-choice only, the same
-  category `-ns-graphics`/`-ns-storage` already occupy for exactly this
-  kind of platform-specific enhancement.
-  6 new tests in `joystick_test.go`, including one confirming no
-  `-model` value ever implies either new mode.
-
-### Fixed
-
-- Corrected the TS2068 joystick-compatibility framing from the previous
-  entry: its built-in ports are architecturally "Kempston-style" (a
-  dedicated digital port read, not a keyboard-remapping mechanism like
-  Sinclair/Cursor) but not protocol-compatible with either Kempston
-  port modelled here -- `ts2068.go`'s own AY-register-14 mechanism,
-  unchanged, remains correct. `joystick.go`'s package documentation now
-  states this precisely rather than leaving "Kempston-style" ambiguous
-  between the category and the literal protocol.
-- Fixed a dangling, incomplete doc comment left over from an earlier
-  edit this session (`SetJoystickMode`'s own comment had lost its first
-  line) while rewriting the file for the additions above.
-- Flagged, rather than silently resolved, a genuine discrepancy found
-  while researching the above: the ZX Spectrum Next's own register
-  documentation labels the Sinclair ports the opposite way round from
-  this project's existing numbering ("Sinclair 1 (12345)" there vs.
-  here). Kept the existing numbering, which has two independent,
-  physically-grounded sources (Wikipedia's explicit statement on which
-  keys map to "Player 1," plus the Interface 2's own dimpled-socket
-  identifies-Joystick-1 hardware detail) against the Next's one
-  internal firmware-labelling convention, which may simply be that
-  board's own choice rather than a disagreement about the underlying
-  keys. Documented in `joystick.go` for whoever revisits this next.
-
-## [0.4.24] - 2026-08-17
-
-### Added
-
-- **`-joystick` now defaults to `auto`: the selected `-model`'s own real
-  built-in configuration, not a flag the user must separately know to
-  set.** Verified against real hardware history (searched, not assumed)
-  rather than taken at face value from a plausible-sounding claim:
-  - **48K, and the original Sinclair 128K** ("Toastrack", pre-Amstrad):
-    confirmed no built-in joystick port of any kind existed --
-    Sinclair-compatible ports were, per spectrumforeveryone.com's own
-    +2 history, "a feature that really should have been part of the 128
-    specification from the start," only arriving with Amstrad's +2.
-  - **+2 (grey), +2A, +3** (and Spanish variants): two built-in
-    Sinclair-protocol ports ("SJS"), confirmed genuinely Sinclair
-    Interface 2's own keyboard-mapping mechanism electrically, not
-    Kempston -- cross-checked against the ZX Interface 2 circuitry
-    reference and sharedmemorydump.net's own +2/+3 port testing ("Where
-    a Kempston joystick can be read from I/O-port 31... the Sinclair
-    joystick just emulates keyboard keys").
-  - **TS2068**: confirmed its built-in ports are *not*
-    Kempston-compatible, directly against timexsinclair.com (the
-    Timex/Sinclair preservation project): "the Timex joystick ports
-    were not compatible with the most popular ZX Spectrum standard, the
-    Kempston joystick." Corrects an assumption stated earlier in this
-    session's conversation before this check -- the genuinely
-    Kempston-equipped Timex machine is the TC2048, a different, related
-    computer this project does not emulate. TS2068's own mechanism
-    (AY register 14, already implemented and correct) remains active
-    for that model regardless of `-joystick` entirely, since the
-    canonical-Spectrum mechanism this flag configures doesn't apply to
-    it -- `auto` correctly resolves to `none` there, not a guess.
-  - `-mouse` deliberately keeps its universal `none` default across
-    every model: no stock Sinclair/Amstrad/Timex machine ever shipped
-    with a built-in mouse (both AMX and Kempston Mouse were always
-    third-party add-ons, TS2068 included, per this session's earlier
-    T-14 research) -- verified as already correct rather than assumed
-    to need a matching change.
-  An explicit `-joystick` value always overrides the model default --
-  third-party interfaces (Kempston most commonly) remained a legitimate
-  choice historically even on models with their own built-in ports, and
-  remain one here.
-- **Sinclair Joystick 2** (`JoystickSinclair2`, `joystick.go`) and a new
-  **`JoystickSinclairBoth`** mode driving both of the +2/+2A/+3's real
-  built-in ports simultaneously from two independent host gamepads --
-  completing part of T-13 sooner than planned, once it turned out to be
-  required (not merely a nice-to-have) to correctly represent hardware
-  that genuinely has two ports, not one. `input.go`'s
-  `handleJoystickInput` now polls gamepad 0 for port 1 and gamepad 1 for
-  port 2 when `SinclairBoth` is configured, mirroring the same
-  dual-gamepad convention already established for TS2068's own two
-  built-in ports.
-  10 new/updated tests (`joystick_test.go`): both key matrices, the
-  dual-port state application, `defaultJoystickModeForModel` against
-  every supported `-model` value, and `resolveJoystickMode`'s `auto`/
-  explicit-override behaviour.
-- **T-17 filed**: a related but pre-existing gap, noticed while
-  auditing port dispatch for this work, not introduced by it -- the
-  128K-style AY-3-8912 ports (`0xFFFD`/`0xBFFD`) respond regardless of
-  `-model`, including on 48K, which has no AY chip at all (beeper
-  only). Same underlying principle (`-model` should imply which
-  hardware genuinely exists) applied to a different subsystem; recorded
-  rather than silently expanding this session's scope to fix it.
-
-### Fixed
-
-- **T-13 updated**: Sinclair Joystick 2 done (see above). Cursor/AGF/
-  Protek joystick support and headless zenscript joystick driving
-  remain open.
-- `README.md`'s `-joystick` documentation rewritten with the full
-  per-model mapping and citations, replacing the earlier, incomplete
-  note that only mentioned TS2068.
-- `docs/KNOWN_ISSUES.md`'s TS2068 entry extended with the corrected
-  joystick-compatibility fact and its source.
-
-## [0.4.23] - 2026-08-17
-
-### Fixed
-
-- **T-12 closed: TS2068 promoted from "code exists" to "documented,
-  supported model"** (see `docs/RESOLVED.md` for the closure record).
-  5 of 6 stages complete; Stage 6 (memory contention) postponed as a
-  deliberate, recorded decision rather than left looking like stalled
-  work -- spun out into a general, non-TS2068-scoped item (T-16) once
-  investigation found no contention modeling exists for *any* model to
-  diverge from. Concrete gaps closed, not just the tracking document:
-  - `README.md`: the opening description and the `-model` flag table
-    didn't mention TS2068 at all. Fixed, along with a broader staleness
-    the search turned up while in there -- `-non-standard`, `-ns-graphics`,
-    `-ns-storage`, `-joystick`, `-mouse`, `-disk`, `-nofdc`, and `-script`
-    were all missing from the flags table too, some since earlier this
-    session. Also replaced the "Known issues" entry describing the old,
-    unhardened fast tape loader (T-02, closed) with an accurate current
-    one for TS2068 itself.
-  - `docs/KNOWN_ISSUES.md`: TS2068's real, intentional scope limits
-    (no Dock/cartridge banking, no TS2040 printer, dynamic port-driven
-    hi-colour switching instead of the documented `CHNG_VID` service,
-    no tape-save capture, no contention) recorded formally, not left
-    implicit in `TRACKING.md`/`RESOLVED.md` history.
-  - `smoke_headless.sh`: the release gate's own "does the real compiled
-    binary actually boot" check only ever exercised `-model=48k` --
-    TS2068 was covered by unit tests but not by this layer. Now boots
-    both.
-  - `docs/TS2068_TRACKING.md`: Stage 6 marked `✗` (dropped) with a
-    deviation entry explaining why, rather than left `☐` looking like
-    still-pending work; its header `Version:` field, stale since the
-    document's creation (0.4.11), synced to the current release.
-
-## [0.4.22] - 2026-08-17
-
-### Added
-
-- **`-model ts2068` Stage 5: tape I/O, both fast and accurate mode.**
-  Direct disassembly of `rom/ts2068-1.rom` found `R_TAPE`/`W_TAPE` are a
-  byte-for-byte relocated copy of the standard 48K ROM's `LD-BYTES`/
-  `SA-BYTES` (a constant offset of `0x045A` -- `0x0556-0x00FC` =
-  `0x04C2-0x0068`), with an identical register contract -- so T-02's
-  freshly-hardened `trapLoad` is reused completely unchanged for TS2068;
-  only the trap addresses (`0x0112`, the same "after real ROM
-  housekeeping, before the slow pulse call" positioning `0x056C` uses)
-  and a new context guard differ. `isTS2068ExtensionROMActive`
-  (`tape.go`) confirms chunk 0 is genuinely switched to Extension ROM
-  before trusting the trap -- these addresses are otherwise ordinary
-  low addresses that mean nothing in particular during normal Home Bank
-  execution. `TestTS2068FastLoaderRealROMIntegration` proves the whole
-  chain: a hand-assembled program engages chunk-0 banking itself (the
-  same port sequence real Extension ROM Interface Routine calls use)
-  and `CALL`s the genuine `R_TAPE` entry directly.
-  Accurate mode required no new code at all -- confirmed, not assumed:
-  `TestTS2068AccurateModeRealROMIntegration` runs a complete,
-  real, pulse-by-pulse load through the actual ROM using the same
-  `genPulses` the ordinary `.tap` loading pipeline uses, with the fast
-  loader deliberately absent so the full polling loop has to run to
-  completion. Confirmed practical rather than assumed impractically
-  slow: 809,629 real CPU steps, about 30ms wall-clock.
-  Save-side (`W_TAPE`) correctly declines rather than misfire, matching
-  T-02's scope for the standard models: zenzx has no tape-save capture
-  to hook into for either.
-  6 new tests in `tape_fastload_test.go`.
-
-## [0.4.21] - 2026-08-17
-
-### Fixed
-
-- **T-02 closed: hardened the ROM-trap fast tape loader from first
-  principles** (see `docs/RESOLVED.md` for the closure record), prompted by a direct challenge that the existing
-  implementation was likely to misbehave and should be checked against
-  a real reference before trusting it for TS2068 work. Cloned
-  MartianGirl's SpecIde (github.com/MartianGirl/SpecIde, already local
-  from the AMX mouse research) and read its own `LD-BYTES`/`SA-BYTES`
-  trap implementation directly. The gap was real and significant, not
-  just theoretical:
-  - **No ROM-context check** -- fired on PC match alone, regardless of
-    which ROM bank was actually paged in on 128K/+3.
-  - **Wrong trap address**: the old code trapped at `0x0556`, LD-BYTES's
-    literal entry point. Verified directly against `rom/48.rom`'s own
-    bytes that the real routine's first instruction there is
-    `EX AF,AF'`, followed by a border flash and a genuine BREAK-key
-    check -- all real ROM housekeeping the old trap silently skipped.
-    The correct trap point, also verified against the real ROM, is
-    `0x056C`: immediately before the slow pulse-reading call
-    (`CALL 0x05E7`) this replaces, letting everything before it run as
-    genuine ROM code.
-  - **No VERIFY mode** -- the Carry flag (LOAD vs VERIFY) was read into
-    a comment but never actually checked; every call was treated as
-    LOAD.
-  - **No flag-byte matching, no checksum** -- Carry was hardcoded to
-    always indicate success, regardless of whether the "loaded" block
-    actually matched what the caller asked for.
-  - **A second, looser fallback**: any PC in a 175-byte range
-    (`0x0556`-`0x0605`) triggered an instant block injection outright,
-    and a third path injected every CODE block the instant tape
-    playback started, with no relationship to whether the CPU had
-    asked to load anything at all.
-  - **`Playing` cleared after every single block**, breaking ordinary
-    multi-block loading (header then data each need their own separate
-    call into `LD-BYTES`) -- confirmed as a real bug via a new
-    regression, `TestFastLoaderMultiBlockContinues`.
-
-  Rewrote `tape.go`'s fast-load path around a single, precise trap:
-  `is48KROMActive()` (new, `memory.go`) confirms the right ROM bank is
-  genuinely paged in -- verified against the actual shipped ROM bytes,
-  not assumed, for every model (48K's only bank; 128K/+2's bank 1;
-  +3/+2A's bank 3; TS2068 explicitly excluded, since its tape routines
-  are entirely different Extension ROM code). `trapLoad` replicates the
-  real routine's exact contract: reads the expected flag byte and
-  LOAD/VERIFY carry from the shadow registers (confirmed via direct
-  disassembly that `EX AF,AF'` has already run by the trap point),
-  matches it against the tape block's real flag, computes a genuine
-  running XOR checksum, handles VERIFY (compare, abort on first
-  mismatch -- confirmed against the real ROM's own verify loop) as a
-  first-class case rather than always writing, and sets exit registers
-  matching SpecIde's own independently-derived conventions for this
-  same routine. The two heuristic fallback paths and their
-  now-superseded helper functions (`fastInjectNextBlock`,
-  `fastInjectAll`, `instantLoadHeaderAndData`) are gone entirely --
-  fast mode is now a precise short-circuit for the standard ROM loader
-  and nothing else; non-standard/custom loaders need `-tapemode
-  accurate`, not a guess.
-
-  17 tests (`tape_fastload_test.go`), including
-  `TestFastLoaderRealROMIntegration`: a hand-assembled program executed
-  via genuine `zx.cpu.Step()` calls that `CALL`s the real `rom/48.rom`
-  LD-BYTES entry point directly, proving the entire path end to end --
-  real ROM preamble runs for real, the trap fires naturally when
-  execution reaches it, and control returns correctly to the original
-  caller -- not a synthetic Go-level call into the trap function.
-  Save-side (`SA-BYTES`) capture remains unimplemented (zenzx has no
-  existing tape-save capability to harden) -- the trap point is
-  checked and declines cleanly rather than risk misreading real ROM
-  code at that address as something else.
-
-## [0.4.20] - 2026-08-17
-
-### Added
-
-- **`-model ts2068` Stage 4: AY sound chip ports and joystick**
-  (`ts2068.go`, `input.go`). `F5H` (register select, write-only per the
-  Technical Manual's port map) / `F6H` (data, R/W) dispatch to the same
-  underlying AY-3-8912 emulation and `ayRegister` field the existing
-  128K-style ports (`0xFFFD`/`0xBFFD`) already use -- purely a new
-  dispatch path, no changes to the AY chip itself. Confirmed: the low
-  byte alone is matched regardless of what's in the upper address byte
-  during a single-byte `OUT`/`IN` (matching the SCLD's full 8-bit port
-  decode, not the partial decode the standard ULA ports rely on), and a
-  real AY register-width quirk (register 3, Coarse Tune B, is genuinely
-  only 4 bits wide on real AY-3-8912 hardware) flows through the new
-  ports correctly rather than being masked over by the test.
-  Joystick: TS2068's own built-in ports, read via AY register 14 --
-  write `0x0E` to `F5H`, then read `F6H` with address bit 8 (port 1) or
-  bit 9 (port 2) set. Bits 0-3 up/down/left/right, bit 7 fire, active
-  low (Table 2.4.4-1's `*DIR1`/`*BUTTON` naming) -- a different polarity
-  from Kempston Joystick's active-high and a different bit layout again
-  from AMX Mouse's buttons, both already in the codebase. Always active
-  for this model, independent of `-joystick`: these are the machine's
-  own hardware ports, not an optional peripheral the way Kempston/
-  Sinclair interfaces are for the canonical Spectrum. `input.go`'s
-  gamepad-reading logic was factored into a shared `readGamepadState`
-  helper, reused by both the existing Kempston/Sinclair path and the new
-  `handleTS2068JoystickInput` (gamepad 0 -> port 1, gamepad 1 -> port 2).
-  2 tests (`TestTS2068AYPorts`, `TestTS2068JoystickPorts`).
-
-## [0.4.19] - 2026-08-17
-
-### Added
-
-- **`-model ts2068` Stage 3, rescoped from the original plan.** Real
-  TS2068 software engaged hi-colour mode with a direct `OUT` to port
-  `FFH`, not the documented Extension ROM `CHNG_VID` service call --
-  and the hardware has no mechanism to clear the screen for you when
-  you do; whatever was already in RAM stays there until software
-  clears it itself. Timex BASIC's `PLOT`/`DRAW` never touch the
-  hi-colour attribute plane either, only the standard one, so real
-  hi-colour software always poked pixels and attributes by hand.
-  Implemented what "CHNG_VID support" means in that corrected scope:
-  `SpectrumIO.onTS2068VideoModeChange`, a closure set by `NewZenZX`,
-  fires whenever TS2068 guest code writes video-mode bits to port
-  `FFH` and dynamically switches the active renderer (standard <->
-  `mode-timex-001-hicolour`) -- genuine guest-triggered switching,
-  where previously only the static `-ns-graphics` host flag could
-  select it. `TestTS2068Stage3DynamicVideoMode` seeds the hi-colour
-  plane with `0xAA` garbage before running the test program, to prove
-  the program's own clear is real and not merely untested; the program
-  clears both planes by hand, writes mode 2 directly to port `FFH`,
-  pokes 8 stripes (not via BASIC), and the result is confirmed both by
-  memory assertion and by rendering through the real, unchanged
-  `mode-timex-001-hicolour` renderer.
-- **T-15 filed**: the original plan's target -- verifying the real
-  Extension ROM `CHNG_VID` service end to end via the documented
-  `IFRTN` calling convention -- was attempted first. Confirmed working
-  correctly via direct register tracing: chunk-0 banking itself, `CHG_V`'s
-  early logic, the nested `CALL_BANK`/`REMGSZ` round-trip into Home
-  ROM (a real, bounded, correctly-terminating loop), and `OPDFIL`'s
-  relocation fix-up table walk (61 real entries, correctly
-  zero-terminated, confirmed progressing to completion via direct `HL`
-  tracing -- an early misreading of this as "stuck" was a debugging
-  mistake, caught by checking actual register values instead of
-  trusting a repeating-address pattern that was actually still making
-  progress). Genuine divergence found partway through `OPDFIL`'s
-  screen-clear loop, landing in what looks like Home ROM print
-  machinery with chunk-0 banking fully reverted -- root cause not
-  diagnosed. Not pursued further since real software didn't depend on
-  that path; left open in T-15 in case genuine software requiring the
-  real service call (e.g. dual-screen mode) is ever found.
-
-## [0.4.18] - 2026-08-17
-
-### Added
-
-- **`-model ts2068` Stages 1-2** (`ts2068.go`, `ts2068_test.go`,
-  `docs/TS2068_DEVELOPMENT_PLAN.md`/`docs/TS2068_TRACKING.md`).
-  **Stage 1**: model registered in both mains; `LoadTS2068ROM` loads the
-  16K Home + 8K Extension ROM pair with size validation; chunk-0
-  Home/Extension banking via ports `F4H` (HSR bit 0) and `FFH` (bit 7,
-  EXROM/Dock select) -- both ports had to be intercepted *before* the
-  existing ULA keyboard/border catch-all (`port&0x01==0`), since `F4H`
-  is even and would otherwise be silently swallowed by logic that's
-  correct for the standard ULA's incomplete decode but wrong for
-  TS2068's SCLD, which decodes `F4H` specifically. RAM addressing
-  deliberately reuses the existing 48K path unchanged (`is128K` stays
-  false) rather than building new banking logic, since TS2068's RAM
-  organisation is structurally identical. Verified booting to the real
-  copyright screen and, confirmed by injecting an actual keypress
-  (not just a static screenshot, which looks the same whether the
-  machine is correctly idling at the ready prompt or genuinely
-  stalled), to a fully responsive BASIC prompt: `PRINT 9` [ENTER]
-  produces `9` and the genuine `0 OK, 0:1` ready line.
-  **Stage 2**: `cyclesPerFrame`/`interruptCycles` are now per-`ZenZX`-
-  instance fields (58688/58594 for TS2068, computed from the real
-  3.528MHz/60.1145Hz, not the plan's rough estimate), threaded through
-  `RunFrame`, `display.go`'s border-stripe timing (both GUI and
-  headless `DisplayManager` needed the signature change), and snapshot
-  cycle bookkeeping. Every other model verified unaffected -- identical
-  values to the PAL constants they replace. `CPUFrequency`/
-  `FramesPerSecond` and `audio_oto.go` deliberately left untouched:
-  TS2068 audio isn't implemented yet (Stage 4), so nothing currently
-  needs them correct for TS2068 -- revisit when Stage 4 lands.
-  4 tests (`ts2068_test.go`).
-- **T-12 updated to partial (◐)**: 2 of 6 stages done, detail in
-  `docs/TS2068_TRACKING.md`.
-
-## [0.4.17] - 2026-08-17
-
-### Added
-
-- **`-mouse amx` implemented** (`mouse.go`, `io.go`, `zenzx.go`,
-  `zenzx_headless.go`, `zenzx_gui.go`). Buttons: port `0xDF`, bits 5/6/7,
-  active high, polled directly with no interrupt needed -- matches
-  Kempston Mouse's simplicity. X/Y: genuinely interrupt-driven, per the
-  disassembly (T-14) -- one CPU interrupt per step of movement, IM2-
-  vectored (`I=0xE9`, vector `0xD0`->Y at table entry `0xE9D0`, vector
-  `0xD2`->X at `0xE9D2`), delivered by implementing zen80's optional
-  `InterruptController` interface (`GetInterruptVector`/
-  `GetMode0Instruction`) on `SpectrumIO` -- confirmed wireable with zero
-  CPU-core changes, since `z80.New(memory, io)` already passes `zx.io`
-  as `z.IO`, and zen80 already had a complete, tested IM2 implementation
-  (`im2_vectoring_test.go`) supporting a settable per-request vector
-  byte, not a hardcoded one. `ZenZX.RunFrame`'s existing frame-interrupt
-  mechanism (`zx.cpu.INT = true`/`= false`, already in place for the
-  standard 50Hz interrupt) is reused for AMX steps too, via a new
-  `checkAMXInterrupt` call before each `cpu.Step()` -- no new CPU
-  infrastructure, one more trigger condition on the existing one. A
-  bounded FIFO (`amxQueueCap = 64`) queues pending steps so a burst of
-  fast mouse movement or a guest with interrupts briefly disabled
-  doesn't lose or corrupt events. `-joystick kempston` and `-mouse amx`
-  together is a hard startup error (both use port `0x1F` on real
-  hardware, confirmed in the disassembly).
-  17 tests (`mouse_test.go`), including `TestAMXEndToEndInterrupt`: a
-  hand-assembled Z80 program installed at the real AMX vector table
-  addresses, run on a genuine `ZenZX` (not a bare `SpectrumIO`), proving
-  the full pipeline -- `SetMouseState` queues a step, `checkAMXInterrupt`
-  asserts the CPU interrupt line, zen80 accepts it and calls
-  `GetInterruptVector`, the correct handler runs at the correct address,
-  and reads the correct port value -- for both axes, not just asserted
-  in isolation.
-- **T-14 closed**: `-mouse amx` fully implemented and verified end to
-  end (see "Added" above and `docs/RESOLVED.md`).
-
-## [0.4.16] - 2026-08-17
-
-### Fixed
-
-- **T-14 (AMX mouse) resolved from a primary source, not documentation.**
-  A genuine AMX Art tape was supplied this session; extracted every CODE
-  block to its correct load address and disassembled with the `z80dis`
-  package (confirmed independently against two copies of the same
-  routine -- the dedicated "AMX" driver block and `ART 1.1`'s own
-  inline copy -- both agree exactly). The mechanism is materially
-  simpler than assumed: not software-side quadrature phase-decoding,
-  but one CPU interrupt per step, direction pre-decoded into a single
-  bit by the PIO hardware. IM2 vector setup (`I=0xE9`), PIO control
-  writes at ports `0x5F`/`0x7F` (a separate control-port pair from the
-  `0x1F`/`0x3F` data ports), X/Y handlers that each do exactly one `IN`
-  read and one increment-or-decrement per interrupt, and buttons
-  (port `0xDF`, bits 5-7 -- not Kempston Mouse's bits 0-2) polled
-  separately with a 10-retry hardware debounce pattern. What's needed
-  to implement this is now scoped precisely: a second, IM2-vectored
-  interrupt source triggered by host mouse movement, not a new decode
-  algorithm -- zenzx's Z80 core already supports IM2 for other
-  purposes.
-- Caught and fixed a privacy slip while writing this up: briefly wrote
-  the real name into `docs/TRACKING.md` (a file that ships in the
-  repo) before catching and correcting it in the same pass.
-
-## [0.4.15] - 2026-08-17
-
-### Fixed
-
-- **T-14 (AMX mouse) updated with real evidence, not assumption.** Cloned
-  and directly searched the source of four actively-maintained,
-  accuracy-focused open-source Spectrum emulators for a working AMX
-  Mouse reference implementation: Fuse, ZEsarUX, SpecEmu, and SpecIde
-  (MartianGirl). None of the four contains real AMX emulation code.
-  Fuse's shared `libspectrum` library has a `.szx` snapshot-format
-  chunk reserved for AMX state (`read_amxm_chunk`/`write_amxm_chunk` in
-  `szx.c`) that is parsed-and-discarded on read and never written on
-  save -- confirming the format has a slot for it that no checked
-  implementation actually fills. ZEsarUX's only "AMX" reference is a
-  hardware-name label in a TZX metadata display table, not emulation.
-  SpecEmu and SpecIde have no AMX or Kempston-mouse-adjacent code at
-  all in the relevant files. Cross-checked against SpecEmu's own live
-  changelog (five years, through April 2026 builds) to rule out "the
-  checked mirror is just incomplete" as an explanation. The register
-  item's conclusion is now grounded in having checked real code, not
-  in an assumption that it would be hard to find.
-
-## [0.4.14] - 2026-08-17
-
-### Added
-
-- **`-mouse kempston` flag**, both GUI and headless binaries (`mouse.go`,
-  `io.go`, `input.go`, `zenzx_gui.go`, `zenzx_headless.go`). Three ports,
-  confirmed against four independent sources (gamedev.net, zxpress.ru,
-  8bit.yarek.pl, and the ZX_BUS_Mouse hardware-clone project, all
-  agreeing exactly): `0xFADF` buttons (bit0=right, bit1=left,
-  bit2=middle, active low -- polarity confirmed for the CPC-bus variant
-  of the same interface family, cpcwiki.eu, not separately re-confirmed
-  against a ZX-specific source for polarity specifically, though the
-  port/bit assignment itself is independently ZX-confirmed), `0xFBDF` X
-  and `0xFFDF` Y as 8-bit wrapping *relative* counters -- not absolute
-  screen coordinates (k1.spdns.de's Kempston Mouse Interface page states
-  this outright: software must track its own cursor position and
-  recalibrate at screen edges). Partial address decode (upper 4 bits
-  don't-care) matched via a 12-bit mask, per the bit table documented at
-  spectrumcomputing.co.uk, not just the three literal port values.
-  GUI-side input reads `rl.GetMouseDelta()` (already in host
-  window-client pixels) divided by the current display magnification
-  (`zx.screen.GetMultiplier()`) before being handed to the
-  hardware-independent translation layer -- border margin does not enter
-  into it, since the device is relative, not absolute; a real physical
-  mouse reports ball rotation with no notion of cursor position. Fractional
-  deltas accumulate across frames rather than truncating to zero every
-  frame, so slow movement at high magnification isn't silently lost.
-  8 tests (`mouse_test.go`): mode parsing (including AMX's explanatory
-  rejection, not a bare "invalid value"), the button byte polarity and
-  bit assignment, the default button state (0xFF, not Go's zero-value
-  0x00, which would mean "everything pressed" under active-low
-  semantics -- the specific bug this default guards against), the full
-  port-decode path including an aliased address, 8-bit wraparound, and
-  fractional-delta accumulation.
-- **T-14 filed**: AMX Mouse deliberately not implemented. Its actual
-  protocol turned out to be a raw quadrature encoder through a Z80 PIO
-  (Sinclair Wiki), not a position register like Kempston -- a materially
-  different, timing-sensitive emulation problem needing further research
-  before attempting, not a same-pass approximation that might not
-  actually drive real AMX-aware software correctly.
-
-## [0.4.13] - 2026-08-17
-
-### Added
-
-- **`-joystick kempston|sinclair` flag**, both GUI and headless binaries
-  (`joystick.go`, `io.go`, `input.go`, `zenzx_gui.go`,
-  `zenzx_headless.go`). Kempston: dedicated port `0x1F`, active high,
-  bit layout confirmed against the original Kempston Joystick Interface
-  instruction sheet (bit0=right, bit1=left, bit2=down, bit3=up,
-  bit4=fire). Sinclair: Interface 2 Joystick 1's keyboard-remapping
-  mechanism, confirmed against multiple independent sources (Wikipedia's
-  ZX Interface 2 article, the Interface 2 circuitry reference, Fuse's
-  libretro docs) -- keys 6/7/8/9/0 as left/right/down/up/fire, applied
-  via the existing `PressKey`/`ReleaseKey` matrix API, composing
-  correctly with ordinary keyboard use of the same keys. An invalid
-  `-joystick` value is a hard startup error (`ParseJoystickMode`),
-  matching the `-ns-graphics`/`-non-standard` validation convention, not
-  the older `-tapemode` silent-fallback style. GUI-side input reads
-  raylib's own gamepad API (`IsGamepadButtonDown`,
-  `GetGamepadAxisMovement`) -- present in both raylib-go backends,
-  confirmed directly in the vendored source, so no new dependency and no
-  risk to the cgo-free darwin/windows cross-build established in 0.4.7.
-  Deliberately did not adopt a third-party joystick library evaluated
-  for this (`0xcafed00d/joystick`): its darwin backend requires cgo (a
-  `.c` file in the package), which would have broken exactly the
-  cross-build property raylib's own API already satisfies for free.
-  10 tests (`joystick_test.go`): mode parsing (including the hard-error
-  case), the Kempston bit layout, the Sinclair row/col mapping against
-  input.go's own key-1..0 matrix positions, both mechanisms' full path
-  through the real `SpectrumIO.ReadPort`, and confirmation that
-  `JoystickNone` (the default) touches neither the Kempston byte nor the
-  keyboard matrix.
-- **Register item filed** for the deliberately deferred pieces: Sinclair
-  Joystick 2, Cursor/AGF/Protek, and a headless zenscript joystick-drive
-  verb -- none requested this pass, all cheap to add later given
-  `JoystickState`/`SetJoystickState`'s deliberate separation from any
-  particular input source.
-
-## [0.4.12] - 2026-08-17
-
-### Added
-
-- **`docs/TS2068_DEVELOPMENT_PLAN.md`**: frozen 6-stage plan for T-12
-  (`-model ts2068`) -- model skeleton/ROM loading/chunk-0 banking/boot;
-  NTSC frame timing; `CHNG_VID` (the sole deferred-list item now in
-  scope, per direction; everything else deferrable -- full 8-chunk
-  Dock/cartridge banking, the TS2040 printer, composite/RF video --
-  stays unimplemented indefinitely); AY sound-chip ports and joystick;
-  tape I/O; memory contention. States a guiding principle up front:
-  because zenzx runs the real ROM images, most of what reads as "new
-  system-software feature" is actually "correct the substrate and let
-  real ROM code do it" -- reshapes `CHNG_VID` from a reimplementation
-  task into a substrate-correctness verification task.
-- **`docs/TS2068_TRACKING.md`**: stage-status tracker for the plan
-  (all 6 stages ☐, ready for execution).
-- **T-12 condensed** in `docs/TRACKING.md` to reference the plan/tracker
-  rather than duplicating their content.
-
-## [0.4.11] - 2026-08-17
-
-### Fixed
-
-- **`rom/TIMEX.txt` rewritten with a properly researched provenance
-  note**, replacing 0.4.10's "no known statement" framing. Checked the
-  actual sources rather than assuming: Cliff Lawson of Amstrad, quoted
-  directly from the 1999 Usenet thread that is SINCLAIR.txt's own
-  citation, scopes Amstrad's permission to "code that was written by
-  Sinclair or Amstrad" and states he has "no clue" about the separate
-  Timex licensing deal -- so Amstrad's grant does not, on its own
-  wording, extend to Timex's own additions in the TS2068 ROM (T/S 2000
-  BASIC's extra keywords, SCLD/cartridge support). World of Spectrum's
-  Sinclair BASIC licence page, by contrast, states directly that "the
-  TS2000 BASIC rights stayed with Timex" and "Timex permits
-  distribution" -- real support from the field's long-standing
-  reference archive, applying the same standard it uses for the other
-  three rights-holders on that page, though not as strong as Amstrad's
-  directly quotable, dated statement. The note now cites both by name
-  rather than asserting either "fully covered" or "no permission
-  exists."
-
-## [0.4.10] - 2026-08-17
-
-### Added
-
-- **TS2068 ROM images added to `./rom`**, ahead of T-12: `ts2068-0.rom`
-  (16384 bytes, Home ROM) and `ts2068-1.rom` (8192 bytes, Extension
-  ROM). Verified: sizes match the T/S 2068 Technical Manual exactly,
-  sensible Z80 code at the reset vectors, expected embedded copyright
-  strings present. `rom/TIMEX.txt` records provenance, hashes, and
-  copyright status -- flagged there that, unlike the Sinclair ROMs
-  (`rom/SINCLAIR.txt`, an explicit Amstrad redistribution grant), no
-  equivalent documented blanket permission from a current TS2068 rights
-  holder is known.
-- **T-12 updated**: the "needs its own ROM files" blocker is resolved;
-  the bank-switching/I/O-port/memory-map work remains open.
-
-## [0.4.9] - 2026-08-17
-
-### Added
-
-- **`mode-timex-001-hicolour` implemented** (`videorender_hicolour.go`):
-  the first non-standard `-ns-graphics` renderer. Screen 0's bitmap
-  supplies pixels exactly as standard mode; screen 1, at the same
-  non-linear byte offset plus `0x2000`, supplies one FLASH/BRIGHT/PAPER/
-  INK attribute byte per 8x1 pixel row instead of the standard 8x8
-  block -- read straight through `mem.Read()`, since `$6000-$77FF` is
-  already ordinary bank-5 RAM in zenzx's memory model, no new storage
-  needed. FLASH is deliberately not honoured, per the standard-only-
-  FLASH decision (0.4.7): the real attribute byte's bit 7 is never read.
-  7 tests (`videorender_hicolour_test.go`): registration, the exact
-  pixel/attribute address correspondence from the T/S 2068 Technical
-  Manual's own worked example (`$4000`->`$6000`, `$47FF`->`$67FF`,
-  `$57FF`->`$77FF`), basic decode, BRIGHT, FLASH-is-ignored, screen 0's
-  own attribute block being correctly unused, and an end-to-end test
-  through the real `ZenZX.SelectVideoRenderer`/`DecodeDisplay` path
-  (the same one both front ends call) that also writes a PNG for visual
-  inspection -- eight different ink colours in eight consecutive 8x1
-  rows of one character cell, a picture standard mode cannot produce.
-- **T-11 closed**: `mode-timex-001-hicolour` implemented and verified end
-  to end (see "Added" above and `docs/RESOLVED.md`).
-- **T-12 filed**: `-model ts2068` (own ROM pair, 8K-chunk bank
-  switching, dedicated AY ports) -- a separate, larger feature,
-  deliberately not a prerequisite for hi-colour mode.
-
-### Fixed
-
-- **`docs/timex-modes.md`'s memory-layout section corrected a second
-  time**, now against the T/S 2068 Technical Manual's actual
-  `CHNG_VID`/`OPDFIL`/`CLDFIL` Z80 source rather than inference: there
-  is a real ROM-level relocation (2112 bytes of OS-resident code and the
-  machine stack, moved `$6000`->`$F7C0`), but it moves only the OS's own
-  internal plumbing, not the user's BASIC program, and it happens only
-  when the `CHNG_VID` service is called -- not from the raw port write.
-  zenzx has no equivalent service (it doesn't emulate the T/S 2068 ROM),
-  so this resolves the design question rather than leaving it open: read
-  `$6000-$77FF` as ordinary memory, matching what that range already is
-  on real hardware outside of a video mode reading it.
-
-## [0.4.8] - 2026-08-17
-
-### Fixed
-
-- **Personal name removed from docs and code comments.** 0.4.7 introduced
-  nine instances of a real name in `display.go`, `videorender.go`,
-  `docs/video-architecture.md`, `docs/TRACKING.md`, and
-  `docs/KNOWN_ISSUES.md`, attributing design decisions and reports.
-  Replaced with neutral phrasing (dates retained, attribution dropped).
-  Violated this codebase's own privacy rule against putting identifying
-  information into project artifacts.
-
-## [0.4.7] - 2026-08-17
-
-Refactor: the standard video display is now pluggable, in both the GUI and
-headless builds. No visual change for the standard mode -- see
-`docs/video-architecture.md` for the design and the byte-for-byte
-regression evidence.
-
-### Added
-
-- **`VideoRenderer` interface** (`videorender.go`): `Name`, `Decode`,
-  `Dimensions`, `BorderMargins`. A registry (`RegisterVideoRenderer`,
-  `LookupVideoRenderer`) resolves the active renderer from `-ns-graphics`
-  at startup; selecting a valid-but-unimplemented mode is now a startup
-  error instead of silently rendering standard while claiming otherwise.
-- **`docs/video-architecture.md`**: the interface, three design decisions
-  (FLASH is standard-only; border is optional per mode; magnification is
-  shared but not every zoom level fits every mode), and what moved where.
-- **`screen.go`**: `SpectrumScreen` (display-file storage: bitmap,
-  attributes, multiplier, flash state) as one definition shared by both
-  builds, replacing two independent per-build-tag definitions.
-- 4 new tests (`videorender_test.go`) covering renderer lookup, the
-  unregistered-mode error path, duplicate-registration panics, and
-  `ZenZX.SelectVideoRenderer`.
-
-### Changed
-
-- **GUI rendering**: replaced the 256-pre-baked-texture-per-bit-pattern
-  fast path with a single `image.RGBA` upload per frame
-  (`rl.UpdateTexture`), decoded by whichever `VideoRenderer` is active.
-  Window, texture, and border sizing now come from the active renderer's
-  `Dimensions()`/`BorderMargins()` rather than hardcoded 256x192/
-  32-32-24-32 constants.
-- **`DisplayManager.ScaleUp` and `InitDisplay`** now clamp the window to
-  the current monitor's size (`maxMultiplierThatFits`), since a
-  higher-resolution mode's window at a high multiplier may not fit every
-  display. Not yet exercised against a real non-256x192 renderer (none
-  exists yet, see T-09) -- reasoned through, not verified in practice.
-- **`writeScreenPNG`/`writePNG`** consolidated into one function
-  (scheduler.go), both call sites now go through `zx.DecodeDisplay()`.
-
-### Fixed
-
-- **FLASH/paper-ink swap divergence**: the GUI's screenshot decoder
-  checked `flashEnabled` before swapping ink and paper on a FLASH cell;
-  the headless decoder didn't. Both now use the GUI's (correct) check.
-  Unlikely to have been observed in practice (headless never advanced
-  FLASH automatically), but a real, provable behavioural difference
-  between the two builds prior to this fix.
-
-## [0.4.6] - 2026-08-17
-
-### Added
-
-- **`docs/timex-modes.md`**: reference documentation for the Timex SCLD
-  extended video hardware -- the port `0xFF` mode-select protocol,
-  screen 0/1, hi-res, and hi-colour (Extended Colour Mode) in detail,
-  including the open memory-layout question for implementation.
-
-### Changed
-
-- **`-ns-graphics mode-timex` renamed to `-ns-graphics
-  mode-timex-001-hicolour`**, adopting a numbered scheme
-  (`mode-timex-NNN-name`) that leaves room for hi-res and dual-screen as
-  separate values once designed, rather than one flag value standing in
-  for three distinct hardware modes. `mode-timex` (bare) is no longer a
-  valid value.
-
-## [0.4.5] - 2026-08-17
-
-### Added
-
-- **`-non-standard on|off`**, a master switch gating a family of `-ns-*`
-  sub-switches (`nonstandard.go`). With `-non-standard off` (the default),
-  any `-ns-*` flag set to a non-empty value is a startup error rather than
-  being silently ignored. With `-non-standard on`, each `-ns-*` flag
-  independently accepts its default (standard behaviour) or one of a
-  fixed set of recognised values.
-  - `-ns-graphics`: `mode-timex`, `mode-zenzx-01` (256x192, 3px/byte,
-    linear framebuffer, no attribute clash), `mode-zenzx-02` (512x384,
-    double resolution).
-  - `-ns-storage`: `storage-zenzx-posix`.
-  - Validated values are stored on `zx.nonStandard` for future subsystems
-    to consume; no mode is implemented yet (see T-09, T-10).
-  - 19 table-driven test cases (`nonstandard_test.go`) cover the gate,
-    each recognised value, invalid values, and the startup summary line.
-
-## [0.4.4] - 2026-08-17
-
-### Added
-
-- **CI** (`.github/workflows/ci.yml`), modelled on `github.com/ha1tch/zenimate`'s:
-  gofmt/vet/test on the cgo-free core; the GUI cross-compiled cgo-free for
-  darwin and windows (amd64 and arm64) via raylib-go's `purego` backend;
-  the GUI built natively with cgo for linux/amd64 and linux/arm64 (the
-  latter on GitHub's `ubuntu-24.04-arm` hosted runner).
-- **Release workflow** (`.github/workflows/release.yml`): on a `v*` tag,
-  builds and publishes headless binaries for linux/darwin/windows
-  (amd64+arm64) plus freebsd/amd64, and GUI binaries for the same matrix
-  as CI, each archived with the ROM set, README, CHANGELOG, and LICENSE,
-  as GitHub release assets.
-- **README**: "Continuous integration and cross-platform builds" section.
-- **`docs/KNOWN_ISSUES.md`**: "CI and cross-platform builds" section
-  documenting why darwin/windows are cgo-free and Linux is not (oto's
-  Linux backend requires ALSA via cgo; raylib-go's `purego` backend and
-  oto's darwin/windows backends do not need cgo), and that BSD has no
-  purego path and is not covered by CI.
-
-### Fixed
-
-- **`docs/KNOWN_ISSUES.md`** corrected: the GUI is now built (not merely
-  type-checked) in CI, superseding the note this section carried since
-  0.4.3.
-
-## [0.4.3] - 2026-08-17
-
-Repository-discipline release: no emulation behaviour changes.
-
-### Added
-
-- **repoman toolset in-tree** (`repoman/`, from github.com/ha1tch/repoman
-  0.7.0) with `.repoman.json` at the root: journaled editing (`ed.py`),
-  the work register (`register.py`), the dormant-guard registry
-  (`guards.py`), version sync (`syncver.py`), and manifest-driven,
-  resumable release orchestration (`relcore.py`).
-- **Tracking documents:** `docs/TRACKING.md` (live register, T-01..T-06),
-  `docs/RESOLVED.md` (append-only resolution record), and
-  `docs/KNOWN_ISSUES.md` (intentional limits plus dormant guards G-01 GUI
-  link build and G-02 FDC read against a real DSK). The README's Known
-  issues section now points at these instead of doubling as the register.
-- **Release manifest** in `.repoman.json`: version sync, changelog and
-  register gates, GUI type-check (`check_gui.sh`), headless build, tests,
-  headless smoke test (`smoke_headless.sh`), and a checkpoint zip with an
-  embedded SHA-256 manifest, contamination scan and binary sniff.
-
-### Changed
-
-- **README corrected** (T-01): removed the stale claims that `.dsk` images
-  do not load (floppy read/write/format shipped in 0.3.x) and that the
-  beeper is unfiltered (DC blocker and 14 kHz lowpass shipped in 0.3.3);
-  the versioning section documents the repoman workflow.
-
-### Removed
-
-- `release.sh` and `syncver.sh`, superseded by `repoman/relcore.py` and
-  `repoman/syncver.py`. The GUI-check and smoke-test logic they carried
-  now lives in `check_gui.sh` and `smoke_headless.sh`.
-
-### Dormant guards
-
-- G-01 (GUI link build) not exercised in this cycle: the sandbox has no
-  raylib/oto host libraries; handed off. G-02 (FDC read against a real
-  DSK) not exercised: no DSK image available in-session (see T-05).
-
-## [0.4.2] - 2026-06-30
-
-### Fixed
-
-- **Snapshots saved with a blank screen.** After loading a screen directly (e.g.
-  a `.scr` image) and saving a `.sna` or `.z80`, reloading that snapshot restored
-  the border but left the screen blank. The display is held authoritatively in
-  the render buffers (`screen.bitmap`/`attributes`); a directly loaded screen
-  populates those buffers without going through the RAM write path, so the bank
-  5 screen region stayed stale and the snapshot captured an empty screen. The
-  border survived because it is a single restored value. `toMachineState` now
-  copies the display buffers into the displayed bank's screen region before
-  encoding (the mirror of `resyncAfterLoad`, which copies the other way on load),
-  so a snapshot always captures what is actually on screen. The round-trip tests
-  now set and check screen-region markers through the display buffers, matching
-  how the screen is really stored, and reproduce the reported scenario.
-
-## [0.4.1] - 2026-06-29
-
-### Added
-
-- **Headless `-model plus2a`**: the +2A is now selectable in the headless build,
-  not only the GUI. It loads the +3 ROM set (the +2A shares the +3's ROM,
-  including the unused +3DOS) but does not enable the floppy controller, since
-  the +2A has no drive. A measured boot baseline (frame 55) was added for the
-  `wait-boot` action; the +2A settles far sooner than the +3 (frame 135)
-  precisely because it has no FDC seeking for a boot disk.
-
-### Fixed
-
-- **README fast-tape note corrected.** The previous note stated flatly that fast
-  tape loading does not work. In fact the instant-inject path (used when a tape
-  is loaded with `-tape` in fast mode) places `.tap` and `.tzx` CODE blocks into
-  memory byte-identically to the source. The note now distinguishes this working
-  path from the separate, still-unverified ROM-trap path that would intercept a
-  guest's own `LOAD ""`, and records that a CODE tape is loaded but not run.
-
-## [0.4.0] - 2026-06-29
-
-Migrates the standard snapshot codecs (`.sna`, `.z80`) onto the shared
-`zentools/pkg/snapshot` library, replacing ZenZX's in-tree implementations with
-thin delegations over a neutral machine-state adapter. The proprietary `.zxs`
-format stays native to ZenZX. This both removes duplicated format code and fixes
-real defects the in-tree versions carried.
-
-### Added
-
-- **`snapshot_adapter.go`**: `toMachineState` / `fromMachineState` map ZenZX's
-  live emulator state to and from `zentools`' neutral `MachineState`. The format
-  codecs never see ZenZX's types; this adapter is the only coupling point.
-- **Snapshot regression suite** validated against real third-party artifacts:
-  round-trip tests for 48K/128K `.sna` and `.z80`, plus sentinel tests that load
-  genuine game snapshots (Jet Set Willy v1, Manic Miner v2, Z80 Attack v3 128K)
-  and a load -> re-save -> independent-decode check confirming byte-identical
-  memory across a v1-to-v3 conversion.
-
-### Changed
-
-- **`.z80` save now writes version 3** (extended header, 128K-capable) rather
-  than the previous version 1. Loading still accepts v1, v2, and v3.
-- `SaveSNA` / `LoadSNA` / `SaveZ80` / `LoadZ80` are now thin wrappers over
-  `zentools`; roughly 460 lines of in-tree codec were removed.
-
-### Fixed
-
-- **`.sna` 48K save lost the program counter.** The previous in-tree `SaveSNA`
-  never pushed PC onto the stack for 48K snapshots (the 48K SNA header has no PC
-  field, so PC must be saved on the stack), silently losing it. The `zentools`
-  codec does this correctly; a regression test pins PC survival across a round
-  trip.
-- **`.sna` and `.z80` snapshots now load correctly**, resolving the prior
-  known-issue. Verified by running loaded game snapshots headlessly to their
-  title/menu screens.
+- Hi-colour FLASH honoured on real hardware (T-18); menu options could fire
+  before the bar finished unrolling; and numerous theme, menu-layout and
+  menu-bar reveal refinements against direct feedback.
 
 ## [0.3.5] - 2026-06-28
 

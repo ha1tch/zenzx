@@ -1,6 +1,6 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -109,6 +109,7 @@ func TestMinMultiplierForModeGates640Mode(t *testing.T) {
 			mem.EnableNext()
 			io := NewSpectrumIO(mem, nil)
 			io.SetNextRegister(0x70, c.modeBits)
+			io.nextRegWriteDirect(0x69, 0x80) // Layer 2 on: the mode only counts while it is displayed
 			dm.SetSpectrumIO(io)
 			if got := dm.minMultiplierForMode(); got != c.wantMin {
 				t.Errorf("minMultiplierForMode() = %d, want %d", got, c.wantMin)
@@ -128,6 +129,7 @@ func TestScaleDownRespectsModeMinimum(t *testing.T) {
 	io := NewSpectrumIO(mem, nil)
 	dm.SetSpectrumIO(io)
 	io.SetNextRegister(0x70, 0b10<<4) // 640x256x4bpp
+	io.nextRegWriteDirect(0x69, 0x80) // Layer 2 on: the mode only counts while it is displayed
 
 	dm.screen.multiplier = 2
 	if ok := dm.ScaleDown(); ok {
@@ -149,6 +151,7 @@ func TestSetScaleRespectsModeMinimum(t *testing.T) {
 	io := NewSpectrumIO(mem, nil)
 	dm.SetSpectrumIO(io)
 	io.SetNextRegister(0x70, 0b10<<4) // 640x256x4bpp
+	io.nextRegWriteDirect(0x69, 0x80) // Layer 2 on: the mode only counts while it is displayed
 
 	if ok := dm.SetScale(1); ok {
 		t.Fatalf("SetScale(1) while in 640-mode = true, want false")

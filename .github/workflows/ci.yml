@@ -24,10 +24,7 @@ jobs:
           repoman version
 
       - name: gofmt check
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then echo "gofmt would change:"; echo "$out"; exit 1; fi
-          echo "gofmt clean"
+        run: sh ./check_gofmt.sh
 
       - name: Vet (headless tags, cgo-free)
         env:
@@ -37,7 +34,7 @@ jobs:
       - name: Build headless
         env:
           CGO_ENABLED: '0'
-        run: go build -tags headless -o /dev/null .
+        run: go build -tags headless -o /dev/null ./cmd/zenzx-headless
 
       - name: Test
         env:
@@ -45,6 +42,9 @@ jobs:
         run: |
           go test -count=1 ./pkg/...
           go test -tags headless -count=1 .
+
+      - name: Importable as a library
+        run: sh scripts/check_import.sh
 
       - name: Register consistency
         run: repoman register check
@@ -77,7 +77,7 @@ jobs:
           CGO_ENABLED: '0'
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -o /dev/null .
+        run: go build -o /dev/null ./cmd/zenzx
 
   gui-linux-amd64:
     # Native cgo build on the standard x64 runner. Needs the same
@@ -105,7 +105,7 @@ jobs:
       - name: Build GUI (cgo, real link)
         env:
           CGO_ENABLED: '1'
-        run: go build -o /dev/null .
+        run: go build -o /dev/null ./cmd/zenzx
 
   gui-linux-arm64:
     # Native cgo build on GitHub's arm64-hosted runner (GA, free on
@@ -130,4 +130,4 @@ jobs:
       - name: Build GUI (cgo, real link)
         env:
           CGO_ENABLED: '1'
-        run: go build -o /dev/null .
+        run: go build -o /dev/null ./cmd/zenzx

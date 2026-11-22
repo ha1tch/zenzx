@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // hasAY reports whether the machine being emulated has an AY-3-8912 on the
 // 128K-style ports 0xFFFD (register select, data read) and 0xBFFD (data

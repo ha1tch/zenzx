@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"testing"
@@ -223,5 +223,29 @@ func TestNextScreenCacheFollowsRAM(t *testing.T) {
 	mem.SetPaging(0x00)
 	if mem.screen.bitmap[0] != 0x33 || mem.ram[7][0] != 0x22 {
 		t.Fatalf("back on bank 5: cache 0x%02X (want 0x33), bank 7 0x%02X (want 0x22)", mem.screen.bitmap[0], mem.ram[7][0])
+	}
+}
+
+func TestLayer2UsesBankNumbersAndResetValues(t *testing.T) {
+	mem, io := newNextBootTestMachine(t)
+	if got := io.GetNextRegister(0x12); got != 8 {
+		t.Fatalf("NextREG 0x12 resets to %d, want bank 8", got)
+	}
+	if got := io.GetNextRegister(0x13); got != 11 {
+		t.Fatalf("NextREG 0x13 resets to %d, want bank 11", got)
+	}
+	if got := io.layer2BaseBank(); got != 16 {
+		t.Fatalf("Layer 2 starts at page %d, want 16 (bank 8)", got)
+	}
+	if got := io.layer2ShadowBasePage(); got != 22 {
+		t.Fatalf("the shadow Layer 2 starts at page %d, want 22 (bank 11)", got)
+	}
+	// Port 0x123B maps the same banks into the bottom 16K: a byte written there with the
+	// write mapping on lands in bank 8, page 16.
+	io.nextRegWriteDirect(0x03, 0xB3) // out of config mode
+	io.layer2Access.raw = 0x01
+	mem.Write(0x0005, 0x5A)
+	if got := mem.nextPageRead(16, 5); got != 0x5A {
+		t.Fatalf("a write through port 0x123B's mapping reached page 16 as 0x%02X, want 0x5A", got)
 	}
 }

@@ -1,14 +1,14 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"testing"
 	"time"
 
+	"github.com/ha1tch/zenui"
 	"github.com/ha1tch/zenzx/pkg/fonts"
 	"github.com/ha1tch/zenzx/pkg/settingsconfig"
-	"github.com/ha1tch/zenzx/pkg/zenui"
 )
 
 func TestEaseInOutCubicEndpoints(t *testing.T) {
@@ -243,7 +243,7 @@ func TestApplyZoomUpdatesScale(t *testing.T) {
 		t.Errorf("b.scale = %d, want 3", b.scale)
 	}
 
-	// zenui.MenuBar's own scale field isn't visible from package main
+	// zenui.MenuBar's own scale field isn't visible from this package
 	// (it's an internal detail of pkg/zenui), so this can't also assert
 	// b.widget picked the change up directly -- that propagation is
 	// covered independently by pkg/zenui's own
@@ -335,11 +335,11 @@ func TestFloppyDiskMenuHasOpenDSKImage(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	// 6 real actions (Open, Insert Blank, Save, Save As, Eject, Info)
-	// plus 2 separator placeholders, grouped as [mount] | [save] |
-	// [current-disk operations].
-	if got := len(b.actions[barFloppyDisk]); got != 8 {
-		t.Errorf("len(actions[barFloppyDisk]) = %d, want 8 (6 real actions + 2 separator placeholders)", got)
+	// 7 real actions (Open, Insert Blank, Save, Save As, Eject, Info,
+	// Manage Disks) plus 2 separator placeholders, grouped as [mount] |
+	// [save] | [current-disk operations].
+	if got := len(b.actions[barFloppyDisk]); got != 9 {
+		t.Errorf("len(actions[barFloppyDisk]) = %d, want 9 (7 real actions + 2 separator placeholders)", got)
 	}
 	items := b.widget.ItemsFor(barFloppyDisk)
 	if items[0].Label != "Open DSK Image..." {
@@ -386,20 +386,6 @@ func TestOpenDiskDialogOpensWithFDC(t *testing.T) {
 	if !b.Active() {
 		t.Error("Active() should be true while the disk dialog is open")
 	}
-}
-
-func TestPrintDiskInfoDoesNotPanic(t *testing.T) {
-	zx := NewZenZX(AudioBackendOto)
-	if err := zx.LoadROM("./rom/48.rom"); err != nil {
-		t.Fatalf("LoadROM: %v", err)
-	}
-
-	// No FDC.
-	printDiskInfo(zx)
-
-	// FDC present, no disk loaded.
-	zx.io.hasFDC = true
-	printDiskInfo(zx)
 }
 
 func TestLastBarLabelIsThemeNotFontAfterFontBecameASubmenu(t *testing.T) {
@@ -534,7 +520,7 @@ func TestFloppyDiskMenuGrouping(t *testing.T) {
 	wantLabels := []string{
 		"Open DSK Image...", "Insert Blank Disk", "",
 		"Save Disk", "Save Disk As...", "",
-		"Eject Disk", "Disk Info",
+		"Eject Disk", "Disk Info", "Manage Disks...",
 	}
 	if len(items) != len(wantLabels) {
 		t.Fatalf("len(items) = %d, want %d", len(items), len(wantLabels))

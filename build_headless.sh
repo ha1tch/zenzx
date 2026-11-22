@@ -11,8 +11,8 @@ OUT="${1:-zenzx-headless}"
 
 echo "Building headless ZenZX ${VERSION} -> ${OUT}"
 CGO_ENABLED=0 go build -tags headless \
-    -ldflags "-s -w -X main.version=${VERSION}" \
-    -o "${OUT}" .
+    -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" \
+    -o "${OUT}" ./cmd/zenzx-headless
 
 echo "Done:"
 ls -lh "${OUT}"

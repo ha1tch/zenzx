@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -129,6 +129,38 @@ const (
 type MouseState struct {
 	DeltaX, DeltaY      float32
 	Left, Right, Middle bool
+	Wheel               float32 // notches turned since the last frame; a Next reads the wheel
+}
+
+// resolveMouseMode handles the -mouse flag's "auto" value: a Next has a mouse port of its
+// own, presented to programs as a Kempston mouse, and no other model has a mouse built in.
+// The AMX mouse is refused on a Next, which has no such interface and uses port 0x1F for
+// its joystick.
+func resolveMouseMode(mouseFlag, model string) (MouseMode, error) {
+	next := strings.EqualFold(strings.TrimSpace(model), "next")
+	if strings.EqualFold(strings.TrimSpace(mouseFlag), "auto") {
+		if next {
+			return MouseKempston, nil
+		}
+		return MouseNone, nil
+	}
+	mode, err := ParseMouseMode(mouseFlag)
+	if err == nil && next && mode == MouseAMX {
+		return MouseNone, fmt.Errorf("-mouse amx is not available with -model next: a Next's mouse is a Kempston mouse")
+	}
+	return mode, err
+}
+
+// nextMouseButtonByte is port 0xFADF on a Next: the three buttons in bits 2-0 as on the
+// Kempston mouse, 0 when pressed, bit 3 clear, and the wheel's position in bits 7-4. It is
+// what CSpect returns (7 with nothing pressed, 5 with the left button, 6 with the right);
+// the Next's ports.txt describes the button bits as 1 when pressed, which neither CSpect
+// nor the Kempston mouse does. NextREG 0x0A bit 3 swaps left and right.
+func nextMouseButtonByte(s MouseState, wheel uint8, reverse bool) uint8 {
+	if reverse {
+		s.Left, s.Right = s.Right, s.Left
+	}
+	return wheel&0x0F<<4 | kempstonMouseButtonByte(s)&0x07
 }
 
 // kempstonMouseButtonByte renders a MouseState's buttons as the byte port
@@ -195,9 +227,19 @@ func (io *SpectrumIO) SetMouseState(s MouseState) {
 		// uint8(negative int32) wraps via two's-complement reinterpretation
 		// per Go's defined conversion semantics -- exactly the up/down
 		// counter wraparound the real 74LS191 hardware performs.
+		// X counts up to the right. Y counts up as the mouse moves away from the user, up
+		// the screen: the Next's ports.txt says so and CSpect does it (30 pixels down took
+		// its Y from 0 to 246). DeltaY is the host's, which grows down the screen.
 		io.kempstonMouseX += uint8(dx)
-		io.kempstonMouseY += uint8(dy)
+		io.kempstonMouseY -= uint8(dy)
 		io.kempstonMouseButtons = kempstonMouseButtonByte(s)
+		if io.memory != nil && io.memory.isNext {
+			io.mouseWheelRem += s.Wheel
+			notches := int32(io.mouseWheelRem)
+			io.mouseWheelRem -= float32(notches)
+			io.mouseWheel += uint8(notches)
+			io.kempstonMouseButtons = nextMouseButtonByte(s, io.mouseWheel, io.nextRegs.regs[0x0A]&0x08 != 0)
+		}
 
 	case MouseAMX:
 		io.amxMouseButtons = amxMouseButtonByte(s)
@@ -277,6 +319,14 @@ func (io *SpectrumIO) PopAMXInterrupt() (vector uint8, ok bool) {
 // would have defaulted to on its own, so implementing this interface at
 // all changes nothing for any software that isn't AMX-aware.
 func (io *SpectrumIO) GetInterruptVector() uint8 {
+	io.intVector = io.interruptVector()
+	return io.intVector
+}
+
+func (io *SpectrumIO) interruptVector() uint8 {
+	if io.nextInt.hw {
+		return io.nextIntVector() // the Next's own interrupt mode: nextint.go
+	}
 	if io.amxVectorPending {
 		io.amxVectorPending = false
 		return io.amxPendingVector

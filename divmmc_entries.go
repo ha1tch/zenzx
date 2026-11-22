@@ -1,8 +1,6 @@
-package main
+package zenzx
 
 import (
-	"fmt"
-	"os"
 	"strings"
 )
 
@@ -100,7 +98,7 @@ func (d *DivMMC) OnM1(pc uint16, opcode uint8, context string) {
 		return
 	}
 	if d.Debug && pc == 0x0000 {
-		fmt.Fprintf(os.Stderr, "[divmmc] PC=0x0000 reached (automapEnabled=%v)\n", d.automapEnabled)
+		tracef("[divmmc] PC=0x0000 reached (automapEnabled=%v)\n", d.automapEnabled)
 	}
 
 	action, instant := divPendingNone, false
@@ -196,7 +194,7 @@ func (d *DivMMC) setPaged(paged bool, pc uint16) {
 		if paged {
 			dir = "IN "
 		}
-		fmt.Fprintf(os.Stderr, "[divmmc] automap %s at PC=0x%04X (ctrl=0x%02X)\n", dir, pc, d.ctrl)
+		tracef("[divmmc] automap %s at PC=0x%04X (ctrl=0x%02X)\n", dir, pc, d.ctrl)
 	}
 	d.paged = paged
 }

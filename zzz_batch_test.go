@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // Batch three-mode tape-loading comparison harness. NOT a permanent test --
 // a one-off investigative/reporting tool, run explicitly via -run, never

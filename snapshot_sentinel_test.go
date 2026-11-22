@@ -5,7 +5,7 @@
 // sane state, and confirms a re-save round-trips. These exercise the actual
 // migrated code against genuine artifacts, not synthetic data.
 
-package main
+package zenzx
 
 import (
 	"os"

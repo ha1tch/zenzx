@@ -1,8 +1,10 @@
-package main
+package zenzx
 
 import (
 	"fmt"
 	"os"
+	"strings"
+	"time"
 )
 
 // +3 Disk format constants
@@ -22,6 +24,15 @@ type FDC765 struct {
 	diskFilename string
 	diskPresent  bool
 	diskModified bool
+	// The disc is read whole into memory when it is put in the drive and
+	// written back later, so the file can change behind it. diskStamp is the
+	// file as it was when last read or written here; conflictSaid, that the
+	// auto-commit has already said it will not write over a changed file.
+	diskStamp    fileStamp
+	conflictSaid bool
+	// firstProgram is the name of the first BASIC program read from a disc
+	// in this drive (program_name.go); it outlives the disc.
+	firstProgram string
 
 	// FDC registers
 	mainStatus uint8
@@ -79,8 +90,129 @@ type FDC765 struct {
 	debug bool
 }
 
+// fileStamp is a file's size and time of last change, to tell whether it is
+// still the file that was read.
+type fileStamp struct {
+	size int64
+	mod  time.Time
+}
+
+// stampOf reads a file's stamp; the zero stamp for a file that is not there.
+func stampOf(path string) fileStamp {
+	st, err := os.Stat(path)
+	if err != nil {
+		return fileStamp{}
+	}
+	return fileStamp{size: st.Size(), mod: st.ModTime()}
+}
+
+// FileChanged reports that the disc's file is no longer the one that was
+// read into memory or last written from it: something else has changed,
+// replaced or removed it since.
+func (fdc *FDC765) FileChanged() bool {
+	return fdc.diskPresent && fdc.diskFilename != "" && stampOf(fdc.diskFilename) != fdc.diskStamp
+}
+
+// Busy reports that the controller is in the middle of a command, when the
+// disc in memory may be half-written.
+func (fdc *FDC765) Busy() bool { return fdc.commandPhase != 0 }
+
+// DiskFile is the file the disc in the drive came from, "" for no disc and
+// for a blank disc that has no file yet.
+func (fdc *FDC765) DiskFile() string {
+	if !fdc.diskPresent {
+		return ""
+	}
+	return fdc.diskFilename
+}
+
+// sectorBytes is the data of the sector with ID r on a track, nil when the
+// disc has none: from the parsed DSK when the disc came from one, else from
+// the flat image.
+func (fdc *FDC765) sectorBytes(cylinder, head, r uint8) []byte {
+	if fdc.disk != nil {
+		if sec := fdc.disk.FindSector(cylinder, head, r); sec != nil {
+			return sec.Data
+		}
+		return nil
+	}
+	if r < 1 || r > SectorsPerTrack {
+		return nil
+	}
+	track := int(cylinder)
+	if head == 1 {
+		track += TracksPerSide
+	}
+	offset := (track*SectorsPerTrack + int(r-1)) * BytesPerSector
+	if offset < 0 || offset+BytesPerSector > len(fdc.diskImage) {
+		return nil
+	}
+	return fdc.diskImage[offset : offset+BytesPerSector]
+}
+
+// fileStartingAt is the name, as NAME.EXT, of the file whose first block
+// begins at the sector with ID r of a track, "" when the directory has no
+// such file. The disc's layout is read from its first sector where that
+// holds a +3 disc specification and is otherwise the +3's own: one side,
+// one reserved track, 1K blocks, two blocks of directory.
+func (fdc *FDC765) fileStartingAt(cylinder, head, r uint8) string {
+	sides, reserved, blockShift, dirBlocks := 1, 1, 3, 2
+	if spec := fdc.sectorBytes(0, 0, 1); len(spec) >= 10 && spec[0] <= 3 && spec[3] == SectorsPerTrack && spec[6] >= 3 && spec[6] <= 5 && spec[7] >= 1 {
+		if spec[1]&3 != 0 {
+			sides = 2
+		}
+		reserved, blockShift, dirBlocks = int(spec[5]), int(spec[6]), int(spec[7])
+	}
+	perBlock := (128 << blockShift) / BytesPerSector // sectors in a block
+	if r < 1 || perBlock < 1 {
+		return ""
+	}
+	// Logical sectors count along the tracks; on two sides they alternate.
+	logical := func(c, h, r int) int { return (c*sides+h)*SectorsPerTrack + r - 1 }
+	physical := func(l int) (c, h, r uint8) {
+		t := l / SectorsPerTrack
+		return uint8(t / sides), uint8(t % sides), uint8(l%SectorsPerTrack + 1)
+	}
+	first := logical(int(cylinder), int(head), int(r)) - reserved*sides*SectorsPerTrack
+	if first < 0 || first%perBlock != 0 {
+		return ""
+	}
+	block := first / perBlock
+	for l := 0; l < dirBlocks*perBlock; l++ {
+		data := fdc.sectorBytes(physical(reserved*sides*SectorsPerTrack + l))
+		for e := 0; e+32 <= len(data); e += 32 {
+			entry := data[e : e+32]
+			// A live entry of user 0 to 15, the file's first extent, whose
+			// first block is the one being read.
+			if entry[0] > 15 || entry[12] != 0 || entry[14] != 0 || int(entry[16]) != block {
+				continue
+			}
+			clean := func(b []byte) string {
+				out := make([]byte, len(b))
+				for i, c := range b {
+					out[i] = c & 0x7F
+				}
+				return strings.TrimRight(string(out), " ")
+			}
+			name, ext := clean(entry[1:9]), clean(entry[9:12])
+			if name == "" {
+				continue
+			}
+			if ext != "" {
+				name += "." + ext
+			}
+			return name
+		}
+	}
+	return ""
+}
+
 // CreateBlankDisk creates a blank formatted +3 disk
 func (fdc *FDC765) CreateBlankDisk() {
+	// A disc read from a DSK file before this one must not go on answering
+	// for it: reads prefer the parsed disc to the flat image.
+	fdc.disk = nil
+	fdc.diskStamp, fdc.conflictSaid = fileStamp{}, false
 	// Initialize with 0xE5 (standard formatting byte for CP/M and +3DOS)
 	for i := range fdc.diskImage {
 		fdc.diskImage[i] = 0xE5
@@ -95,7 +227,7 @@ func (fdc *FDC765) CreateBlankDisk() {
 	fdc.st3 |= 0x20 // Set Ready bit
 
 	if fdc.debug {
-		fmt.Println("FDC: Created blank formatted disk")
+		sayln("FDC: Created blank formatted disk")
 	}
 }
 
@@ -110,12 +242,13 @@ func (fdc *FDC765) EjectDisk() {
 	fdc.diskPresent = false
 	fdc.diskModified = false
 	fdc.diskFilename = ""
+	fdc.diskStamp, fdc.conflictSaid = fileStamp{}, false
 
 	// Update ST3 to indicate no disk
 	fdc.st3 &^= 0x20 // Clear Ready bit
 
 	if fdc.debug {
-		fmt.Println("FDC: Disk ejected")
+		sayln("FDC: Disk ejected")
 	}
 }
 
@@ -156,6 +289,16 @@ func (fdc *FDC765) AutoCommit(debounceFrames int) bool {
 	}
 	if fdc.currentFrame-fdc.lastWriteFrame < debounceFrames {
 		return false // not quiet long enough
+	}
+	if fdc.FileChanged() {
+		// Something else has written the file since it was read. Writing
+		// the disc in memory over it would lose that; Save still does it,
+		// on the person's say.
+		if !fdc.conflictSaid {
+			fdc.conflictSaid = true
+			sayf("Disk not auto-committed: %s has changed on disk since it was read. Save writes over it; putting the disk in again reads the new file.\n", fdc.diskFilename)
+		}
+		return false
 	}
 	if err := fdc.SaveDisk(); err != nil {
 		return false // retry on a later frame
@@ -229,8 +372,9 @@ func (fdc *FDC765) LoadDisk(filename string) error {
 		fdc.diskPresent = true
 		fdc.diskFilename = filename
 		fdc.diskModified = false
+		fdc.diskStamp, fdc.conflictSaid = stampOf(filename), false
 		fdc.st3 |= 0x20 // Set Ready bit
-		fmt.Printf("Loaded disk: %s (180KB raw)\n", filename)
+		sayf("Loaded disk: %s (180KB raw)\n", filename)
 		return nil
 	} else if len(data) > 256 && (string(data[0:8]) == "EXTENDED" || string(data[0:8]) == "MV - CPC") {
 		// Standard or extended DSK image: parse into a CHRN-addressable
@@ -243,8 +387,9 @@ func (fdc *FDC765) LoadDisk(filename string) error {
 		fdc.diskPresent = true
 		fdc.diskFilename = filename
 		fdc.diskModified = false
+		fdc.diskStamp, fdc.conflictSaid = stampOf(filename), false
 		fdc.st3 |= 0x20 // Set Ready bit
-		fmt.Printf("Loaded DSK: %s (%d tracks, %d side(s)%s)\n",
+		sayf("Loaded DSK: %s (%d tracks, %d side(s)%s)\n",
 			filename, disk.NumTracks, disk.NumSides,
 			map[bool]string{true: ", extended", false: ""}[disk.Extended])
 		return nil
@@ -266,7 +411,8 @@ func (fdc *FDC765) SaveDisk() error {
 		}
 		fdc.disk.Modified = false
 		fdc.diskModified = false
-		fmt.Printf("Saved DSK: %s\n", fdc.diskFilename)
+		fdc.diskStamp, fdc.conflictSaid = stampOf(fdc.diskFilename), false
+		sayf("Saved DSK: %s\n", fdc.diskFilename)
 		return nil
 	}
 
@@ -275,7 +421,8 @@ func (fdc *FDC765) SaveDisk() error {
 		return err
 	}
 	fdc.diskModified = false
-	fmt.Printf("Saved disk: %s\n", fdc.diskFilename)
+	fdc.diskStamp, fdc.conflictSaid = stampOf(fdc.diskFilename), false
+	sayf("Saved disk: %s\n", fdc.diskFilename)
 	return nil
 }
 
@@ -289,7 +436,7 @@ func (fdc *FDC765) ReadStatus() uint8 {
 	status := fdc.mainStatus
 
 	if fdc.debug {
-		fmt.Printf("FDC: ReadStatus() = 0x%02X (phase=%d, resultLen=%d)\n",
+		sayf("FDC: ReadStatus() = 0x%02X (phase=%d, resultLen=%d)\n",
 			status, fdc.commandPhase, len(fdc.resultBuf))
 	}
 
@@ -314,7 +461,7 @@ func (fdc *FDC765) ReadData() uint8 {
 				fdc.resultIdx = 0
 
 				if fdc.debug {
-					fmt.Printf("FDC: Result phase complete, ready for next command\n")
+					sayf("FDC: Result phase complete, ready for next command\n")
 				}
 			} else {
 				// More result bytes to send
@@ -322,7 +469,7 @@ func (fdc *FDC765) ReadData() uint8 {
 			}
 
 			if fdc.debug {
-				fmt.Printf("FDC: ReadData() = 0x%02X (result byte %d)\n", data, fdc.resultIdx-1)
+				sayf("FDC: ReadData() = 0x%02X (result byte %d)\n", data, fdc.resultIdx-1)
 			}
 			return data
 		}
@@ -350,7 +497,7 @@ func (fdc *FDC765) ReadData() uint8 {
 	}
 
 	if fdc.debug && data == 0xFF {
-		fmt.Printf("FDC: ReadData() = 0xFF (no data available)\n")
+		sayf("FDC: ReadData() = 0xFF (no data available)\n")
 	}
 
 	return data
@@ -359,7 +506,7 @@ func (fdc *FDC765) ReadData() uint8 {
 // WriteData writes to the data register
 func (fdc *FDC765) WriteData(value uint8) {
 	if fdc.debug {
-		fmt.Printf("FDC: WriteData(0x%02X) phase=%d\n", value, fdc.commandPhase)
+		sayf("FDC: WriteData(0x%02X) phase=%d\n", value, fdc.commandPhase)
 	}
 
 	if fdc.commandPhase == 0 {
@@ -441,7 +588,7 @@ func (fdc *FDC765) executeCommand() {
 	cmd := fdc.commandBuf[0] & 0x1F
 
 	if fdc.debug {
-		fmt.Printf("FDC: Executing command 0x%02X\n", cmd)
+		sayf("FDC: Executing command 0x%02X\n", cmd)
 	}
 
 	switch cmd {
@@ -449,7 +596,7 @@ func (fdc *FDC765) executeCommand() {
 		// Parameters: SRT/HUT, HLT/ND
 		// Just accept them
 		if fdc.debug {
-			fmt.Printf("FDC: Specify command\n")
+			sayf("FDC: Specify command\n")
 		}
 		fdc.commandPhase = 0
 		fdc.mainStatus = 0x80 // Ready for next command
@@ -481,7 +628,7 @@ func (fdc *FDC765) executeCommand() {
 		}
 
 		if fdc.debug {
-			fmt.Printf("FDC: Sense Drive Status - drive=%d, disk=%v, ST3=0x%02X\n",
+			sayf("FDC: Sense Drive Status - drive=%d, disk=%v, ST3=0x%02X\n",
 				drive, fdc.diskPresent, fdc.st3)
 		}
 
@@ -512,7 +659,7 @@ func (fdc *FDC765) executeCommand() {
 		fdc.seekEnd = true
 
 		if fdc.debug {
-			fmt.Printf("FDC: Recalibrate drive %d\n", drv)
+			sayf("FDC: Recalibrate drive %d\n", drv)
 		}
 
 		fdc.commandPhase = 0
@@ -533,7 +680,7 @@ func (fdc *FDC765) executeCommand() {
 			fdc.resetCount--
 
 			if fdc.debug {
-				fmt.Printf("FDC: Sense Interrupt Status - Reset for drive %d (ST0=0x%02X, PCN=0x00)\n",
+				sayf("FDC: Sense Interrupt Status - Reset for drive %d (ST0=0x%02X, PCN=0x00)\n",
 					drive, fdc.resultBuf[0])
 			}
 
@@ -543,7 +690,7 @@ func (fdc *FDC765) executeCommand() {
 			fdc.seekEnd = false
 
 			if fdc.debug {
-				fmt.Printf("FDC: Sense Interrupt Status - Seek complete (ST0=0x%02X, PCN=0x%02X)\n",
+				sayf("FDC: Sense Interrupt Status - Seek complete (ST0=0x%02X, PCN=0x%02X)\n",
 					fdc.st0, fdc.currentCylinder)
 			}
 
@@ -553,7 +700,7 @@ func (fdc *FDC765) executeCommand() {
 			fdc.resultBuf = []uint8{0x80, 0x00} // Invalid command status
 
 			if fdc.debug {
-				fmt.Printf("FDC: Sense Interrupt Status - No interrupt (ST0=0x80)\n")
+				sayf("FDC: Sense Interrupt Status - No interrupt (ST0=0x80)\n")
 			}
 		}
 
@@ -589,7 +736,7 @@ func (fdc *FDC765) executeCommand() {
 		fdc.resultBuf = []uint8{fdc.st0, fdc.st1, fdc.st2, c, h, r, n}
 
 		if fdc.debug {
-			fmt.Printf("FDC: Read ID - C=%d H=%d R=%d N=%d\n", c, h, r, n)
+			sayf("FDC: Read ID - C=%d H=%d R=%d N=%d\n", c, h, r, n)
 		}
 
 		fdc.commandPhase = 2
@@ -607,7 +754,7 @@ func (fdc *FDC765) executeCommand() {
 			fdc.seekEnd = true
 
 			if fdc.debug {
-				fmt.Printf("FDC: Seek drive %d to cylinder %d\n", drive, fdc.currentCylinder)
+				sayf("FDC: Seek drive %d to cylinder %d\n", drive, fdc.currentCylinder)
 			}
 		}
 		fdc.commandPhase = 0
@@ -617,7 +764,7 @@ func (fdc *FDC765) executeCommand() {
 	default:
 		// Unknown/unimplemented command
 		if fdc.debug {
-			fmt.Printf("FDC: Unknown command 0x%02X\n", cmd)
+			sayf("FDC: Unknown command 0x%02X\n", cmd)
 		}
 		// Set error in ST0
 		fdc.st0 = 0x80 // Invalid command
@@ -682,7 +829,7 @@ func (fdc *FDC765) readSector() {
 		fdc.commandBuf = nil
 
 		if fdc.debug {
-			fmt.Printf("FDC: Read sector - no disk present, returning error\n")
+			sayf("FDC: Read sector - no disk present, returning error\n")
 		}
 		return
 	}
@@ -714,6 +861,10 @@ func (fdc *FDC765) loadSectorForRead(cylinder, head, drv uint8) {
 		}
 	}
 
+	if fdc.firstProgram == "" && plus3DOSProgram(sectorData) {
+		fdc.firstProgram = programName(fdc.fileStartingAt(cylinder, head, requestedR))
+	}
+
 	if sectorData != nil {
 		// Read sector data
 		fdc.dataBuffer = make([]byte, len(sectorData))
@@ -724,7 +875,7 @@ func (fdc *FDC765) loadSectorForRead(cylinder, head, drv uint8) {
 		fdc.mainStatus = 0xF0 // RQM=1, DIO=1, EXM=1, CB=1 - ready to send data
 
 		if fdc.debug {
-			fmt.Printf("FDC: Reading sector C=%d H=%d R=%d (%d bytes)\n", cylinder, head, requestedR, len(sectorData))
+			sayf("FDC: Reading sector C=%d H=%d R=%d (%d bytes)\n", cylinder, head, requestedR, len(sectorData))
 		}
 	} else {
 		// Sector not found
@@ -737,7 +888,7 @@ func (fdc *FDC765) loadSectorForRead(cylinder, head, drv uint8) {
 		fdc.mainStatus = 0xD0
 		fdc.commandBuf = nil
 		if fdc.debug {
-			fmt.Printf("FDC: Sector not found C=%d H=%d R=%d\n", cylinder, head, requestedR)
+			sayf("FDC: Sector not found C=%d H=%d R=%d\n", cylinder, head, requestedR)
 		}
 	}
 }
@@ -778,7 +929,7 @@ func (fdc *FDC765) prepareSectorWrite() {
 		fdc.commandBuf = nil
 
 		if fdc.debug {
-			fmt.Printf("FDC: Write sector - no disk present, returning error\n")
+			sayf("FDC: Write sector - no disk present, returning error\n")
 		}
 		return
 	}
@@ -791,7 +942,7 @@ func (fdc *FDC765) prepareSectorWrite() {
 	fdc.mainStatus = 0xB0 // RQM=1, DIO=0, EXM=1, CB=1 - ready to receive data
 
 	if fdc.debug {
-		fmt.Printf("FDC: Preparing to write sector C=%d H=%d R=%d\n",
+		sayf("FDC: Preparing to write sector C=%d H=%d R=%d\n",
 			fdc.currentCylinder, fdc.currentHead, fdc.currentSector+1)
 	}
 }
@@ -835,7 +986,7 @@ func (fdc *FDC765) prepareFormatTrack() {
 	fdc.mainStatus = 0xB0 // RQM=1, DIO=0, EXM=1, CB=1 - ready to receive
 
 	if fdc.debug {
-		fmt.Printf("FDC: Format track C=%d H=%d sectors=%d N=%d filler=0x%02X\n",
+		sayf("FDC: Format track C=%d H=%d sectors=%d N=%d filler=0x%02X\n",
 			fdc.currentCylinder, fdc.currentHead, fdc.fmtNumSec, fdc.fmtSizeCode, fdc.fmtFiller)
 	}
 }
@@ -873,7 +1024,7 @@ func (fdc *FDC765) buildFormattedTrack() {
 	fdc.markModified()
 
 	if fdc.debug {
-		fmt.Printf("FDC: Formatted track %d/%d with %d sectors of %d bytes\n",
+		sayf("FDC: Formatted track %d/%d with %d sectors of %d bytes\n",
 			fdc.currentCylinder, fdc.currentHead, len(trk.Sectors), secLen)
 	}
 }
@@ -899,11 +1050,11 @@ func (fdc *FDC765) writeDataToImage() {
 			fdc.disk.Modified = true
 			fdc.markModified()
 			if fdc.debug {
-				fmt.Printf("FDC: Wrote sector C=%d H=%d R=%d (%d bytes)\n",
+				sayf("FDC: Wrote sector C=%d H=%d R=%d (%d bytes)\n",
 					fdc.currentCylinder, fdc.currentHead, fdc.currentR, n)
 			}
 		} else if fdc.debug {
-			fmt.Printf("FDC: Write target sector not found C=%d H=%d R=%d\n",
+			sayf("FDC: Write target sector not found C=%d H=%d R=%d\n",
 				fdc.currentCylinder, fdc.currentHead, fdc.currentR)
 		}
 		return

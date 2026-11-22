@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // ============================================================================
 // Turbo mode: fast memory/IO synchronisation, now page-aware

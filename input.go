@@ -1,10 +1,11 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,11 +34,8 @@ type KeyMapping struct {
 
 // HandleInput processes all input for the emulator
 func (zx *ZenZX) HandleInput() {
-	// Handle ESC key to close window (unless disabled)
-	if !zx.noEscKey && rl.IsKeyPressed(rl.KeyEscape) {
-		rl.CloseWindow()
-		return
-	}
+	// Escape is handled by the GUI's main loop (the -escape mode), not here, so
+	// this path no longer closes the window on Escape.
 
 	// Handle special Alt combinations first (system controls)
 	if rl.IsKeyDown(rl.KeyLeftAlt) {
@@ -56,18 +54,15 @@ func (zx *ZenZX) HandleInput() {
 
 	// Handle window scaling
 	if rl.IsKeyPressed(rl.KeyPageUp) {
-		zx.display.ScaleUp()
+		zx.window().ScaleUp()
 	}
 
 	if rl.IsKeyPressed(rl.KeyPageDown) {
-		zx.display.ScaleDown()
+		zx.window().ScaleDown()
 	}
 
-	// Handle dropped files
-	zx.handleDroppedFiles()
-
 	// Update border color in display manager
-	zx.display.SetBorderColor(zx.io.borderColor)
+	zx.window().SetBorderColor(zx.io.borderColor)
 }
 
 // ============================================================================
@@ -92,7 +87,7 @@ func (zx *ZenZX) handleJoystickInput() {
 	if zx.io.joystickMode == JoystickNone {
 		return
 	}
-	if zx.io.joystickMode == JoystickSinclairBoth || zx.io.joystickMode == JoystickKempstonBoth {
+	if zx.io.joystickTwoPorts() {
 		// Two real, simultaneous ports (the +2/+2A/+3's built-in Sinclair
 		// pair, or a neo-Spectrum platform's configured dual Kempston):
 		// gamepad 0 drives port 1, gamepad 1 (if present) drives port 2,
@@ -126,9 +121,13 @@ func readGamepadState(gamepadIndex int32) JoystickState {
 		rl.GetGamepadAxisMovement(gamepadIndex, rl.GamepadAxisLeftX) < -gamepadDirectionThreshold
 	s.Right = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonLeftFaceRight) ||
 		rl.GetGamepadAxisMovement(gamepadIndex, rl.GamepadAxisLeftX) > gamepadDirectionThreshold
-	// Single fire button -- Spectrum-family joysticks only ever have
-	// the one, so only one host button is mapped.
+	// Fire is the lower face button. The classic interfaces have only that one. A Next's
+	// ports read more (joyports.go): the right face button is the second fire button (C on
+	// an MD pad), the left one is A and the right middle button is START.
 	s.Fire = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonRightFaceDown)
+	s.Fire2 = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonRightFaceRight)
+	s.A = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonRightFaceLeft)
+	s.Start = rl.IsGamepadButtonDown(gamepadIndex, rl.GamepadButtonMiddleRight)
 	return s
 }
 
@@ -179,6 +178,7 @@ func (zx *ZenZX) handleMouseInput() {
 		Left:   rl.IsMouseButtonDown(rl.MouseButtonLeft),
 		Right:  rl.IsMouseButtonDown(rl.MouseButtonRight),
 		Middle: rl.IsMouseButtonDown(rl.MouseButtonMiddle),
+		Wheel:  rl.GetMouseWheelMove(),
 	}
 	zx.io.SetMouseState(s)
 }
@@ -186,11 +186,11 @@ func (zx *ZenZX) handleMouseInput() {
 // handleAltCombinations processes Alt+key combinations for system controls
 func (zx *ZenZX) handleAltCombinations() {
 	if rl.IsKeyPressed(rl.KeyF) {
-		zx.display.ToggleFPS()
+		zx.window().ToggleFPS()
 	}
 
 	if rl.IsKeyPressed(rl.KeyB) {
-		zx.display.ToggleBorder()
+		zx.window().ToggleBorder()
 	}
 
 	if rl.IsKeyPressed(rl.KeyT) {
@@ -289,6 +289,11 @@ func (zx *ZenZX) TogglePause() {
 
 // handleKeyboard processes keyboard input and maps to Spectrum keys
 func (zx *ZenZX) handleKeyboard() {
+	// A script that is typing owns the matrix: clearing it here would take its keys away
+	// before the machine saw them.
+	if zx.scriptKeys {
+		return
+	}
 	// Clear all keyboard state first
 	for i := range zx.io.keyboard {
 		zx.io.keyboard[i] = 0x1F // All keys released
@@ -614,95 +619,88 @@ func (zx *ZenZX) handleSaveDiskAs() {
 	}
 }
 
-// handleDroppedFiles processes files dropped onto the window
-func (zx *ZenZX) handleDroppedFiles() {
-	// Handle screen files (.scr)
-	HandleDroppedFiles(zx.screen)
-
-	// Handle snapshot files (.zxs)
-	if rl.IsFileDropped() {
-		files := rl.LoadDroppedFiles()
-		for _, file := range files {
-			if len(file) > 4 {
-				ext := file[len(file)-4:]
-
-				switch ext {
-				case ".zxs", ".ZXS":
-					// Pause before loading dropped snapshot
-					zx.paused = true
-
-					if err := zx.LoadSnapshot(file); err != nil {
-						fmt.Printf("Error loading snapshot %s: %v\n", file, err)
-						zx.paused = false // Unpause on error
-					} else {
-						fmt.Printf("Loaded snapshot: %s\n", file)
-						// Don't unpause - let the snapshot determine pause state
-					}
-
-				case ".dsk", ".DSK":
-					// Handle disk images for +3
-					if zx.io.hasFDC && zx.io.fdc != nil {
-						if err := zx.io.LoadDisk(file); err != nil {
-							fmt.Printf("Error loading disk %s: %v\n", file, err)
-						} else {
-							fmt.Printf("Loaded disk: %s\n", file)
-						}
-					} else {
-						fmt.Println("Disk loading requires +3 mode with FDC enabled")
-					}
-
-				case ".tap", ".TAP", ".tzx", ".TZX":
-					// Handle tape files
-					if zx.tape == nil {
-						zx.tape = NewTape(zx)
-						// Enable fast loader
-						fl := &FastLoader{Enabled: true}
-						zx.tape.AttachFastLoader(fl)
-					}
-
-					if err := zx.tape.LoadFile(file); err != nil {
-						fmt.Printf("Error loading tape %s: %v\n", file, err)
-					} else {
-						fmt.Printf("Loaded tape: %s\n", file)
-						fmt.Printf("  %d blocks found\n", len(zx.tape.st.Blocks))
-
-						// Auto-rewind and show info
-						zx.tape.Rewind()
-
-						// Show first few blocks
-						blocks := zx.tape.GetBlockInfo()
-						for i, info := range blocks {
-							if i >= 5 {
-								fmt.Printf("  ... and %d more blocks\n", len(blocks)-5)
-								break
-							}
-							fmt.Printf("  %s\n", info)
-						}
-
-						fmt.Println("Tape controls:")
-						fmt.Println("  Alt+P: Play/Stop")
-						fmt.Println("  Alt+R: Rewind")
-						fmt.Println("  Alt+T: Toggle Fast/Accurate mode")
-						fmt.Println("  Alt+I: Show tape info")
-					}
-
-				case ".sna", ".SNA", ".z80", ".Z80", ".szx", ".SZX":
-					// Handle other snapshot formats
-					zx.paused = true
-
-					format := strings.ToLower(strings.TrimPrefix(ext, "."))
-					if err := zx.LoadSnapshotFormat(file, format); err != nil {
-						fmt.Printf("Error loading snapshot %s: %v\n", file, err)
-						zx.paused = false // Unpause on error
-					} else {
-						fmt.Printf("Loaded %s snapshot: %s\n", strings.ToUpper(format), file)
-						// Don't unpause - let the snapshot determine pause state
-					}
-				}
-			}
-		}
-		rl.UnloadDroppedFiles()
+// loadDroppedFile loads one dropped file by its extension into the machine
+// directly -- a snapshot replaces state, a tape/disc is inserted, a .scr paints
+// the screen. This is the "load into the machine" path; the mount drawer's
+// "put the file into a slot's filesystem" path is separate.
+//
+// It returns a human-readable sentence ("The tape foo.tap is loaded and
+// rewound ...", "bar.dsk could not be loaded as a disc") so the caller can
+// surface it as an on-screen toast; the terse stdout prints are kept for the
+// headless/CLI path. An empty string means the extension was not recognised
+// and nothing was attempted.
+func (zx *ZenZX) loadDroppedFile(file string) string {
+	if len(file) <= 4 {
+		return ""
 	}
+	base := filepath.Base(file)
+	switch strings.ToLower(file[len(file)-4:]) {
+	case ".scr":
+		if err := zx.screen.LoadFromFile(file); err != nil {
+			fmt.Printf("Error loading screen %s: %v\n", file, err)
+			return base + " could not be loaded as a screen"
+		}
+		fmt.Printf("Loaded screen: %s\n", file)
+		return "The screen " + base + " is now on display"
+
+	case ".zxs":
+		zx.paused = true
+		if err := zx.LoadSnapshot(file); err != nil {
+			fmt.Printf("Error loading snapshot %s: %v\n", file, err)
+			zx.paused = false
+			return base + " could not be loaded as a snapshot"
+		}
+		fmt.Printf("Loaded snapshot: %s\n", file)
+		return "The snapshot " + base + " has been restored"
+
+	case ".sna", ".z80", ".szx":
+		zx.paused = true
+		format := strings.ToLower(strings.TrimPrefix(file[len(file)-4:], "."))
+		if err := zx.LoadSnapshotFormat(file, format); err != nil {
+			fmt.Printf("Error loading snapshot %s: %v\n", file, err)
+			zx.paused = false
+			return base + " could not be loaded as a snapshot"
+		}
+		fmt.Printf("Loaded %s snapshot: %s\n", strings.ToUpper(format), file)
+		return "The " + strings.ToUpper(format) + " snapshot " + base + " has been restored"
+
+	case ".dsk":
+		if zx.io.hasFDC && zx.io.fdc != nil {
+			if err := zx.io.LoadDisk(file); err != nil {
+				fmt.Printf("Error loading disk %s: %v\n", file, err)
+				return base + " could not be loaded as a disc"
+			}
+			fmt.Printf("Loaded disk: %s\n", file)
+			return "The disc " + base + " has been inserted into drive A"
+		}
+		fmt.Println("Disk loading requires +3 mode with FDC enabled")
+		return "Discs need a +3 with its drive enabled"
+
+	case ".tap", ".tzx":
+		if zx.tape == nil {
+			zx.tape = NewTape(zx)
+			zx.tape.AttachFastLoader(&FastLoader{Enabled: true})
+		}
+		if err := zx.tape.LoadFile(file); err != nil {
+			fmt.Printf("Error loading tape %s: %v\n", file, err)
+			return base + " could not be loaded as a tape"
+		}
+		fmt.Printf("Loaded tape: %s (%d blocks)\n", file, len(zx.tape.st.Blocks))
+		zx.tape.Rewind()
+		n := len(zx.tape.st.Blocks)
+		block := "blocks"
+		if n == 1 {
+			block = "block"
+		}
+		return fmt.Sprintf("The tape %s is loaded and rewound (%d %s)", base, n, block)
+
+	case ".nex":
+		// NEX loading (direct page/Layer2/palette injection) is tracked as T-32
+		// and not implemented yet; report rather than silently ignoring the drop.
+		fmt.Printf("NEX loading not implemented yet: %s\n", file)
+		return "NEX loading isn't implemented yet"
+	}
+	return ""
 }
 
 // ============================================================================

@@ -16,8 +16,18 @@ here in the sinclair/ subdirectory:
   sinclair/amstrad.txt   Amstrad's permission, as issued on the company's
                          behalf by Cliff Lawson
 
-The glyph data in sinclair.bdf is byte-identical to the catalogue's, and is
-reproducible from the bundled ROM via the bundled extraction program.
+The glyph data in sinclair.bdf is the 8x8 character set of an original UK ZX
+Spectrum 48K ROM. It is regenerated from that ROM by the extraction program in
+tools/mkfont (run: go run ./tools/mkfont -rom <48k.rom> -o pkg/fonts/sinclair.bdf),
+and is reproducible from any genuine UK 48K ROM. An earlier copy taken from the
+catalogue carried internationalised-ROM substitutions at codes 91-93 and 123-126
+(the [ \ ] { | } ~ positions showed locale glyphs); those are corrected here.
+
+A second face, sinclair-narrow.bdf ("Sinclair Narrow"), is derived from the
+same ROM character set: a 6x8 face produced by the same tools/mkfont program
+with -narrow, with a number of glyphs hand-redrawn for legibility at the
+narrower width. It is covered by the same Amstrad permission below, being
+derived from the same copyrighted ROM character set.
 
 The ZX Spectrum ROM is copyright Amstrad. The following statement is reproduced
 from sinclair/SINCLAIR.txt; its condition 6 requires this acknowledgement to

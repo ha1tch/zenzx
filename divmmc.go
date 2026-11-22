@@ -1,9 +1,4 @@
-package main
-
-import (
-	"fmt"
-	"os"
-)
+package zenzx
 
 // DivMMC models the ZX Spectrum Next's built-in DivMMC interface: the
 // automap/CONMEM memory-paging logic behind IO port 0xE3, layered on
@@ -77,6 +72,10 @@ type DivMMC struct {
 	sram [16][8192]byte
 
 	sd *SDCard
+	// sd2 is the card in the second slot, nil when it is empty; second is set while port
+	// 0xE7 has it alone selected (sdcard2.go).
+	sd2    *SDCard
+	second bool
 
 	// automapEnabled gates whether automap TRIGGERS (OnM1's PC checks)
 	// are even considered -- NOT whether the overlay is visible once
@@ -141,7 +140,7 @@ func (d *DivMMC) SD() *SDCard { return d.sd }
 func (d *DivMMC) SetAutomapEnabled(enabled bool) {
 	if d.automapEnabled && !enabled && d.paged {
 		if d.Debug {
-			fmt.Fprintf(os.Stderr, "[divmmc] automap disabled (NR 0x0A bit 4 cleared) -- dropping active overlay\n")
+			tracef("[divmmc] automap disabled (NR 0x0A bit 4 cleared) -- dropping active overlay\n")
 		}
 		d.paged = false
 	}
@@ -223,7 +222,7 @@ func (d *DivMMC) WriteControl(value uint8) {
 		value |= 0x40
 	}
 	if d.Debug && value != d.ctrl {
-		fmt.Fprintf(os.Stderr, "[divmmc] ctrl <- 0x%02X (CONMEM=%v MAPRAM=%v page=%d)\n",
+		tracef("[divmmc] ctrl <- 0x%02X (CONMEM=%v MAPRAM=%v page=%d)\n",
 			value, value&0x80 != 0, value&0x40 != 0, value&0x0F)
 	}
 	d.ctrl = value

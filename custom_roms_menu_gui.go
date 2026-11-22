@@ -1,6 +1,6 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -9,9 +9,9 @@ import (
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 
+	"github.com/ha1tch/zenui"
+	"github.com/ha1tch/zenui/zenuiraylib"
 	"github.com/ha1tch/zenzx/pkg/fonts"
-	"github.com/ha1tch/zenzx/pkg/zenui"
-	"github.com/ha1tch/zenzx/pkg/zenuiraylib"
 )
 
 // toNRGBA converts a zenui.Colour to the image/color.NRGBA

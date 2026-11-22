@@ -16,7 +16,7 @@ docker run --rm --platform linux/amd64 -v $(pwd):/app -w /app golang:1.25 \
       libwayland-dev \
       libxkbcommon-dev \
       wayland-protocols && \
-    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o zenzx_linux -v -ldflags=\"-s -w -X main.version=${VERSION}\" .
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o zenzx_linux -v -ldflags=\"-s -w -X github.com/ha1tch/zenzx.version=${VERSION}\" ./cmd/zenzx
   "
 
 if [ $? -eq 0 ]; then

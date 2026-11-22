@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -106,6 +106,8 @@ const (
 	JoystickSinclair1
 	JoystickSinclair2
 	JoystickSinclairBoth
+	JoystickCursor // keys 5 6 7 8 0: joyports.go
+	JoystickNext   // a Next: each port is what NextREG 0x05 says (joyports.go)
 )
 
 // ParseJoystickMode validates a -joystick flag value. "sinclair" is kept
@@ -136,6 +138,10 @@ func ParseJoystickMode(s string) (JoystickMode, error) {
 		return JoystickSinclair2, nil
 	case "sinclair-both":
 		return JoystickSinclairBoth, nil
+	case "cursor":
+		return JoystickCursor, nil
+	case "next":
+		return JoystickNext, nil
 	default:
 		return JoystickNone, fmt.Errorf("unknown -joystick mode %q: valid values are none, kempston, kempston2, kempston-both, sinclair (alias for sinclair1), sinclair1, sinclair2, sinclair-both, auto", s)
 	}
@@ -155,6 +161,10 @@ func (m JoystickMode) String() string {
 		return "sinclair2"
 	case JoystickSinclairBoth:
 		return "sinclair-both"
+	case JoystickCursor:
+		return "cursor"
+	case JoystickNext:
+		return "next"
 	default:
 		return "none"
 	}
@@ -166,6 +176,9 @@ func (m JoystickMode) String() string {
 // mechanisms support this natively.
 type JoystickState struct {
 	Up, Down, Left, Right, Fire bool
+	// A Next's ports read more buttons: a second fire button on a Kempston port, and A
+	// and START as well on an MD pad (joyports.go). The classic machines ignore them.
+	Fire2, A, Start bool
 }
 
 // kempstonByte renders a JoystickState as the byte a Kempston-protocol
@@ -198,9 +211,7 @@ func kempstonByte(s JoystickState) uint8 {
 // PressKey/ReleaseKey convention) for each Sinclair Joystick 1 direction,
 // matching input.go's own key-6..0 mapping exactly (row 4: 6,7,8,9,0 at
 // columns 4,3,2,1,0 respectively).
-var sinclairKeyMatrix1 = struct {
-	Left, Right, Down, Up, Fire [2]uint8
-}{
+var sinclairKeyMatrix1 = joyKeys{
 	Left:  [2]uint8{4, 4}, // key 6
 	Right: [2]uint8{4, 3}, // key 7
 	Down:  [2]uint8{4, 2}, // key 8
@@ -210,35 +221,12 @@ var sinclairKeyMatrix1 = struct {
 
 // sinclairKeyMatrix2 gives the same for Sinclair Joystick 2, matching
 // input.go's key-1..5 mapping (row 3: 1,2,3,4,5 at columns 0,1,2,3,4).
-var sinclairKeyMatrix2 = struct {
-	Left, Right, Down, Up, Fire [2]uint8
-}{
+var sinclairKeyMatrix2 = joyKeys{
 	Left:  [2]uint8{3, 0}, // key 1
 	Right: [2]uint8{3, 1}, // key 2
 	Down:  [2]uint8{3, 2}, // key 3
 	Up:    [2]uint8{3, 3}, // key 4
 	Fire:  [2]uint8{3, 4}, // key 5
-}
-
-// applySinclairState presses/releases exactly the five matrix cells the
-// given Sinclair port uses, per the current abstract state. Safe to call
-// every frame regardless of what else is happening on the keyboard: these
-// are ordinary PressKey/ReleaseKey calls on specific bits, ordinary
-// keyboard use of the same physical keys composes correctly, exactly as
-// it would on real hardware sharing the same contacts.
-func applySinclairState(io *SpectrumIO, matrix struct{ Left, Right, Down, Up, Fire [2]uint8 }, s JoystickState) {
-	setKey := func(pos [2]uint8, pressed bool) {
-		if pressed {
-			io.PressKey(pos[0], pos[1])
-		} else {
-			io.ReleaseKey(pos[0], pos[1])
-		}
-	}
-	setKey(matrix.Left, s.Left)
-	setKey(matrix.Right, s.Right)
-	setKey(matrix.Down, s.Down)
-	setKey(matrix.Up, s.Up)
-	setKey(matrix.Fire, s.Fire)
 }
 
 // defaultJoystickModeForModel returns the joystick configuration -model
@@ -270,6 +258,8 @@ func defaultJoystickModeForModel(model string) JoystickMode {
 	switch strings.ToLower(strings.TrimSpace(model)) {
 	case "plus2", "plus2a", "plus3", "spanishplus2", "spanishplus3":
 		return JoystickSinclairBoth
+	case "next":
+		return JoystickNext // the machine's own choice, NextREG 0x05
 	default:
 		return JoystickNone
 	}
@@ -297,16 +287,10 @@ func (io *SpectrumIO) SetJoystickMode(mode JoystickMode) {
 // for JoystickNone and for the two *Both modes (which need two states --
 // see SetJoystickStateBoth).
 func (io *SpectrumIO) SetJoystickState(s JoystickState) {
-	switch io.joystickMode {
-	case JoystickKempston:
-		io.kempstonState = kempstonByte(s)
-	case JoystickKempston2:
-		io.kempston2State = kempstonByte(s)
-	case JoystickSinclair1:
-		applySinclairState(io, sinclairKeyMatrix1, s)
-	case JoystickSinclair2:
-		applySinclairState(io, sinclairKeyMatrix2, s)
+	if io.joystickMode == JoystickNone || io.joystickTwoPorts() {
+		return
 	}
+	io.applyJoystick(s, JoystickState{})
 }
 
 // SetJoystickStateBoth updates both ports at once for either dual-port
@@ -316,12 +300,8 @@ func (io *SpectrumIO) SetJoystickState(s JoystickState) {
 // physical ports. A no-op unless one of the two *Both modes is
 // configured.
 func (io *SpectrumIO) SetJoystickStateBoth(port1, port2 JoystickState) {
-	switch io.joystickMode {
-	case JoystickSinclairBoth:
-		applySinclairState(io, sinclairKeyMatrix1, port1)
-		applySinclairState(io, sinclairKeyMatrix2, port2)
-	case JoystickKempstonBoth:
-		io.kempstonState = kempstonByte(port1)
-		io.kempston2State = kempstonByte(port2)
+	if !io.joystickTwoPorts() {
+		return
 	}
+	io.applyJoystick(port1, port2)
 }

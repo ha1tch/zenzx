@@ -6,7 +6,7 @@
 set -e
 cd "$(dirname "$0")"
 ERR=$(mktemp)
-if CGO_ENABLED=1 go build -o /dev/null . 2>"$ERR"; then
+if CGO_ENABLED=1 go build -o /dev/null ./cmd/zenzx 2>"$ERR"; then
     echo "GUI build linked (system libs present)"
     rm -f "$ERR"; exit 0
 fi

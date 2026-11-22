@@ -1,6 +1,4 @@
-package main
-
-import "fmt"
+package zenzx
 
 // ============================================================================
 // ZX Spectrum Next: NextREG port handler (T-27, wave ti0.r1)
@@ -97,20 +95,20 @@ type nextRegDefault struct {
 // documented) behaviour, register-select-port readback.
 var nextRegDefaults = []nextRegDefault{
 	{0x00, 0x0A, nextRegRO, "machine ID -- 0x0A is the VHDL g_machine_id board-generic value (zxnext_top_issue{2,4,5}.vhd); confirmed against jnext (github.com/jorgegv/jnext), whose own history records an 0x08 default breaking NextZXOS boot (wrong ROM1 machine-ID branch, fixed 2026-07-09) -- 0x00 has no basis in any real hardware or firmware and was this file's own pre-T-34 placeholder"},
-	{0x01, 0x32, nextRegRO, "core version: bits 7-4 major, bits 3-0 minor; power-on 0x32 = v3.02, the VHDL g_version value jnext (src/port/nextreg.cpp) cites -- was 0x00 before T-36, which real firmware (tbblue.fw) plausibly reads as a bricked/golden core and answers with its Anti-Brick screen (hypothesis, unconfirmed: jnext's docs do not spell out the trigger)"},
-	{0x0E, 0x03, nextRegRO, "core version sub-minor: power-on 0x03 (v3.02.03), per jnext's src/port/nextreg.cpp; read-only, writes ignored (jnext guards 0x01/0x0E/0x0F identically)"},
+	{0x01, 0x33, nextRegRO, "core version: bits 7-4 major, bits 3-0 minor; 0x33 = v3.03, the first core with DMA+ (nextdma.go), since ZenZX 0.26.0; before that power-on 0x32 = v3.02, the VHDL g_version value jnext (src/port/nextreg.cpp) cites -- was 0x00 before T-36, which real firmware (tbblue.fw) plausibly reads as a bricked/golden core and answers with its Anti-Brick screen (hypothesis, unconfirmed: jnext's docs do not spell out the trigger)"},
+	{0x0E, 0x00, nextRegRO, "core version sub-minor: 0x00 (v3.03.00) since ZenZX 0.26.0; before that power-on 0x03 (v3.02.03), per jnext's src/port/nextreg.cpp; read-only, writes ignored (jnext guards 0x01/0x0E/0x0F identically)"},
 	{0x0F, 0x00, nextRegRO, "board issue: VHDL reads back \"0000\" & g_board_issue; 0x00 per jnext's default (Issue-2 style); read-only"},
 	{0x0A, 0x01, nextRegRW, "peripheral 5: bits 7-6 multiface type, bit 5 SD swap, bit 4 DivMMC automap enable, bit 3 mouse button reverse, bits 1-0 mouse DPI; power-on composite 0x01 (mouse_dpi=\"01\") per jnext's VHDL-cited seed, correctly leaving bit 4 (automap enable) clear at reset. Bit 4 is wired to DivMMC.SetAutomapEnabled (nextRegWriteDirect/SetNextRegister, T-36) -- confirmed against jnext, whose own commit history describes a real bug this gate fixes (automap firing unconditionally from PC=0x0000 through the whole boot-ROM phase without it). Bits 7-6/5/3/1-0 remain stored only, no behavioural wiring"},
 	{0x10, 0x04, nextRegRW, "core boot / core id: read = '0' & coreid(5 bits, bits 6-2) & buttons(bits 1-0); power-on coreid=\"00001\" -> 0x04 per jnext (VHDL zxnext.vhd:1133/:5924); real hardware gates writes on config mode, not modelled here; buttons (bits 1-0) read as idle 0"},
 	{0x02, 0x00, nextRegRW, "reset: bit1 hard reset, bit0 soft reset (write-triggered; read reports last power-on-reset cause, not modelled beyond 0x00 here)"},
 	{0x03, 0x00, nextRegRW, "machine type / timing select; real hardware restricts bits 2-0 to config mode only -- not modelled, this emulator has no separate config-mode gate"},
-	{0x07, 0x00, nextRegRW, "CPU speed: bits 1-0, 00=3.5MHz 01=7MHz 10=14MHz (11 reserved); stored only -- ti0.r1 does not yet change actual emulated CPU speed"},
+	{0x07, 0x00, nextRegRW, "CPU speed: bits 1-0, 00=3.5MHz 01=7MHz 10=14MHz 11=28MHz; reads back the speed in bits 5-4 as well (nextspeed.go)"},
 	{0x08, 0x00, nextRegRW, "peripheral setting 3: 128K paging/contention/stereo/speaker/Specdrum/Timex/TurboSound bits; stored only, no behavioural wiring yet"},
 	{0x09, 0x00, nextRegRW, "peripheral setting 4: AY mono bits, sprite lockstep, Kempston/divMMC disable, scanline mode; stored only"},
-	{0x15, 0x08, nextRegRW, "sprite and layer system: priority/clip/visibility bits, bits 4-2; stored default here is 0x08, which decodes to \"S U L\" (sprites over ULA over Layer 2) per the wiki's own bits-4:2 table -- NOT \"S L U\" as this line's comment previously and incorrectly claimed (confirmed by direct bit arithmetic: 0x08 = 00001000, bits[4:2] = 010 = S U L, not 000 = S L U). The wiki documents the real hardware reset default for the WHOLE register as 0x00 (= S L U), so this stored default is itself questionable and worth reconciling against real hardware separately -- flagged in docs/TRACKING.md T-29, not changed here since it is unrelated, already-shipped T-27 behaviour"},
+	{0x15, 0x00, nextRegRW, "sprite and layer system: lores, sprite priority and clipping, layer order in bits 4-2, sprites over border, sprites on. Reset value 0x00, which is the order S L U (sprites over Layer 2 over the ULA), as the Next's registers.txt gives it; this table held 0x08 (S U L) until 0.11.0"},
 	{0x18, 0x00, nextRegRW, "Layer 2 clip window: sequential writes set X1,X2,Y1,Y2 in turn (see nextRegClip below); reads return the byte at the current index without advancing it"},
-	{0x12, 0x00, nextRegRW, "Layer 2 visible screen base bank: 8K-page-pair index into Next extended RAM where the active 256x192x8bpp framebuffer starts (T-29, wave ti0.r3); reset default 0x00 per the wiki (no stated non-zero default), stored only until DecodeLayer2 consumes it"},
-	{0x13, 0x00, nextRegRW, "Layer 2 shadow screen base bank: same encoding as 0x12, selects the alternate buffer once IO port 0x123B's shadow bit is implemented; that port is out of scope for T-29 (see nextreg.go file header) so this register is stored-and-ignored for now, exactly like every other not-yet-wired register"},
+	{0x12, 0x08, nextRegRW, "Layer 2 visible screen base bank, a 16K RAM bank number, reset 8 (registers.txt; the rest of this description predates T-42 and calls it an 8K-page-pair index): where in Next extended RAM where the active 256x192x8bpp framebuffer starts (T-29, wave ti0.r3); reset default 0x00 per the wiki (no stated non-zero default), stored only until DecodeLayer2 consumes it"},
+	{0x13, 0x0B, nextRegRW, "Layer 2 shadow screen base bank, reset 11: same encoding as 0x12, selects the alternate buffer once IO port 0x123B's shadow bit is implemented; that port is out of scope for T-29 (see nextreg.go file header) so this register is stored-and-ignored for now, exactly like every other not-yet-wired register"},
 	{0x70, 0x00, nextRegRW, "Layer 2 control: bits 5-4 resolution (00=256x192x8bpp, 01=320x256x8bpp, 10=640x256x4bpp, 11=reserved/treated as 00; soft-reset default 00), bits 3-0 palette offset added to every pixel value before palette lookup (soft-reset default 0); all three real modes implemented (layer2.go's layer2CurrentMode/layer2Pixel) as of the T-29 completion pass -- see layer2.go's own header for the wider modes' column-major addressing and the 4bpp mode's inferred, unconfirmed palette-offset treatment"},
 	{0x34, 0x00, nextRegRW, "sprite number select (T-30, wave ti0.r4): selects which of the 128 sprites (0-127) subsequent writes to 0x35-0x38 address; this emulator implements only the NextREG-mirror access path the wiki also documents (0x34 select + 0x35-0x38 attribute registers), not the port-0x303B/0x57/0x5B path -- NEXT_SUPPORT_DEVELOPMENT_PLAN.md requires only that sprites be reachable via ti0.r1's NextREG mechanism, not a specific one of the two real hardware paths"},
 	{0x35, 0x00, nextRegRW, "sprite attribute 0 for the currently selected sprite (0x34): X position bits 7-0, anchor (low byte; bit 8 lives in attribute 2, register 0x37) -- or a signed 8-bit X offset from the anchor's position, if this sprite is a relative (NR 0x39's discriminator bits)"},
@@ -121,6 +119,11 @@ var nextRegDefaults = []nextRegDefault{
 	{0x40, 0x00, nextRegRW, "palette index (T-31, wave ti0.r5): selects index 0-255 within whichever palette NR 0x43 bits 6-4 currently target for 0x41/0x44 read/write; writing this register also resets 0x44's own two-write sequence (nextpalette.go)"},
 	{0x41, 0x00, nextRegRW, "palette value, 8-bit write (T-31): RRRGGGBB, missing third blue bit synthesised as (bit1 OR bit0) of the 2-bit blue field; auto-increments the 0x40 index afterward unless NR 0x43 bit 7 disables it; a read returns the CURRENT entry re-encoded to this 8-bit view, not the last byte written -- see nextpalette.go"},
 	{0x43, 0x00, nextRegRW, "palette control (T-31): bit 7 disables index auto-increment, bits 6-4 select which of the 8 palettes 0x40/0x41/0x44 target, bits 3-2-1 independently select the currently-displayed (first/second) Sprites/Layer2/ULA palette, bit 0 enables ULANext mode (stored, not consumed -- a separate ULA feature); see nextpalette.go for the full table and the inferred-not-confirmed note on this register also resetting 0x44's sequence"},
+	{0x14, 0xE3, nextRegRW, "global transparency colour (RRRGGGBB), reset 0xE3: for Layer 2, the ULA and LoRes; the tilemap's text mode compares its colours with it (nexttilemap.go)"},
+	{0x4A, 0xE3, nextRegRW, "fallback colour, shown where every layer is transparent, reset 0xE3"},
+	{0x4C, 0x0F, nextRegRW, "tilemap transparency index, bits 3-0, reset 0xF (nexttilemap.go)"},
+	{0x6E, 0x6C, nextRegRW, "tilemap base address: bits 5-0 the high byte of the offset in bank 5, bit 7 selects bank 7; reset 0x6C (nexttilemap.go)"},
+	{0x6F, 0x4C, nextRegRW, "tile definitions base address, as 0x6E; reset 0x4C (nexttilemap.go)"},
 	{0x4B, spriteTransparentIndexDefault, nextRegRW, "sprite transparency index (T-29/T-30 completion pass): the raw pattern-byte value treated as transparent for a sprite pixel, compared BEFORE the palette offset is applied (wiki.specnext.dev/Sprite_Transparency_Index_Register's own explicit wording); default 0xE3 per that page. For 4-bit sprites (not implemented in this emulator) the wiki documents only the low nibble as significant -- see sprite.go's spritePixelIndex for why the full byte is used here instead"},
 	{0x44, 0x00, nextRegRW, "palette value, 9-bit write (T-31): two consecutive writes -- first RRRGGGBB as 0x41, second byte bit 0 the true third blue bit and bit 7 a Layer-2-only priority flag (accepted, not stored -- per-pixel priority compositing is out of this wave's scope); auto-increments and resets the sequence after the second write; no confirmed read behaviour, see nextpalette.go"},
 }
@@ -216,11 +219,30 @@ func (io *SpectrumIO) nextRegWriteSelected(value uint8) {
 // where NextregWrite is wired, and nextreg_test.go for the regression
 // proving the two paths genuinely diverge on `selected` state.
 func (io *SpectrumIO) nextRegWriteDirect(reg uint8, value uint8) {
+	io.rasterBeforeRegWrite(reg) // the frame is drawn up to the beam first: nextraster.go
+	if reg >= 0x60 && reg <= 0x63 {
+		io.copperRegWrite(reg, value) // nextcopper.go
+	}
+	if reg == 0x07 {
+		io.nextSpeedRegWrite(value) // the CPU's speed: nextspeed.go
+	}
+	if reg == 0x22 || reg == 0x23 || reg == 0x64 {
+		io.nextLineIntSet(reg, value) // the line interrupt: nextlineint.go
+	}
+	if (reg == 0xC0 || reg == 0xC4 || reg == 0xC5 || reg == 0xC8 || reg == 0xC9) && io.nextIsNext() {
+		value = io.nextIntRegWrite(reg, value) // the Next's interrupt mode: nextint.go
+	}
+	if io.nextRegLog.on && io.nextRegLog.watch[reg] {
+		io.logNextRegWrite(reg, value) // -nextreg-log: nextreglog.go
+	}
 	if reg >= 0x02 && reg <= 0x04 {
 		io.nextConfigRegWrite(reg, value) // reset, machine type, config mapping: nextconfig.go
 	}
 	if reg == 0x8E {
 		io.nextReg8EWrite(value) // the classic paging ports in one register: nextreg8e.go
+	}
+	if reg == 0x69 { // bits 5-0 are port 0xFF's; bit 7 turns Layer 2 on (layer2.go)
+		io.nextTimexPort = io.nextTimexPort&0xC0 | value&0x3F
 	}
 	if reg == 0x8C && io.memory != nil {
 		io.memory.nextAltROM = value // alternate ROM and ROM lock: nextaltrom.go
@@ -246,6 +268,35 @@ func (io *SpectrumIO) nextRegWriteDirect(reg uint8, value uint8) {
 		io.nextRegs.regs[reg] = io.nextRegClipWin.read()
 		return
 	}
+	if reg == 0x1B { // the tilemap's clip window, four writes in turn (nexttilemap.go)
+		io.tilemap.clip.write(value)
+		io.nextRegs.regs[reg] = io.tilemap.clip.read()
+		return
+	}
+	if reg == 0x19 { // the sprites' clip window (nextframe.go)
+		io.nextClipSprites.write(value)
+		io.nextRegs.regs[reg] = io.nextClipSprites.read()
+		return
+	}
+	if reg == 0x1A { // the ULA's clip window
+		io.nextClipULA.write(value)
+		io.nextRegs.regs[reg] = io.nextClipULA.read()
+		return
+	}
+	if reg == 0x1C { // clip window control: a set bit restarts that window's sequence of four
+		if value&0x01 != 0 {
+			io.nextRegClipWin.writeIndex = 0
+		}
+		if value&0x02 != 0 {
+			io.nextClipSprites.writeIndex = 0
+		}
+		if value&0x04 != 0 {
+			io.nextClipULA.writeIndex = 0
+		}
+		if value&0x08 != 0 {
+			io.tilemap.clip.writeIndex = 0
+		}
+	}
 	io.nextRegs.regs[reg] = value
 	if reg == 0x03 {
 		// Confirmed against jnext (src/core/emulator.cpp's NR 0x03
@@ -256,7 +307,7 @@ func (io *SpectrumIO) nextRegWriteDirect(reg uint8, value uint8) {
 		// NOT replicated here; this is scoped to the one trigger this
 		// emulator's boot ROM overlay (T-36) needs.
 		if io.hasDivMMC && io.divMMC != nil && io.divMMC.Debug {
-			fmt.Printf("[nextreg] 0x03 <- 0x%02X (boot ROM overlay now disabled)\n", value)
+			sayf("[nextreg] 0x03 <- 0x%02X (boot ROM overlay now disabled)\n", value)
 		}
 		if io.memory != nil {
 			io.memory.DisableBootROM()
@@ -273,7 +324,7 @@ func (io *SpectrumIO) nextRegWriteDirect(reg uint8, value uint8) {
 		// real stall this session hit without this gate.
 		if io.hasDivMMC && io.divMMC != nil {
 			if io.divMMC.Debug {
-				fmt.Printf("[nextreg] 0x0A <- 0x%02X (automap enable bit -> %v)\n", value, value&0x10 != 0)
+				sayf("[nextreg] 0x0A <- 0x%02X (automap enable bit -> %v)\n", value, value&0x10 != 0)
 			}
 			io.divMMC.SetAutomapEnabled(value&0x10 != 0)
 		}
@@ -291,8 +342,13 @@ func (io *SpectrumIO) nextRegWriteDirect(reg uint8, value uint8) {
 		// io.memory defensiveness convention for the rare test/zero-value
 		// construction path that skips NewSpectrumIO entirely.
 		if io.sprites != nil {
-			io.sprites.selected = value
+			io.spriteSelectRegWrite(value) // spriteports.go: in lockstep the ports follow
 		}
+	}
+	if reg >= 0x75 && reg <= 0x79 && io.sprites != nil {
+		// As 0x35-0x39, and the sprite number then goes up by one (spriteports.go).
+		io.sprites.writeAttribute(reg-0x75, value)
+		io.spriteAttributeRegIncrement()
 	}
 	if reg >= 0x35 && reg <= 0x39 {
 		// Sprite attribute write for whichever sprite NR 0x34 selected --
@@ -375,11 +431,24 @@ func (io *SpectrumIO) nextRegOpcodeWrite(reg uint8, value uint8) {
 // readSelected implements a read from 0x253B.
 func (io *SpectrumIO) nextRegReadSelected() uint8 {
 	reg := io.nextRegs.selected
+	io.rasterCopperSync() // what the copper has written by now can be read: nextraster.go
 	if io.nextRegs.access[reg] == nextRegWO {
 		return 0xFF
 	}
 	if reg == 0x8E {
 		return io.nextReg8ERead()
+	}
+	if reg == 0x1B {
+		return io.tilemap.clip.read()
+	}
+	if reg == 0x19 {
+		return io.nextClipSprites.read()
+	}
+	if reg == 0x1A {
+		return io.nextClipULA.read()
+	}
+	if reg == 0x1C { // the four write positions: tilemap, ULA, sprites, Layer 2
+		return io.tilemap.clip.writeIndex<<6 | io.nextClipULA.writeIndex<<4 | io.nextClipSprites.writeIndex<<2 | io.nextRegClipWin.writeIndex
 	}
 	if reg >= 0x50 && reg <= 0x57 && io.memory != nil && io.memory.isNext {
 		// The MMU registers read back what is mapped now. Ports 0x7FFD and 0xDFFD and
@@ -400,6 +469,21 @@ func (io *SpectrumIO) nextRegReadSelected() uint8 {
 	if reg == 0x41 && io.nextPalette != nil {
 		return io.nextPalette.readValue8()
 	}
+	if reg == 0x44 && io.nextPalette != nil {
+		return io.nextPalette.readValue9()
+	}
+	if reg == 0x61 || reg == 0x62 {
+		return io.copperRegRead(reg) // nextcopper.go
+	}
+	if reg == 0x07 && io.memory != nil && io.memory.isNext {
+		return io.nextSpeedRegRead() // nextspeed.go
+	}
+	if reg == 0x22 && io.memory != nil && io.memory.isNext {
+		return io.nextLineIntRegRead() // nextlineint.go
+	}
+	if (reg == 0xC4 || reg == 0xC8 || reg == 0xC9) && io.nextIsNext() {
+		return io.nextIntRegRead(reg) // nextint.go
+	}
 	return io.nextRegs.regs[reg]
 }
 
@@ -412,6 +496,21 @@ func (io *SpectrumIO) GetNextRegister(reg uint8) uint8 {
 	}
 	if reg == 0x41 && io.nextPalette != nil {
 		return io.nextPalette.readValue8()
+	}
+	if reg == 0x44 && io.nextPalette != nil {
+		return io.nextPalette.readValue9()
+	}
+	if reg == 0x61 || reg == 0x62 {
+		return io.copperRegRead(reg) // nextcopper.go
+	}
+	if reg == 0x07 && io.memory != nil && io.memory.isNext {
+		return io.nextSpeedRegRead() // nextspeed.go
+	}
+	if reg == 0x22 && io.memory != nil && io.memory.isNext {
+		return io.nextLineIntRegRead() // nextlineint.go
+	}
+	if (reg == 0xC4 || reg == 0xC8 || reg == 0xC9) && io.nextIsNext() {
+		return io.nextIntRegRead(reg) // nextint.go
 	}
 	return io.nextRegs.regs[reg]
 }

@@ -6,7 +6,7 @@
 // knows both sides. ZenZX keeps its proprietary .zxs format and all
 // emulator-coupled playback; the portable .sna/.z80 codecs come from zentools.
 
-package main
+package zenzx
 
 import (
 	"github.com/ha1tch/zentools/pkg/snapshot"

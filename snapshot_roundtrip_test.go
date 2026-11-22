@@ -4,7 +4,7 @@
 // state -> save -> load -> state cycle must preserve registers (including PC,
 // which the previous in-tree 48K SaveSNA silently dropped) and memory.
 
-package main
+package zenzx
 
 import (
 	"os"

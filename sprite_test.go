@@ -1,10 +1,10 @@
-package main
+package zenzx
 
 import (
 	"image/color"
 	"testing"
 
-	"github.com/ha1tch/zenzx/pkg/zxpalette"
+	"github.com/ha1tch/zenui/zxpalette"
 )
 
 // T-30 (wave ti0.r4) tests. Pattern A (register/memory-only, no CPU) below
@@ -33,7 +33,7 @@ func TestSpriteDisabledWhenNR15Bit0Clear(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
-	// NR 0x15 defaults to 0x08 (bit 0 clear) at construction -- sprites
+	// NR 0x15 resets to 0x00 (bit 0 clear) -- sprites
 	// start disabled even in Next mode until a program explicitly sets
 	// bit 0, matching the wiki's own "sprite visibility enable" framing.
 	if io.spriteEnabled() {
@@ -377,13 +377,15 @@ func TestT30NextModeSpriteEndToEnd(t *testing.T) {
 		}
 	}
 
-	// Enable sprites (NR 0x15 bit 0) while keeping the existing priority
-	// field at its construction default (0x08 = S U L -- sprites on top).
+	// Enable sprites (NR 0x15 bit 0) with the layer order S U L (0x08):
+	// sprites on top.
 	run(0x8000, []uint8{0xED, 0x91, 0x15, 0x09})
 	// Select sprite 0, position (5,5), pattern 0, visible.
 	run(0x8010, []uint8{0xED, 0x91, 0x34, 0x00})
-	run(0x8020, []uint8{0xED, 0x91, 0x35, 0x05})
-	run(0x8030, []uint8{0xED, 0x91, 0x36, 0x05})
+	// Sprite coordinates are the frame's: (37,37) is (5,5) of the classic picture, which
+	// is where sprites show without "sprites over border".
+	run(0x8020, []uint8{0xED, 0x91, 0x35, 37})
+	run(0x8030, []uint8{0xED, 0x91, 0x36, 37})
 	run(0x8040, []uint8{0xED, 0x91, 0x38, 0x80})
 
 	zx.io.sprites.WriteSpritePatternByte(0, 0, 0, 0xF0) // bright white at sprite-local (0,0)
@@ -395,7 +397,7 @@ func TestT30NextModeSpriteEndToEnd(t *testing.T) {
 	run(0x8080, []uint8{0xED, 0x91, 0x41, 0xFF}) // RRRGGGBB = 11111111 -> bright white
 
 	img := zx.DecodeDisplay()
-	got := img.RGBAAt(5, 5)
+	got := img.RGBAAt(37, 37)
 	wantN := zxpalette.DecodeRGB9From8Bit(0xFF).Colour()
 	want := color.RGBA{R: wantN.R, G: wantN.G, B: wantN.B, A: wantN.A}
 	if got != want {
@@ -405,7 +407,7 @@ func TestT30NextModeSpriteEndToEnd(t *testing.T) {
 	// Disable sprites again (clear bit 0) and confirm the pixel reverts.
 	run(0x8090, []uint8{0xED, 0x91, 0x15, 0x08})
 	img2 := zx.DecodeDisplay()
-	got2 := img2.RGBAAt(5, 5)
+	got2 := img2.RGBAAt(37, 37)
 	if got2 == want {
 		t.Fatalf("pixel (5,5) after disabling sprites still shows the sprite's colour %v", want)
 	}
@@ -441,7 +443,7 @@ func TestT30SpriteAboveLayer2EndToEnd(t *testing.T) {
 	run(0x8000, []uint8{0xED, 0x91, 0x15, 0b00000101})
 	// Layer 2 base bank = page 16, resolved index 0x20 (raw 0x20, offset
 	// 0) at (0,0).
-	run(0x8010, []uint8{0xED, 0x91, 0x12, 0x10})
+	run(0x8010, []uint8{0xED, 0x91, 0x12, 0x08})
 	zx.memory.nextPageWrite(16, 0, 0x20)
 
 	// Give the Layer2-1st palette a known red at index 0x20, and the
@@ -454,8 +456,8 @@ func TestT30SpriteAboveLayer2EndToEnd(t *testing.T) {
 	// Sprite 0 also covers (0,0), bright white -- must lose to Layer 2
 	// under this ordering (L is above S).
 	run(0x8020, []uint8{0xED, 0x91, 0x34, 0x00})
-	run(0x8030, []uint8{0xED, 0x91, 0x35, 0x00})
-	run(0x8040, []uint8{0xED, 0x91, 0x36, 0x00})
+	run(0x8030, []uint8{0xED, 0x91, 0x35, nextFrameInset}) // frame coordinates: the classic picture's corner
+	run(0x8040, []uint8{0xED, 0x91, 0x36, nextFrameInset})
 	run(0x8050, []uint8{0xED, 0x91, 0x38, 0x80})
 	zx.io.sprites.WriteSpritePatternByte(0, 0, 0, 0xF0)
 	run(0x8090, []uint8{0xED, 0x91, 0x43, 0x20}) // R/W target Sprites-1st
@@ -463,7 +465,7 @@ func TestT30SpriteAboveLayer2EndToEnd(t *testing.T) {
 	run(0x80b0, []uint8{0xED, 0x91, 0x41, 0xFF}) // RRRGGGBB = 11111111 -> bright white
 
 	img := zx.DecodeDisplay()
-	got := img.RGBAAt(0, 0)
+	got := img.RGBAAt(nextFrameInset, nextFrameInset)
 	wantN := zxpalette.DecodeRGB9From8Bit(0x20).Colour()
 	want := color.RGBA{R: wantN.R, G: wantN.G, B: wantN.B, A: wantN.A}
 	if got != want {

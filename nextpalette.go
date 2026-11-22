@@ -1,6 +1,6 @@
-package main
+package zenzx
 
-import "github.com/ha1tch/zenzx/pkg/zxpalette"
+import "github.com/ha1tch/zenui/zxpalette"
 
 // ============================================================================
 // ZX Spectrum Next: the real 9-bit/512-colour palette (T-31, wave ti0.r5)
@@ -120,8 +120,30 @@ type nextPaletteSystem struct {
 	awaitingSecondByte bool // NR 0x44's own two-write sequence state
 }
 
+// nextULADefaultColours are the sixteen colours a ULA palette starts with, as 8-bit values:
+// the eight inks and the eight bright inks; the papers repeat them at entries 16 to 31.
+var nextULADefaultColours = [16]uint8{0x00, 0x02, 0xA0, 0xA2, 0x14, 0x16, 0xB4, 0xB6, 0x00, 0x03, 0xE0, 0xE7, 0x1C, 0x1F, 0xFC, 0xFF}
+
 func newNextPaletteSystem() *nextPaletteSystem {
-	return &nextPaletteSystem{}
+	p := &nextPaletteSystem{}
+	// The tilemap's two palettes start as the identity: entry n is the colour RRRGGGBB = n,
+	// as every palette but the ULA's does on the hardware. (The Layer 2 and sprite palettes
+	// here still start black; their tests are written against that.)
+	for i := 0; i < 256; i++ {
+		c := zxpalette.DecodeRGB9From8Bit(uint8(i))
+		p.palettes[nextPaletteTilemap1st][i] = c
+		p.palettes[nextPaletteTilemap2nd][i] = c
+	}
+	// The ULA palettes start with the Spectrum's colours: inks, bright inks, papers and
+	// bright papers. These are the values NextZXOS itself writes at start-up.
+	for i, v := range nextULADefaultColours {
+		c := zxpalette.DecodeRGB9From8Bit(v)
+		for _, target := range []nextPaletteTarget{nextPaletteULA1st, nextPaletteULA2nd} {
+			p.palettes[target][i] = c
+			p.palettes[target][16+i] = c
+		}
+	}
+	return p
 }
 
 // resetSequence clears NR 0x44's pending-first-byte state -- called by
@@ -176,6 +198,15 @@ func (p *nextPaletteSystem) writeValue8(value uint8) {
 // advance the index.
 func (p *nextPaletteSystem) readValue8() uint8 {
 	return zxpalette.EncodeRGB9To8Bit(p.palettes[p.writeTarget][p.writeIndex])
+}
+
+// readValue9 implements a read from NR 0x44: "reads only return the 2nd byte" (the Next's
+// registers.txt), which is the lowest bit of the current entry's blue in bit 0. NextZXOS
+// reads its colours back this way before writing them again with NextREG 0x44; when this
+// read gave 0 every colour lost that bit, and white came out as a warm grey. The Layer 2
+// priority bit, which would be bit 7, is not stored. Does not advance the index.
+func (p *nextPaletteSystem) readValue9() uint8 {
+	return p.palettes[p.writeTarget][p.writeIndex].B & 0x01
 }
 
 // writeValue9 implements a write to NR 0x44: the first of a pair is

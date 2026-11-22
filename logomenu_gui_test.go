@@ -1,12 +1,12 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/ha1tch/zenzx/pkg/zenui"
+	"github.com/ha1tch/zenui"
 )
 
 // testNoopRenderer satisfies zenui.Renderer without any raylib
@@ -29,9 +29,9 @@ func (testNoopRenderer) LineHeight(scale int) int                               
 func (testNoopRenderer) Clip(zenui.Rect)                                                  {}
 func (testNoopRenderer) ClipEnd()                                                         {}
 
-// testDrawCall and testDrawRecorder mirror pkg/zenui's own (unexported,
+// testDrawCall and testDrawRecorder mirror zenui's own (unexported,
 // package-scoped) drawRecorder/drawCall -- not accessible from here
-// since this is package main, so a local equivalent is needed for
+// since this is another package, so a local equivalent is needed for
 // tests that need to inspect what actually got drawn rather than just
 // confirm nothing crashes.
 type testDrawCall struct {
@@ -166,8 +166,8 @@ func TestApplyFixedStateTogglesAndShows(t *testing.T) {
 
 	b.fixed = false
 	b.applyFixedState(zx)
-	if zx.display.reservedTopHeight != 0 {
-		t.Errorf("reservedTopHeight = %d after unfixing, want 0", zx.display.reservedTopHeight)
+	if zx.window().reservedTopHeight != 0 {
+		t.Errorf("reservedTopHeight = %d after unfixing, want 0", zx.window().reservedTopHeight)
 	}
 }
 
@@ -179,10 +179,16 @@ func TestHandleLogoMenuResultZenZXWebsiteOpensURL(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	// result 1 (ZenZX website) calls rl.OpenURL -- there's no
-	// observable state to assert beyond "it doesn't panic", since
-	// OpenURL is a fire-and-forget OS call.
+	// result 1 (ZenZX website) opens the home page. The opener is replaced: the real one
+	// starts a browser on any machine with a display.
+	var opened []string
+	saved := openURL
+	openURL = func(url string) { opened = append(opened, url) }
+	defer func() { openURL = saved }()
 	b.handleLogoMenuResult(zx, 1)
+	if len(opened) != 1 || opened[0] != zenZXHomepageURL {
+		t.Fatalf("the website item opened %v, want %s once", opened, zenZXHomepageURL)
+	}
 }
 
 func TestHandleLogoMenuResultHelpOpensModal(t *testing.T) {
@@ -197,10 +203,10 @@ func TestHandleLogoMenuResultHelpOpensModal(t *testing.T) {
 	if b.activeModal == nil {
 		t.Fatal("result 2 (Help) should open activeModal")
 	}
-	if b.activeModal.title != "HELP" {
-		t.Errorf("activeModal.title = %q, want \"HELP\"", b.activeModal.title)
+	if b.activeModal.Title() != "HELP" {
+		t.Errorf("activeModal.title = %q, want \"HELP\"", b.activeModal.Title())
 	}
-	if b.activeModal.autoHeight {
+	if b.activeModal.AutoHeight() {
 		t.Error("Help's modal should have autoHeight=false (always full-height, since it always needs scrolling)")
 	}
 }
@@ -217,17 +223,17 @@ func TestHandleLogoMenuResultAboutOpensModalWithVersionSubstituted(t *testing.T)
 	if b.activeModal == nil {
 		t.Fatal("result 3 (About...) should open activeModal")
 	}
-	if b.activeModal.title != "ABOUT" {
-		t.Errorf("activeModal.title = %q, want \"ABOUT\"", b.activeModal.title)
+	if b.activeModal.Title() != "ABOUT" {
+		t.Errorf("activeModal.title = %q, want \"ABOUT\"", b.activeModal.Title())
 	}
-	joined := strings.Join(b.activeModal.lines, "\n")
+	joined := strings.Join(b.activeModal.Lines(), "\n")
 	if strings.Contains(joined, "__VERSION__") {
 		t.Error("About text still contains the unsubstituted __VERSION__ placeholder")
 	}
 	if !strings.Contains(joined, version) {
 		t.Errorf("About text does not contain the actual version (%q)", version)
 	}
-	if !b.activeModal.autoHeight {
+	if !b.activeModal.AutoHeight() {
 		t.Error("About's modal should have autoHeight=true, sized to fit its own content")
 	}
 }
@@ -272,7 +278,7 @@ func TestActiveReportsTrueForLogoMenuAndModal(t *testing.T) {
 	}
 	b.logoMenu = nil
 
-	b.activeModal = newMarkdownModal("HELP", helpText, false)
+	b.activeModal = newHelpModal()
 	if !b.Active() {
 		t.Error("Active() should be true while activeModal is open")
 	}
@@ -286,20 +292,20 @@ func TestApplyFixedStateReservesTopHeight(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	if zx.display.reservedTopHeight != 0 {
+	if zx.window().reservedTopHeight != 0 {
 		t.Fatal("setup: reservedTopHeight should start 0")
 	}
 
 	b.fixed = true
 	b.applyFixedState(zx)
-	if zx.display.reservedTopHeight != menuStripHeight {
-		t.Errorf("reservedTopHeight = %d after fixing, want %d", zx.display.reservedTopHeight, menuStripHeight)
+	if zx.window().reservedTopHeight != menuStripHeight {
+		t.Errorf("reservedTopHeight = %d after fixing, want %d", zx.window().reservedTopHeight, menuStripHeight)
 	}
 
 	b.fixed = false
 	b.applyFixedState(zx)
-	if zx.display.reservedTopHeight != 0 {
-		t.Errorf("reservedTopHeight = %d after unfixing, want 0", zx.display.reservedTopHeight)
+	if zx.window().reservedTopHeight != 0 {
+		t.Errorf("reservedTopHeight = %d after unfixing, want 0", zx.window().reservedTopHeight)
 	}
 }
 
@@ -379,196 +385,5 @@ func TestActiveTrueWhenLogoMenuOpen(t *testing.T) {
 	}
 }
 
-func TestScaleAlphaBasicMath(t *testing.T) {
-	c := zenui.Colour{R: 0x11, G: 0x22, B: 0x33, A: 0xff}
-	got := scaleAlpha(c, 0.85)
-	if got.R != c.R || got.G != c.G || got.B != c.B {
-		t.Errorf("scaleAlpha should leave R/G/B untouched: got %+v, from %+v", got, c)
-	}
-	var full float64 = 0xff
-	want := uint8(full * 0.85) // truncating conversion, same as the real call site
-	if got.A != want {
-		t.Errorf("A = %d, want %d (0xff * 0.85)", got.A, want)
-	}
-}
-
-func TestScaleAlphaZeroFactor(t *testing.T) {
-	c := zenui.Colour{R: 1, G: 2, B: 3, A: 0xa0}
-	got := scaleAlpha(c, 0)
-	if got.A != 0 {
-		t.Errorf("A = %d, want 0", got.A)
-	}
-}
-
-func TestMarkdownModalPanelOpacityIs85Percent(t *testing.T) {
-	// Confirms the actual client-area opacity independent of whatever
-	// theme.Panel's own alpha is (currently always 0xff across every
-	// theme, but this shouldn't assume that stays true).
-	for name, theme := range map[string]zenui.Theme{
-		"Default":  zenui.DefaultTheme(),
-		"Dark":     zenui.DarkTheme(),
-		"Light":    zenui.LightTheme(),
-		"Spectrum": zenui.SpectrumTheme(),
-	} {
-		want := uint8(float64(theme.Panel.A) * modalPanelOpacity)
-		got := scaleAlpha(theme.Panel, modalPanelOpacity)
-		if got.A != want {
-			t.Errorf("%s: panel alpha = %d, want %d (85%% of theme.Panel.A=%d)", name, got.A, want, theme.Panel.A)
-		}
-	}
-}
-
-func TestMarkdownModalBackdropIs20PercentLessDark(t *testing.T) {
-	for name, theme := range map[string]zenui.Theme{
-		"Default":  zenui.DefaultTheme(),
-		"Dark":     zenui.DarkTheme(),
-		"Light":    zenui.LightTheme(),
-		"Spectrum": zenui.SpectrumTheme(),
-	} {
-		want := uint8(float64(theme.Backdrop.A) * modalBackdropDarkening)
-		got := scaleAlpha(theme.Backdrop, modalBackdropDarkening)
-		if got.A != want {
-			t.Errorf("%s: backdrop alpha = %d, want %d (80%% of theme.Backdrop.A=%d, i.e. 20%% less dark)", name, got.A, want, theme.Backdrop.A)
-		}
-		if got.A >= theme.Backdrop.A {
-			t.Errorf("%s: adjusted backdrop alpha (%d) should be strictly less than the theme's own (%d)", name, got.A, theme.Backdrop.A)
-		}
-	}
-}
-
-func TestMarkdownModalDrawUsesAdjustedOpacitiesNotThemeRaw(t *testing.T) {
-	theme := zenui.DarkTheme()
-	m := newMarkdownModal("TEST", "# Heading\n\nbody text", false)
-	r := newTestDrawRecorder()
-	m.draw(r, 800, 600, theme)
-
-	foundPanel, foundBackdrop := false, false
-	for _, c := range *r.calls {
-		if c.kind == "fill" && c.rect == m.panel {
-			foundPanel = true
-			if c.col.A != scaleAlpha(theme.Panel, modalPanelOpacity).A {
-				t.Errorf("panel fill alpha = %d, want %d", c.col.A, scaleAlpha(theme.Panel, modalPanelOpacity).A)
-			}
-			if c.col.A == theme.Panel.A {
-				t.Error("panel fill still uses theme.Panel's own raw alpha, unadjusted")
-			}
-		}
-		if c.kind == "fill" && c.rect.W == 800 && c.rect.H == 600 {
-			foundBackdrop = true
-			if c.col.A != scaleAlpha(theme.Backdrop, modalBackdropDarkening).A {
-				t.Errorf("backdrop fill alpha = %d, want %d", c.col.A, scaleAlpha(theme.Backdrop, modalBackdropDarkening).A)
-			}
-		}
-	}
-	if !foundPanel {
-		t.Error("no panel fill call found")
-	}
-	if !foundBackdrop {
-		t.Error("no backdrop fill call found")
-	}
-}
-
-func TestMarkdownModalTextAndWidgetsStayFullyOpaque(t *testing.T) {
-	theme := zenui.DarkTheme()
-	m := newMarkdownModal("TEST", "# Heading\n\nbody text", false)
-	r := newTestDrawRecorder()
-	m.draw(r, 800, 600, theme)
-
-	for _, c := range *r.calls {
-		if c.kind == "text" {
-			if c.col.A != 0xff {
-				t.Errorf("text draw call has alpha %d, want 0xff (widgets/text must stay 100%% opaque)", c.col.A)
-			}
-		}
-	}
-}
-
-func TestAutoHeightModalFitsContentNotFullScreen(t *testing.T) {
-	r := testNoopRenderer{}
-	screenW, screenH := 1200, 900
-
-	short := newMarkdownModal("ABOUT", "# ZenZX\n\nline two\nline three", true)
-	short.layout(r, screenW, screenH)
-
-	tall := newMarkdownModal("HELP", "line", false)
-	tall.layout(r, screenW, screenH)
-
-	if short.panel.H >= tall.panel.H {
-		t.Errorf("auto-height panel.H = %d, want less than the full-height panel's %d", short.panel.H, tall.panel.H)
-	}
-	if short.panel.H >= screenH {
-		t.Errorf("auto-height panel.H = %d, should not fill the whole screen (screenH=%d)", short.panel.H, screenH)
-	}
-}
-
-func TestAutoHeightModalHeightMatchesContentEstimate(t *testing.T) {
-	r := testNoopRenderer{}
-	content := "line one\nline two\nline three\nline four\nline five"
-	m := newMarkdownModal("ABOUT", content, true)
-	m.layout(r, 1200, 900)
-
-	lh := r.LineHeight(1)
-	pad := lh
-	titleH := r.LineHeight(2) + 8
-	wantContentH := m.total * m.bodyLH
-	wantPanelH := wantContentH + 2*pad + titleH
-
-	if m.panel.H != wantPanelH {
-		t.Errorf("panel.H = %d, want %d (content estimate: %d lines * %d line height + padding + title)", m.panel.H, wantPanelH, m.total, m.bodyLH)
-	}
-}
-
-func TestAutoHeightModalNeverNeedsScrolling(t *testing.T) {
-	m := newMarkdownModal("ABOUT", "one\ntwo\nthree", true)
-	m.layout(testNoopRenderer{}, 1200, 900)
-
-	if m.total > m.visible {
-		t.Errorf("total=%d, visible=%d -- an auto-height modal should always show every line without scrolling", m.total, m.visible)
-	}
-}
-
-func TestAutoHeightModalRespectsMinimumFloor(t *testing.T) {
-	// A single short line shouldn't produce an absurdly short panel --
-	// the same lh*10 floor the full-height modal already has.
-	m := newMarkdownModal("ABOUT", "x", true)
-	r := testNoopRenderer{}
-	m.layout(r, 1200, 900)
-
-	lh := r.LineHeight(1)
-	if m.panel.H < lh*10 {
-		t.Errorf("panel.H = %d, want at least %d (the minimum floor)", m.panel.H, lh*10)
-	}
-}
-
-func TestAutoHeightModalCapsAtScreenHeight(t *testing.T) {
-	// Pathological case: content taller than the screen itself should
-	// still be capped, not overflow.
-	var longContent string
-	for i := 0; i < 200; i++ {
-		longContent += "line\n"
-	}
-	m := newMarkdownModal("ABOUT", longContent, true)
-	r := testNoopRenderer{}
-	screenH := 400
-	m.layout(r, 1200, screenH)
-
-	pad := r.LineHeight(1)
-	if m.panel.H > screenH-2*pad {
-		t.Errorf("panel.H = %d, should be capped at screenH-2*pad = %d", m.panel.H, screenH-2*pad)
-	}
-}
-
-func TestFullHeightModalUnaffectedByAutoHeightChange(t *testing.T) {
-	// Help (autoHeight=false) should be completely unchanged from
-	// before: always screenH-4*pad, regardless of content length.
-	r := testNoopRenderer{}
-	screenW, screenH := 1200, 900
-	m := newMarkdownModal("HELP", "one line only", false)
-	m.layout(r, screenW, screenH)
-
-	pad := r.LineHeight(1)
-	want := screenH - 4*pad
-	if m.panel.H != want {
-		t.Errorf("panel.H = %d, want %d (full-height behaviour unchanged)", m.panel.H, want)
-	}
-}
+// The tests of the Help and About window itself (its opacity, its height, its
+// scrolling) are zenui's, with the window: textmodal_test.go there.

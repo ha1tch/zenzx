@@ -41,14 +41,14 @@ build: build-gui build-headless
 .PHONY: build-gui
 build-gui:
 	@mkdir -p $(DIST)
-	CGO_ENABLED=1 $(GO) build -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/zenzx .
+	CGO_ENABLED=1 $(GO) build -ldflags "-s -w -X github.com/ha1tch/zenzx.version=$(VERSION)" -o $(DIST)/zenzx ./cmd/zenzx
 	@echo "built $(DIST)/zenzx"
 
 ## build-gui-purego: build the GUI binary cgo-free (works on this host only if oto needs no cgo here -- i.e. not native Linux)
 .PHONY: build-gui-purego
 build-gui-purego:
 	@mkdir -p $(DIST)
-	CGO_ENABLED=0 $(GO) build -tags purego -ldflags "-s -w -X main.version=$(VERSION)" -o $(DIST)/zenzx .
+	CGO_ENABLED=0 $(GO) build -tags purego -ldflags "-s -w -X github.com/ha1tch/zenzx.version=$(VERSION)" -o $(DIST)/zenzx ./cmd/zenzx
 	@echo "built $(DIST)/zenzx (purego)"
 
 ## build-headless: build the headless binary (always cgo-free)
@@ -62,25 +62,26 @@ cross:
 	@echo "-- headless (cgo-free, all platforms) --"
 	@for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
 		os=$${p%/*}; arch=$${p#*/}; \
-		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 $(GO) build -tags headless -o /dev/null . && echo "ok  headless  $$p"; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 $(GO) build -tags headless -o /dev/null ./cmd/zenzx-headless && echo "ok  headless  $$p"; \
 	done
 	@echo "-- gui, cgo-free purego targets --"
 	@for p in darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do \
 		os=$${p%/*}; arch=$${p#*/}; \
-		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o /dev/null . && echo "ok  gui       $$p"; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o /dev/null ./cmd/zenzx && echo "ok  gui       $$p"; \
 	done
 	@echo "-- gui, native cgo (this host only) --"
-	@CGO_ENABLED=1 $(GO) build -o /dev/null . && echo "ok  gui       $$(go env GOOS)/$$(go env GOARCH) (cgo)"
+	@CGO_ENABLED=1 $(GO) build -o /dev/null ./cmd/zenzx && echo "ok  gui       $$(go env GOOS)/$$(go env GOARCH) (cgo)"
 
 # =============================================================================
 # Testing
 # =============================================================================
 #
-# CGO_ENABLED=0 on the ./pkg/... line matters: pkg/zenuiraylib imports
-# raylib directly and unconditionally (no build constraint of its own), so
-# without it this pulls in raylib's cgo path and fails on any machine
-# missing the full GL/X11/Wayland dev headers -- confirmed as a real CI
-# failure, not a theoretical one, before this was added.
+# CGO_ENABLED=0 on the ./pkg/... line was put there when pkg/zenuiraylib
+# was in this tree: it imports raylib directly and unconditionally, and
+# without the setting pulled in raylib's cgo path and failed on any machine
+# missing the full GL/X11/Wayland dev headers -- a real CI failure. The
+# adapter is zenui's since 0.27.0; the setting stays, the packages here
+# need no cgo.
 
 ## test: run the full test suite (both scopes, cgo-free)
 .PHONY: test
@@ -98,7 +99,7 @@ test-race:
 .PHONY: vet
 vet:
 	CGO_ENABLED=0 $(GO) vet -tags headless ./...
-	$(GO) vet .
+	$(GO) vet ./...
 
 ## smoke: boot-test the headless binary (requires build-headless first)
 .PHONY: smoke
@@ -108,19 +109,40 @@ smoke: build-headless
 	rm -f zenzx-headless
 
 # =============================================================================
+# ZX Spectrum Next
+# =============================================================================
+
+NEXT_FILES   ?= ./next
+NEXT_VERSION ?= 26.11
+
+## next-card: download the Next emulator distribution (70 MB) and make the SD card and DivMMC ROM in NEXT_FILES (default ./next); FORCE=1 replaces an existing card
+.PHONY: next-card
+next-card:
+	sh scripts/get_next_card.sh $(NEXT_FILES) $(NEXT_VERSION)
+
+## next-card-repair: correct the free space record of an existing card in place (cards made by an earlier next_card.py report the whole card as free)
+.PHONY: next-card-repair
+next-card-repair:
+	python3 scripts/next_card.py --repair $(NEXT_FILES)/next-card.img
+
+## run-next: start the GUI as a Next booting NextZXOS from NEXT_FILES (needs next-card and your nextboot.rom)
+.PHONY: run-next
+run-next:
+	NEXT_FILES=$(NEXT_FILES) sh run_next_divmmc.sh
+
+# =============================================================================
 # Formatting and linting
 # =============================================================================
 
 ## fmt: gofmt the whole tree in place
 .PHONY: fmt
 fmt:
-	gofmt -w .
+	sh ./check_gofmt.sh -w
 
 ## fmt-check: fail if anything is not gofmt-clean
 .PHONY: fmt-check
 fmt-check:
-	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt would change:"; echo "$$out"; exit 1; fi
-	@echo "gofmt clean"
+	@sh ./check_gofmt.sh
 
 ## lint: run golangci-lint (see .golangci.yml)
 .PHONY: lint
@@ -140,6 +162,11 @@ check-changelog:
 .PHONY: check-gui
 check-gui:
 	sh ./check_gui.sh
+
+## check-import: show that another module can import ZenZX as a library (headless, purego)
+.PHONY: check-import
+check-import:
+	sh scripts/check_import.sh
 
 ## check-register: verify the work register is internally consistent
 .PHONY: check-register

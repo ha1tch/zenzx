@@ -1,6 +1,6 @@
 //go:build headless
 
-package main
+package zenzx
 
 import (
 	"fmt"

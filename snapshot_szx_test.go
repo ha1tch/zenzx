@@ -3,7 +3,7 @@
 // .szx snapshots: detection by extension and by magic, loading through
 // zentools/pkg/szx, and the refusal to save one.
 
-package main
+package zenzx
 
 import (
 	"os"

@@ -1,6 +1,6 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"testing"
@@ -62,10 +62,12 @@ func TestRenderNextLayersGPUNoOpWhenNothingEnabled(t *testing.T) {
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
 	dm := NewDisplayManager(screen)
-	// Construction default: NR 0x15 = 0x08 (bits 4-2 = %010, S U L) --
-	// layersAboveULA(0x08) is [Sprites] (layer2.go's nextLayerOrder), so
-	// this exercises the dispatch loop's Sprites case, which must itself
-	// gate on spriteEnabled() (false here) and return without drawing.
+	// NR 0x15 = 0x08 (bits 4-2 = %010, S U L), set here because the reset
+	// value is 0x00: layersAboveULA(0x08) is [Sprites] (layer2.go's
+	// nextLayerOrder), so this exercises the dispatch loop's Sprites case,
+	// which must itself gate on spriteEnabled() (false here) and return
+	// without drawing.
+	io.SetNextRegister(0x15, 0x08)
 	renderNextLayersGPU(dm, io, mem, 0, 0, 1)
 }
 

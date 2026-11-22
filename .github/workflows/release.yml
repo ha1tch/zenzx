@@ -61,12 +61,18 @@ jobs:
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
           out="dist/zenzx-${GOOS}-${GOARCH}-headless"
           mkdir -p "$out"
-          go build -tags headless -ldflags "-s -w -X main.version=${VERSION}" \
-              -o "${out}/zenzx-headless${ext}" .
+          go build -tags headless -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" \
+              -o "${out}/zenzx-headless${ext}" ./cmd/zenzx-headless
           cp -r rom "$out"/
           cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
           mkdir -p "$out"/docs
           cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          # ZenZX's own demo card (gallop, fuji, orbit), beside the program in
+          # `next/`, where the boot files download to. Built with a host-native
+          # headless binary, so the cross-built target binary need not run here.
+          mkdir -p "$out"/next
+          GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
+              -next-examples-card "$out"/next/zenzx-card.img
 
       - name: Archive
         env:
@@ -142,12 +148,19 @@ jobs:
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
           out="dist/zenzx-${GOOS}-${GOARCH}"
           mkdir -p "$out"
-          go build -ldflags "-s -w -X main.version=${VERSION}" \
-              -o "${out}/zenzx${ext}" .
+          go build -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" \
+              -o "${out}/zenzx${ext}" ./cmd/zenzx
           cp -r rom "$out"/
           cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
           mkdir -p "$out"/docs
           cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          # ZenZX's own demo card (gallop, fuji, orbit), beside the program in
+          # `next/`, where the boot files download to. Built with a host-native
+          # headless binary (the card is the same on every platform), so the
+          # cross-built target binary need not run here.
+          mkdir -p "$out"/next
+          GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
+              -next-examples-card "$out"/next/zenzx-card.img
 
       - name: Archive
         env:
@@ -216,11 +229,14 @@ jobs:
           set -euo pipefail
           out="dist/zenzx-linux-amd64"
           mkdir -p "$out"
-          go build -ldflags "-s -w -X main.version=${VERSION}" -o "${out}/zenzx" .
+          go build -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${out}/zenzx" ./cmd/zenzx
           cp -r rom "$out"/
           cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
           mkdir -p "$out"/docs
           cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          mkdir -p "$out"/next
+          GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
+              -next-examples-card "$out"/next/zenzx-card.img
 
       - name: Archive
         env:
@@ -284,11 +300,14 @@ jobs:
           set -euo pipefail
           out="dist/zenzx-linux-arm64"
           mkdir -p "$out"
-          go build -ldflags "-s -w -X main.version=${VERSION}" -o "${out}/zenzx" .
+          go build -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${out}/zenzx" ./cmd/zenzx
           cp -r rom "$out"/
           cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
           mkdir -p "$out"/docs
           cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          mkdir -p "$out"/next
+          GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
+              -next-examples-card "$out"/next/zenzx-card.img
 
       - name: Archive
         env:

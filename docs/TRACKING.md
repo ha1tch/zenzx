@@ -1,7 +1,7 @@
 # ZenZX — live register
 
-Version: 0.11.0
-Last reviewed: 2026-11-16
+Version: 0.50.0
+Last reviewed: 2026-11-21
 
 Open, actionable items only. Closed items move verbatim to
 `RESOLVED.md` (see `repoman register close`); a closed item still
@@ -19,12 +19,11 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 
 | T-03 | CPU clock modelled as 3.5 MHz; real 48K is 3.5469 MHz (~1.3 % pitch/timing error) | timing | P3 | ☐ | — |
 | T-04 | AY-3-8912 residual aliasing beyond the 0.3.4 area-sampling baseline | audio | P3 | ☐ | — |
-| T-06 | 15 Go files are not gofmt-clean | hygiene | P3 | ☐ | — |
 | T-07 | Dockerfile and build_bsd.sh are broken (unresolved template variables) | ci | P3 | ☐ | — |
 | T-08 | GUI cross-platform CI depends on raylib-go/oto staying cgo-free on darwin+windows | ci | P3 | ☐ | — |
 | T-09 | Non-standard graphics modes accepted but not implemented (mode-zenzx-01, mode-zenzx-02) | graphics | P2 | ☐ | — |
 | T-10 | Non-standard storage backend accepted but not implemented (storage-zenzx-posix) | storage | P2 | ☐ | — |
-| T-13 | Joystick emulation: Cursor and headless zenscript driving not implemented | input | P3 | ◐ | — |
+| T-13 | Joystick emulation: headless zenscript driving not implemented | input | P3 | ◐ | — |
 | T-15 | Real Extension ROM CHNG_VID service diverges partway through OPDFIL's relocation, root cause undiagnosed | model | P3 | ☐ | — |
 | T-20 | 128K contention model is address-range based, not bank-aware; frame geometry (228 t/line, start 14361) is an unverified extrapolation | timing | P3 | ☐ | — |
 | T-21 | Floating bus: instruction-start position granularity; 128K port-decode subtleties unmodeled; TS2068 FE-port idle levels legacy/unverified | model | P3 | ☐ | — |
@@ -36,12 +35,26 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 | T-31 | 9-bit/512-colour Next palette with NextREG palette control | next-support | P3 | ◐ | — |
 | T-32 | NEX file loading (direct memory/Layer2/palette injection, no OS) | next-support | P3 | ☐ | — |
 | T-36 | Real NextZXOS/DivMMC/SD-card boot chain (Tier 2) | next-support | P3 | ◐ | — |
-| T-38 | Migrate onto the shared zenui module and zentools' bdf | shared | P2 | ◐ | after the first zenui tag is pushed |
-| T-39 | Extract the machine core from `package main` into an embeddable `pkg/machine` | embedding | P1 | ☐ | — |
+| T-39 | Extract the machine core from `package main` into an embeddable `pkg/machine` | embedding | P1 | ◐ | — |
 | T-40 | Provide a purego-safe audio backend so the embedded machine builds with `CGO_ENABLED=0` | embedding | P1 | ☐ | after T-39 |
-| T-42 | NextREG 0x12 and 0x13 are 16K bank numbers; zenzx reads them as 8K pages | next-support | P2 | ☐ | — |
-| T-43 | SD card is read-only: no CMD24, CMD25 or CMD13 | next-support | P2 | ☐ | — |
-| T-44 | Tilemap and the Next's Timex modes are not drawn | next-support | P2 | ☐ | — |
+| T-44 | Tilemap and the Next's Timex modes are not drawn | next-support | P2 | ◐ | — |
+| T-50 | Remove the Next drawing code the frame compositor replaced | next-support | P2 | ☐ | — |
+| T-51 | What the Next's frame compositor does not draw | next-support | P3 | ☐ | — |
+| T-55 | The 128K machines run the 48K's frame of 69888 T-states | timing | P2 | ☐ | — |
+| T-56 | A NextBASIC loop takes 5% fewer frames than in CSpect | next-support | P3 | ☐ | — |
+| T-57 | Controllers: what has not been tried with real ones, and what a Next has that is not modelled | input | P3 | ☐ | — |
+| T-58 | The Next's DMA (ports 0x6B and 0x0B) is not emulated | next-support | P1 | ◐ | — |
+| T-59 | The Next's interrupt mode (NextREG 0xC0 to 0xCF) and the CTC are not emulated | next-support | P2 | ◐ | — |
+| T-60 | IM 2: the CPU core clears bit 0 of the vector; ZenZX reads the handler's address again | timing | P3 | ☐ | — |
+| T-61 | The Multiface has no NMI key, and only what NextZXOS uses was tried | next-support | P3 | ☐ | — |
+| T-62 | The Next examples were compared with jnext only, not with CSpect | next-support | P3 | ☐ | — |
+| T-63 | SD Card menu: the first slot, per-slot write protection and an on-screen message are missing | next-support | P3 | ☐ | — |
+| T-64 | DMA+ and 4 MB: board ID, interrupts holding the DMA, and a comparison with CSpect 4.5 are missing | next-support | P3 | ☐ | — |
+| T-65 | The workbench: the running machine as the thing being edited | embedding | P2 | ☐ | after T-39 |
+| T-66 | gorepoman: no way to retire a tracked file; relcore's archive manifest is ordered differently from manifest.sh | hygiene | P3 | ☐ | — |
+| T-67 | The machine dock: what the first cut leaves out | embedding | P3 | ☐ | — |
+| T-68 | Escape does not close an open dropdown of the menu bar | input | P3 | ☐ | — |
+| T-69 | The link, -multi and -autorun: what the first cut leaves out | embedding | P3 | ☐ | — |
 
 ## timing
 
@@ -59,6 +72,25 @@ Theme: timing · Priority: P3 · Status: ☐
 
 contention.go's 128K path checks 0x4000-0x7FFF only: a program paging a contended bank elsewhere (or an uncontended one into that window) gets wrong delays. The pattern shape and start cycle for 128K were extrapolated from the 48K FAQ table, not confirmed against an authoritative source. 48K is precise (measured bounds ~0.33% mem / ~0% IO with zen80 0.5.0's offset tracking).
 
+### T-55. The 128K machines run the 48K's frame of 69888 T-states
+
+Theme: timing · Priority: P2 · Status: ☐
+
+- **Trigger:** 0.17.0, writing the line interrupt: a Next's frame came out as 306 lines. Every machine runs a frame of 69888 T-states, the 48K's 312 lines of 224. The 128K, +2, +2A and +3 have 311 lines of 228: 70908. Their lines are counted as 228 T-states (NextREG 0x1E/0x1F, contention128 in contention.go, which also takes the frame as 70908), so the frame and the contention pattern disagree, as they did on the 48K before the frame was made 69888.
+- **Effect:** on the 128K machines the frame is 1.4% short, so music and anything else paced by the interrupt runs that much fast, and the contention pattern drifts down the frame by 1020 T-states each frame.
+- **Done in 0.17.0, for the Next only:** a Next's frame is 70908 T-states (`nextFrameLength`, nextvideoline.go), because its line counter, copper and line interrupt count the 311 lines and a program that waits for lines 306 to 310, the last of the top border, was never answered.
+- **Fix:** the same frame for the 128K, +2, +2A and +3, with the sound, the border recording and the tape checked against it, and a contention test as the 48K has.
+- **Done when:** a 128K machine's frame is 70908 T-states and its contention pattern stays in place from frame to frame.
+
+### T-60. IM 2: the CPU core clears bit 0 of the vector; ZenZX reads the handler's address again
+
+Theme: timing · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.22.0, T-52: the card's palette cycling demo stopped at its first interrupt. It sets I to 0xFE and only the bytes at 0xFE01 and 0xFF00 of its table, so that a vector of 0xFF (or 0x00) gives a handler in page 0xBF; zen80 0.5.7 computes the table's address as `I<<8 | vector&0xFE`, read the handler's address from 0xFEFE and went to 0x0000.
+- **Known:** the Z80 uses all eight bits of the byte on the bus; an even vector is the convention of Zilog's peripherals, not the CPU's rule. A Spectrum's ULA gives none and the CPU reads 0xFF, which is why tables are 257 bytes long. This is on every model, and only shows with a table that is not 257 equal bytes.
+- **Here:** `im2vector.go` reads the handler's address again from the whole vector when it was odd (called from `stepCPU` after an interrupt accepted in mode 2), with a test (`TestIM2UsesTheWholeVector`). With a corrected core it reads the same address twice.
+- **Done when:** zen80 uses the whole vector (the one line in its `handleInterrupts`), ZenZX's go.mod asks for that version, and `im2vector.go` and its call are removed with the test kept.
+
 ## audio
 
 ### T-04. AY-3-8912 residual aliasing beyond the 0.3.4 area-sampling baseline
@@ -71,13 +103,19 @@ Theme: audio · Priority: P3 · Status: ☐
 
 ## hygiene
 
-### T-06. 15 Go files are not gofmt-clean
+### T-66. gorepoman: no way to retire a tracked file; relcore's archive manifest is ordered differently from manifest.sh
 
 Theme: hygiene · Priority: P3 · Status: ☐
 
-- **Trigger:** session review 2026-08-17: `gofmt -l .` lists audio_oto.go, audio_sinc_filter.go, fdc.go, fdc_read_test.go, io.go, keyboard_script.go, memory.go, scheduler.go, screen_read.go, script.go, script_test.go, snapshot_formats.go, tape_types.go, version_main.go, zenzx.go. Pre-existing; not introduced this session.
-- **Fix:** run `gofmt -w` on the tree in a dedicated commit with no other changes, then add a gofmt check as a release step so it cannot recur.
+Trigger: cutting 0.28.0 (2026-11-17). Two gaps in gorepoman 0.16.0 that this repository now works around by hand.
 
+1. A file the edit journal tracks cannot be removed on purpose. `repoman provenance check` reports it missing, `provenance sanction` refuses a file that no longer exists, and there is nothing else. At 0.27.0 two such files were cleared from the journal by hand, with approval. At 0.28.0 the oto audio code was kept in two files, `audio_oto.go` and `audio_device_oto.go`, only because both names were tracked. Every root `.go` file is tracked since the package rename, so any later removal or rename meets this.
+
+2. `relcore`'s archive step writes its own `MANIFEST.sha256` into the zip, in a different line order from `manifest.sh` (which sorts paths by byte): `cmd/zenzx-headless/main.go` and `cmd/zenzx/main.go` swap. Unpacked into a git checkout, that manifest fails `sh manifest.sh check` as stale although every hash is right. The 0.28.0 archive had the repository's manifest put back into it after relcore.
+
+Scope: raise both upstream in gorepoman (a `provenance retire FILE --reason` or the like; the archive keeping the manifest it finds, or sorting by byte). Until then: after `relcore`, replace the zip's `MANIFEST.sha256` with the repository's and check the unpacked tree with `sh manifest.sh check`.
+
+Done when: a tracked file can be retired with a recorded reason, and the archive's manifest passes `manifest.sh check` in a checkout without a manual step.
 
 ## ci
 
@@ -87,6 +125,7 @@ Theme: ci · Priority: P3 · Status: ☐
 
 - **Trigger:** session review 2026-08-17 while wiring CI. `Dockerfile` has empty/unresolved variables (`${BINARY_NAME}`, `${VERSION}`, blank `CC=`/`CXX=++`) and never worked as committed. `build_bsd.sh` / `build_example_bsd.sh` are similarly a broken template (empty shell variables, a garbled heredoc, hardcoded absolute paths from another machine). Neither is exercised by CI or the release workflow — CI/release now cover linux/darwin/windows natively; BSD has no purego path (see KNOWN_ISSUES) and was never covered by these scripts working correctly either.
 - **Fix:** rewrite both from the working `build_linux.sh` pattern (real variables, no leftover template placeholders), or remove them if BSD support is not worth maintaining.
+- **Where they are (0.27.0):** `scripts/retired`, out of the repository's root, with `_bsd.sh`; nothing calls them.
 
 
 ### T-08. GUI cross-platform CI depends on raylib-go/oto staying cgo-free on darwin+windows
@@ -146,16 +185,37 @@ Eliminated by measurement this session: ULA contention magnitude and precision, 
 
 ## input
 
-### T-13. Joystick emulation: Cursor and headless zenscript driving not implemented
+### T-13. Joystick emulation: headless zenscript driving not implemented
 
 Theme: input · Priority: P3 · Status: ◐
 
 - **Trigger:** 2026-08-17, deliberately out of scope for the initial -joystick kempston/sinclair implementation (0.4.13). Per direction, only Kempston and Sinclair Joystick 1 were requested.
 - **Sinclair Joystick 2 done, 2026-08-17** (joystick.go, `JoystickSinclair2`): needed sooner than expected -- turned out to be required to correctly represent the +2/+2A/+3's real built-in hardware (two simultaneous Sinclair ports, not one), not merely a nice-to-have completion. `JoystickSinclairBoth` drives both from two independent host inputs at once, matching the real machine; `-model`'s own `auto` default now resolves to it for those models. See T-12/`docs/TS2068_TRACKING.md` and the 0.4.24 changelog entry for the full model-defaulting work this prompted.
 - **Second Kempston port done, 2026-08-17** (`JoystickKempston2`/`JoystickKempstonBoth`, port `0x37`): a genuinely different case from Sinclair 2 -- real, but never a `-model` default, since no stock model ever had a second Kempston port built in. Confirmed against the ZX Spectrum Next's own I/O port register documentation (`specnext.com/tbblue-io-port-system`: "Kempston 2 (port 0x37)") and cross-checked against a separate, independent hobbyist interface's own port numbering ("KEMPSTON_MAX 2": "Kempston Port 55" = `0x37` hex). Represents modern neo-Spectrum platforms (ZX-Uno, ZX-Tres, the Omni, the Next) rather than any classic-era hardware -- explicit-choice only, same category as `-ns-graphics`/`-ns-storage`.
-- **Cursor/AGF/Protek joystick**: same keyboard-remapping mechanism as Sinclair, different key set (commonly 5,6,7,8,0 or similar depending on source -- verify exact mapping before implementing, don't assume from memory). Still open.
+- **Cursor joystick done, 0.18.0** (`JoystickCursor`, `-joystick cursor`, joyports.go): 5 left, 6 down, 7 up, 8 right, 0 fire, as the Next's registers.txt lists it for NextREG 0x05 mode 010.
 - **Headless zenscript joystick driving**: no .zen verb currently exists to simulate joystick input for automated testing (script.go's knownVerbs has no 'joystick' entry). joystick.go's JoystickState/SetJoystickState split was deliberately designed so this is cheap to add later -- a new verb parsing up/down/left/right/fire arguments and calling the same SetJoystickState a real gamepad poll would, no new translation logic needed. Still open.
 
+
+### T-57. Controllers: what has not been tried with real ones, and what a Next has that is not modelled
+
+Theme: input · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.18.0, going over the joystick and mouse code, which had not been looked at since 0.4.17.
+- **Not tried with real controllers:** the only thing ever tried on a host is one gamepad as a Kempston joystick on a 48K. Everything else is checked by tests that read the ports and nothing more: both Sinclair ports, the Cursor joystick, the second Kempston port, a gamepad on a Next (whose ports are MD pads as NextZXOS sets them), a second gamepad, the Kempston mouse on any machine, the Next's mouse wheel, and the AMX mouse (0.4.17, checked against AMX Art's own driver code only).
+- **Not modelled on a Next:** the user defined keys joystick (NextREG 0x05 mode 111, programmed through NextREG 0x28, 0x29 and 0x2B); the joystick ports' I/O mode (NextREG 0x0B); the X, Y, Z and MODE buttons of a six button MD pad (NextREG 0xB2); the mouse's sensitivity (NextREG 0x0A bits 1-0); port 0xDF as a second address of the left Kempston port.
+- **Not agreed with CSpect:** how far the mouse counters move. CSpect at twice the size moved X by 13 for 40 pixels of the host's pointer; ZenZX divides the host's movement by the window's magnification and would move 20.
+- **No way to choose in the GUI:** the joystick and the mouse are chosen by `-joystick` and `-mouse` only; the menu changes them only by changing the model.
+- **Done when:** each line here is tried, modelled or has its own item.
+
+### T-68. Escape does not close an open dropdown of the menu bar
+
+Theme: input · Priority: P3 · Status: ☐
+
+Trigger: comparing builds under Xvfb, 2026-11-17: with a dropdown of the menu bar open, Escape leaves it open. The same in the 0.27.0 build, whose changelog says Escape "closes the open menu or window". It closes the Help, About, first-start and SD Cards windows and the dock, and it does not end the program while a menu is open; only the dropdown stays. zenui's `MenuBar` and `Menu` take no Escape in their own Update when driven by the bar.
+
+Scope: find whether the bar's dropdown is meant to close on Escape in zenui (its `Menu` reports Cancelled for a standalone menu) and make the bar's do so, in zenui; a test with a recorded Input.
+
+Done when: Escape closes an open dropdown, with a test, and 0.27.0's sentence is true.
 
 ## tape
 
@@ -280,58 +340,140 @@ Thirteenth finding (2026-11-16, 0.11.0): **NextZXOS boots.** Welcome screen, mai
 5. **The screen cache.** On a change of displayed bank `updateScreenBank` copied the renderer's cache back into RAM, which is right for the classic models (the cache is the displayed bank) and wrong on the Next (RAM is written first), so bank 7 was overwritten; and every write to page 10 reached the cache whichever bank was displayed. RAM is now authoritative on the Next.
 6. **Layer 2 was always composited** on a Next, over the ULA picture, from T-29's reading that no enable bit was documented. `ports.txt` documents it: port 0x123B bit 1, alias NextREG 0x69 bit 7. Gated on it; five tests that drew Layer 2 without turning it on now turn it on.
 
-Outstanding before this closes: a run of the GUI build on a machine with a display (the GUI path composites the Next layers separately and was not exercised), and the items this work filed: T-42 (NextREG 0x12 and 0x13 are bank numbers), T-43 (the card is read-only), T-44 (tilemap and Timex modes).
+Fourteenth finding (2026-11-16, 0.11.0): **the GUI build boots NextZXOS too.** Linked in the sandbox once Mesa and the X11 development packages were there, and run under Xvfb with software OpenGL: welcome screen, main menu, NextBASIC's editor in 64 columns, the tilemap demo. Getting there needed the GUI to draw the tilemap and the Timex modes (T-44) and to let a script's keys through (T-45). Running the GUI-tagged tests for the first time found four of them wrong (T-46) and the reset value of NextREG 0x15 wrong (T-47).
 
-### T-42. NextREG 0x12 and 0x13 are 16K bank numbers; zenzx reads them as 8K pages
+Fifteenth finding (2026-11-16, 0.11.0): **saving to the card, checked again after a report that it failed in a local run.** On a card made by `scripts/next_card.py`, in the headless build, each of these ended in "0 OK" and was then found on the card image with a FAT library: `SAVE` of a BASIC program, `SAVE ... CODE 16384,40000` (40,128 bytes), `MKDIR`, `SAVE` into the new folder, `SAVE` over an existing file (which leaves a `.bak`), `COPY ... TO`, `.mkdir`, `.cp` (the copy equal to its source byte for byte), `ERASE` and `MOVE ... TO`. No block was refused and both FAT copies stayed equal. A program saved from the GUI build was loaded and listed after a second boot. The failure was not reproduced; what was found on the way is T-49 (the free space record) and that `run_next_divmmc.sh` kept using a `./zenzx` built before card writes existed. `TestNextZXOSSavesToCard` now repeats the save and the read-back.
 
-Theme: next-support · Priority: P2 · Status: ☐
-
-- **Trigger:** 0.11.0, while getting NextZXOS to boot. The Next's register reference (`registers.txt` in the distribution, `/docs/extra-hw/io-port-system`) says NextREG 0x12 and 0x13 hold a *16K RAM bank* number, reset values 8 and 11. `layer2BaseBank` (layer2.go) and the port 0x123B mapping (layer2accessport.go) use the value as an 8K page number, and the register file's reset value for 0x12 is 0. NextZXOS writes 9 at start-up; a program that draws Layer 2 through the documented banks would be shown from the wrong memory.
-- **Fix:** take the visible and shadow bases as bank numbers (page = 2 x bank), give 0x12 and 0x13 their reset values, and update the Layer 2 tests, which were written against the page reading. The GUI path (videorender_gpu.go) uses the same accessor.
-- **Done when:** a Layer 2 picture written to banks 8-10 with NextREG 0x12 at its reset value is displayed, in the headless decode and in the GUI.
-
-### T-43. SD card is read-only: no CMD24, CMD25 or CMD13
-
-Theme: next-support · Priority: P2 · Status: ☐
-
-- **Trigger:** 0.11.0. `SDCardImage` is an `io.ReaderAt`, and sdcard.go has no CMD24 or CMD25 and no CMD13. The firmware and NextZXOS both write to the card in normal use: the firmware saves the chosen video mode to `config.ini`, NextZXOS saves its settings and whatever the user saves. With the card read-only the writes are refused or ignored; nothing has been seen to fail at start-up, but saving cannot work.
-- **Fix:** CMD24 (single block write) and CMD25 (multiple), with the data-response token and the busy period the firmware polls for, CMD13 (status), and an image opened read-write, with a flag for a write-protected card. Ochenta's notes record that its cards were once damaged because CMD13 was not answered while writes were accepted; the two belong together.
-- **Done when:** a file saved from NextBASIC is on the card image afterwards and the image still mounts on the host.
+Outstanding before this closes: T-44 (what is left of the tilemap and Timex modes) and T-48 (the GUI's handling of the Next layers).
 
 ### T-44. Tilemap and the Next's Timex modes are not drawn
 
-Theme: next-support · Priority: P2 · Status: ☐
+Theme: next-support · Priority: P2 · Status: ◐
 
 - **Trigger:** 0.11.0. NextZXOS reaches its welcome screen, main menu and Browser using the ULA screen only, so they display. The tilemap (NextREG 0x6B, 0x6C, 0x6E, 0x6F, 0x4C and its palette) is not drawn at all, and the editor's 64 and 85 column modes, many programs and the tilemap `.nex` loading screens use it. Timex modes through NextREG 0x69 bits 5-0 or port 0xFF are not connected on the Next either.
 - **Fix:** a tilemap decoder (40x32 and 80x32, 4-bit and 1-bit tiles, attribute byte or global attribute, 512-tile mode, clip window, scroll) composited with the other layers under NextREG 0x15 and the tilemap-over-ULA bit, and the Timex modes wired to the existing hi-colour renderer and a hi-res one.
 - **Done when:** NextBASIC's editor is readable in its 64 column mode, checked against a screenshot from another emulator or real hardware.
 
-## shared
+Shipped in 0.11.0 (2026-11-16), in the display decode that the headless build, scripts and tests use:
 
-### T-38. Migrate onto the shared zenui module and zentools' bdf
+- **The tilemap** (`nexttilemap.go`): 40 and 80 columns, 4-bit tiles with palette offset, mirroring and rotation, text mode, one-byte entries with NextREG 0x6C, 512 tiles, either palette, map and definitions in bank 5 or 7, the clip window (NextREG 0x1B, 0x1C), scrolling, and its combination with the ULA: above or below per tile, forced on top, the ULA off, stencil mode, the fallback colour. A ULA pixel in the global transparency colour lets the tilemap through, which needed the ULA's pixels taken through the Next's ULA palette; the palettes now start with the Spectrum's colours and the tilemap's with the identity. In 80 column mode the picture is 512 pixels wide.
+- **The Timex modes** (`nexttimex.go`): port 0xFF and NextREG 0x69 bits 5-0 as one latch; screen 1, hi-colour and hi-res, the last 512 pixels wide.
+- The trigger had one thing wrong: the editor's 64 and 85 column modes are the Timex hi-res mode, not the tilemap.
 
-Theme: shared · Priority: P2 · Status: ◐ · Blocks/after: after the first zenui tag is pushed
+Run in the headless build against the 26.11 card: the card's `/demos/tilemap/tm.nex`, started with `.nexload`, shows its coloured character map in 80 and in 40 columns with the ULA's text over it; and NextBASIC's editor is readable in 64 and in 85 columns. Unit tests: `nexttilemap_test.go`, `nexttimex_test.go`.
 
-Trigger: zenzx carried the only copy of the UI toolkit it grew. zenui v0.1.0 extracts it, with `zxpalette` and the raylib adapter, and zentools' `pkg/bdf` is the canonical BDF reader.
+The GUI (2026-11-16): its standard picture is drawn on the GPU cell by cell and did not go through this decode. Both front ends now take the picture from `nextSoftwareULA` (nextsoftula.go) whenever a Next is in a Timex mode or has the tilemap on; the GUI shows it as a texture in place of the cell drawing (display_nextula.go). Seen in the GUI build under Xvfb with software OpenGL: NextBASIC's editor in 64 columns and the tilemap demo in 80; `TestGLNextPicture` (guard G-05) reads hi-res and a tile back from the window.
 
-Scope: switch the root package and `pkg/fonts` to the shared modules; delete `pkg/zenui`, `pkg/zenuiraylib`, `pkg/zxpalette` and `pkg/bdf`; move zentools to v0.8.6.
+0.13.0: the tilemap is now drawn by the frame compositor (nextframe.go, T-48) over the whole 320x256 frame, border included, in both builds; the card's tilemap demo fills the frame in 80 columns.
 
-Verified: the headless build, vet and tests, the `./pkg/...` tests, and a cgo-free windows build and vet of every GUI file and test all give the same results as before the change. This was checked against a local simulation of the published module.
+Outstanding: (1) In the GUI at 1x a picture 512 or 640 pixels across is shown at half that, so every other column is lost (T-51). (2) No comparison with a reference screenshot has been made; the direction of tile rotation in particular is unchecked. (3) Closed in 0.14.0: the classic picture goes through the Next's ULA palette whenever that palette is not at its starting values, which under NextZXOS is always, and in ULANext mode. (4) NextREG 0x69 bit 6 (shadow screen) and port 0xFF bit 6 (interrupt disable) are stored and do nothing.
 
-Outstanding: build against the real published zenui tag; run the GUI-tagged tests on a host with a display (they are only compile-checked in the sandbox); land it on main, which still carries the in-tree copies as of v0.10.0 (the change itself lives in the zenplay workspace's copy of zenzx), then cut a release.
+### T-50. Remove the Next drawing code the frame compositor replaced
 
+Theme: next-support · Priority: P2 · Status: ☐
+
+- **Trigger:** 0.13.0. The frame compositor (nextframe.go) replaced the Next's earlier drawing in both front ends; the earlier code is still in the tree and nothing but its own tests calls it.
+- **What is superseded:** in the GUI, `renderNextLayersGPU`, `renderLayer2GPU`, `renderSpritesGPU`, the sprite texture cache, the Layer 2 palette textures and `nextLayersViewportOffset` (videorender_gpu.go, display.go); shared, `DecodeLayer2`, `DecodeSprites`, `CompositeLayer2`, `CompositeNextLayers`, `layersAboveULA`, `widenToMatch`, `CombineULAAndTilemap` and the tilemap branch of `nextSoftwareULA`. They place Layer 2 and the sprites wrongly (no 32 pixel inset for the sprites, the clip window not doubled in the wide modes, nothing in the border), which is why they were replaced.
+- **Why not removed at once:** the compositor had been run only under software OpenGL; the earlier path stays one release so that it can be put back if the new one misbehaves on a real GPU.
+- **Done when:** the code above and its tests are deleted, guard G-03 (the Layer 2 palette textures) is retired with them, and both suites pass.
+
+### T-51. What the Next's frame compositor does not draw
+
+Theme: next-support · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.13.0, writing the frame compositor (nextframe.go).
+- **Not drawn:** (1) Since 0.15.0 the frame is drawn in pieces as the beam goes down it (nextraster.go), so what the copper or the CPU changes part of the way down shows from where it changed, and a border that changes colour is striped. Left of that: the pieces are whole lines, as CSpect draws them, where the machine changes at the pixel; a write by the CPU is placed at the start of its instruction, up to 20 T-states early, which matters near the end of a line; the pieces hold the memory as it was when each was composed, so a picture redrawn under the beam does not tear; (2) LoRes is drawn since 0.20.0 (nextlores.go), standard and Radastan, with its scroll; its place when the ULA is turned off by NextREG 0x68 has not been checked. (3) The two blending layer orders (NextREG 0x15 bits 4-2 = 110 and 111), taken as S L U without the blend. (4) The ULA's own scrolling (NextREG 0x26, 0x27) and half pixel scroll. (5) The Layer 2 palette's priority bit. (6) Sprite priority reversed (NextREG 0x15 bit 6), and sprite collision and line overflow (port 0x303B reads 0). 4-bit sprite patterns are drawn since 0.20.0. (7) At 1x in the GUI a frame 640 pixels across is shown in 320, so every other column is lost.
+- **Compared with CSpect (0.14.1, 2026-11-16):** CSpect 3.3.1.0 under Mono, same ROMs and distribution. The NextZXOS welcome screen has the same seven colours in both. The warm grey white of 0.14.0 was a fault here, not the hardware's: NextREG 0x44 could not be read back.
+- **Compared with CSpect (0.16.1, 2026-11-16):** CSpect is the reference for the picture. Two copper lists typed in NextBASIC, each giving the white paper a new colour on each of the 192 lines (start control 11). With WAIT line,0 the two pictures are the same on every pixel. With the WAIT's horizontal position going from 0 to 47 in bands of four lines, they are the same for positions 0 to 33 (lines 0 to 135); from 34 on CSpect shows a line's own colour on five lines of every eight and the line before's on the other three, whatever the position, and ZenZX shows the line's own colour for 34 and 35 and the line before's from 36: 33 lines differ. CSpect draws a line whole, from the state near the end of its right border; ZenZX does the same since 0.16.1 (at 0.15.0 it changed at the pixel, which put a step at the left of every bar). show512 is the same on every pixel since 0.16.0.
+- **Done when:** each of these is drawn or has its own item.
+
+### T-56. A NextBASIC loop takes 5% fewer frames than in CSpect
+
+Theme: next-support · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.17.0, checking the line interrupt against CSpect 3.3.1.0 from NextBASIC: `POKE 23672,0: FOR i=1 TO 500: NEXT i: PRINT PEEK 23672` counts the interrupts a loop takes. CSpect prints 94, 191 with the line interrupt on and 93 with the frame interrupt off as well; ZenZX prints 89, 181 and 89. The ratios agree, which is what the check was for. The loop itself takes 5% fewer frames here.
+- **Not known:** where the 5% is. Candidates: memory contention, which the Next has at 3.5 MHz and which CSpect may charge differently; instruction timings; the frame's length in CSpect.
+- **Done when:** the cause is known, and either the count agrees or the difference is written down as CSpect's.
+
+### T-58. The Next's DMA (ports 0x6B and 0x0B) is not emulated
+
+Theme: next-support · Priority: P1 · Status: ◐
+
+- **Trigger:** 0.18.1, taking screenshots of the card's games for the README. Ports 0x6B (zxnDMA) and 0x0B (Z80 DMA mode) are not there at all: a program that sends the DMA a transfer gets nothing done.
+- **Effect:** the games that use it to clear or fill the screen, copy pictures or play samples draw wrongly. Of the eight programs tried, the four that draw wrongly (Warhawk, Nextoid, AngryBloaters, ScrollNutter) all contain code that sends a program to port 0x6B, and the two that draw right throughout (Night-Knight, Spectron 2084) contain none; The Lords of Midnight has one such place and draws its title right and its next screens wrongly. That is what points at the DMA; no run has yet shown the DMA to be the cause in any one of them. `docs/next-programs.md` has the list.
+- **Fix:** the zxnDMA as the Next's ports.txt and the page it names describe it: the subset of the Z80 DMA's registers the Next has, memory to memory, memory to port and port to memory transfers, continuous and burst modes with the prescaler, and the transfer's T-states taken from the CPU.
+- **Shipped in 0.19.0 (2026-11-16):** `nextdma.go`: the registers, memory and port transfers in both directions, counting up, down or staying, the read sequence and status, port 0x0B's extra byte, and timed transfers by the prescaler. Warhawk, Nextoid, AngryBloaters and The Lords of Midnight now draw their first screens cleanly (`docs/next-programs.md`).
+- **Compared with jnext (0.19.1, 2026-11-16):** jnext 1.3.0, built here without its GUI and run headless on the same card, shows the same title and high score screens for Warhawk, the same menu for Nextoid, the same title and table for AngryBloaters and the same title for The Lords of Midnight, by eye, at moments that are not the same frame in the two. It is a second reference, used as a running program only.
+- **Outstanding:** nothing has been compared with CSpect. CSpect 3.3.1.0, the version that runs here, shows a black screen for Warhawk; 4.5.1.0 does not start under the Mono installed (it wants the netstandard library). No timed transfer has been heard: the sound of a sample player was not checked. Auto restart without a prescaler and the prescaler in continuous mode are as the file's header says, not as the machine.
+- **Done when:** Warhawk's title and first level are the same as CSpect's, and each program in `docs/next-programs.md` whose fault this was is marked as drawing right.
+
+### T-59. The Next's interrupt mode (NextREG 0xC0 to 0xCF) and the CTC are not emulated
+
+Theme: next-support · Priority: P2 · Status: ◐
+
+- **Trigger:** 0.20.0, comparing the card's games with jnext. TX-1696 writes NextREG 0xC0 = 0xA9 (bit 0: the Next's own interrupt mode, with the vector's high bits), 0xC5 = 0x01 (the first CTC channel's interrupt) and 0xCC, 0xCD (which interrupts may break into a DMA transfer). None of it is acted on: every interrupt is the frame's or the line's, with 0xFF on the bus, and there is no CTC (ports 0x183B to 0x1F3B) at all.
+- **Effect:** not seen yet. TX-1696 reaches its game and its first screens are the same as jnext's. Whatever it times with the CTC, its music most likely, does not run, and a program that takes its frame interrupt through the vector this mode gives it would not get it.
+- **Fix:** the interrupt mode of NextREG 0xC0 with the vector it makes for each source, the enables and status of 0xC4 to 0xCA, and the four CTC channels as the Next's ports.txt describes them.
+- **Shipped in 0.21.0 (2026-11-16):** `nextint.go`: the hardware IM 2 mode of NextREG 0xC0 with a vector for each source, the enables of 0xC4 and 0xC5 (0xC4's are NextREG 0x22's), the status of 0xC8 and 0xC9, and four CTC channels as timers and as counters of the channel before. A test program takes the frame, the line and a CTC interrupt each through its own vector and counts them. TX-1696 keeps the same screens as jnext and now reaches each of them at the same step.
+- **Outstanding:** TX-1696's sound has not been listened to. Not there: the UARTs; a CTC interrupt in the ordinary mode; the chain that holds a lower source back while a higher one's handler runs; NextREG 0xCC to 0xCE; a CPU that is not in IM 2 while the mode is on.
+- **Done when:** a test program takes a CTC interrupt and a line interrupt through their own vectors, and TX-1696's sound has been listened to beside jnext's.
+
+### T-61. The Multiface has no NMI key, and only what NextZXOS uses was tried
+
+Theme: next-support · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.22.0, T-52: the Multiface was added for what NextZXOS needs to start a snapshot.
+- **Not there:** a key for the NMI button in the front ends (`MultifaceButton` is there and nothing calls it; the Multiface ROM's menu drew when the NMI was taken outside a snapshot start); the DivMMC NMI of NextREG 0x02 bit 2 and its button; the I/O traps that make a Multiface NMI (NextREG 0x02 bit 4); NextREG 0x02 bits 4-2 reading back as the cause of the NMI other than as last written.
+- **Not tried:** the Multiface kinds other than the +3 (NextREG 0x0A bits 7-6), which differ in their ports and in what the enable port reads.
+- **Chosen without a source:** a write to either of the Multiface's ports hides it until the next NMI (on the machine it is one of the two); DivMMC's entry points do not fire while the Multiface is paged in; RETN does not also page DivMMC out. The Next's ROM gives the same result either way; another program might not.
+- **Done when:** the front ends have an NMI key that brings up the Multiface's menu and leaves it again, and each of the others is done or has its own item.
+
+### T-62. The Next examples were compared with jnext only, not with CSpect
+
+Theme: next-support · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.23.0, the examples in `examples/next` (gallop, fuji, orbit).
+- **Known:** each shows the same picture in ZenZX and in jnext 1.3.0, started with `.nexload`. Sprite positions going round at 512 was taken from jnext for these and is in ZenZX since.
+- **Not done:** none was run in CSpect 3.3.1.0, which is the standard for the picture, or on a Next; `fuji` and `orbit` were not started from the Browser; nothing in them makes a sound.
+- **Done when:** each has been compared with CSpect from the same keys, or the reason it cannot be is written down.
+
+### T-63. SD Card menu: the first slot, per-slot write protection and an on-screen message are missing
+
+Theme: next-support · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.24.0, the SD Card menu and the second card slot.
+- **Not there:** changing the card in the first slot from the menu (it means starting the Next again from another card, with its own DivMMC ROM); write protection for each slot separately (`-sdcard-readonly` is for both); a message in the window when a card is put in or taken out, which is printed to the terminal now and is where the remount hint is; ZenScript actions for the second slot, so a headless script can change it.
+- **Not tried:** the menu's items clicked one by one in a window (their actions are tested, and the menu and its card browser were looked at under Xvfb); a second card with more than one partition; a card the Next writes to from both slots at once.
+- **Done when:** each of these is done or has its own item.
+
+### T-64. DMA+ and 4 MB: board ID, interrupts holding the DMA, and a comparison with CSpect 4.5 are missing
+
+Theme: next-support · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.26.0, DMA+ and the issue 5 board's 4 MB.
+- **Not there:** the board ID in NextREG 0x0F is 0 (issue 2) whatever `-next-issue` says: the card's registers.txt lists issues 2 to 4 and gives no number for an issue 5; an interrupt holding the DMA off while a transfer runs (NextREG 0xCC to 0xCE); an issue 2 board with 1 MB (`-next-issue=2` is the one with the 2 MB expansion); banks 5 and 7's other SRAM is kept, but nothing models what the machine's ULA shows of a physical write there beyond "nothing".
+- **Not tried:** the same nine examples in CSpect 4.5.1.0 (`-issue=5`), which does not start under the Mono installed here, or on a machine; a DMA+ transfer with a prescaler; a 2D transfer to or from a port; burst mode in 2D.
+- **Done when:** the board ID follows the issue with a documented value, and `zxnddma_examples` and `zxnddma_compare` have been seen side by side with CSpect 4.5 or a KS3.
 
 ## embedding
 
 ### T-39. Extract the machine core from `package main` into an embeddable `pkg/machine`
 
-Theme: embedding · Priority: P1 · Status: ☐ · Filed-by: zenplay:T-05 · Blocks/after: —
+Theme: embedding · Priority: P1 · Status: ◐ · Filed-by: zenplay:T-05 · Blocks/after: —
 
 Trigger: about 13.7k raylib-free lines (memory, ULA and contention, FDC and disc, AY, tape, snapshots, Next features) live in the root `package main`, with the wiring in a roughly 380-line `main()` in `zenzx_headless.go`. A `NewZenZX(audioBackend)` constructor and a `DisplayManager` with GUI and headless implementations already exist.
 
 Scope: move the core into a library package; replace the `main()` wiring with a constructor plus options (model, ROM set, audio backend, display sink); leave the GUI and headless commands as thin shells over it; land it in its own release, apart from the Next-support closures (T-33, T-34).
 
 Done when: the headless suite passes on top of the library, and an external module can construct and step a machine without importing anything graphical.
+
+Added 2026-11-16: the library is also what several machines in one program, diffing them, the workbench (`docs/proposals/workbench.md`) and zenplay's Run page stand on. So: no mutable state shared between machines, the display and the audio as sinks the host supplies, and a test that runs two machines side by side and shows that neither disturbs the other, as part of "done".
+
+Progress, 0.28.0 (2026-11-16): three of the four stages of `docs/MACHINE_MAP.md` shipped. The route taken is that document's option B, not a move to `pkg/machine`: the root package itself is the library, `package zenzx`, with the programs in `cmd/zenzx` and `cmd/zenzx-headless`. The core no longer prints (two sinks a host sets, `logging.go`); the audio is one engine with a device interface and the display an interface, so no name is declared per build tag any more; `twomachines_test.go` runs a 48K and a 128K machine alone, in turns and at the same time, and each ends as it does alone; `scripts/check_import.sh` imports the package from another module with `-tags headless,purego`, runs a machine and reads its picture back.
+
+Progress, 0.36.0 (2026-11-18): a piece of stage 4. The set-up of a machine as a model (its ROM set, a +3's floppy controller, a Next's processor and memory) is one function, `loadModelROMs` in `machine_model.go`, used by the GUI's live model switch and by `newMachine`, which makes every machine after the first in the headless program. Neither is exported yet, and the first machine of each program is still wired by its start-up code. An embedder also gained `NewLink`/`AttachLink` and `AutorunBASIC`/`AutorunFile` (`docs/link.md`).
+
+Outstanding: stage 4, the exported `Machine` over the internals (a constructor with options for the model and ROM set, the Next's wiring, snapshots from bytes, input), which is the "constructor plus options" of the scope above. Until then an embedder reaches only `NewZenZX`, the ROM loaders that take bytes, `Reset`, `RunFrame`, `DecodeDisplay`, `SetDisplay` and the audio's `SetDevice`. Verification outstanding: the two-machine test under the race detector on a machine with several cores (it passed here on 2), and sound on a real sound card after the audio change, including switching sound off and on again.
 
 
 ### T-40. Provide a purego-safe audio backend so the embedded machine builds with `CGO_ENABLED=0`
@@ -343,6 +485,50 @@ Trigger: the GUI frontends build raylib cgo-free with `-tags purego`, while this
 Scope: implement a backend that works under purego (raylib's own audio is the candidate, unverified under purego); keep `oto` available behind a build tag.
 
 Done when: a `CGO_ENABLED=0` build of a host that embeds the machine produces sound, or the blocker is recorded here with evidence.
+
+### T-65. The workbench: the running machine as the thing being edited
+
+Theme: embedding · Priority: P2 · Status: ☐ · Blocks/after: after T-39
+
+A development workbench inside ZenZX: a debugger of CSpect's kind, assembling to hot memory, saving snapshots, tapes and NEX files from the hot state, a visual memory map whose blocks open as source and can be dragged to relocate them, block types found by the emulator and forced by hand, several machines at once and diffing them, with the further ideas recorded beside those. docs/ZENBENCH.md names the base it shares with zenplay. docs/proposals/workbench.md has all twenty (editing sprites and images in memory with editors from zenplay was added the same day), what is hard in each, and what exists to build on. Nothing is designed in detail or implemented.
+
+Trigger: the discussion of 2026-11-16, after zenas and zendis became libraries and ZenZX moved onto zenui.
+
+Done when: the proposal has become a staged plan with its own tracker, and this item points at it.
+
+### T-67. The machine dock: what the first cut leaves out
+
+Theme: embedding · Priority: P3 · Status: ☐
+
+Trigger: the dock shipped in 0.29.0 as a first cut (2026-11-17). What it does not do yet, so that none of it is lost.
+
+- New makes the front machine's model; there is no choice of model on the tile, and no way to start a machine from a snapshot, tape or disc directly.
+- The deck (its machines, their names and order, the layout) is not saved between sessions.
+- A name from tape is the tape's first Program header, not the header of what was actually loaded: a tape whose first program is skipped names the machine after it all the same.
+- Only the front machine is heard. Mixing, or a choice per machine, is open (the workbench proposal's table of what machines share).
+- A disc dropped on the window or given with `-disk` is not checked against the other machines' drives; the Floppy Disks window and Open DSK Image are.
+- Tiled layouts: no border stripes in a tile; the pointer over a tile is not that machine's mouse; the layout is not saved; a tile's scale is whole, so a large monitor leaves room unused rather than fill it.
+- New beside a Next makes a 48K; it could make a Next and open the SD Cards window at once (0.30.0 gave a second Next its own cards through the Machine menu).
+- The dock is in ZenZX. As a widget it belongs in zenui (a strip of live pictures, magnification, the flight), with the host supplying the pictures; zenplay would be its second user. Since 0.35.0 its rounded shapes are drawn through raycanvas, called directly with raylib types (`dockround_gui.go`); a zenui widget would need rounded fills, strokes and images in zenui's `Renderer`, with raycanvas behind the raylib adapter.
+- Not seen on macOS; sound passing between machines not heard.
+
+Done when: each line above is done, dropped with a reason, or moved to its own item.
+
+### T-69. The link, -multi and -autorun: what the first cut leaves out
+
+Theme: embedding · Priority: P3 · Status: ☐
+
+Trigger: 0.36.0 added `-multi`, `-listen` and `-autorun` (docs/link.md). What that first cut does not do:
+
+- `-autorun` is not available on a Next or a TS2068: it presses the keys that load from tape, and those are known only for the 48K and the 128K family. On a Next the way in would be NextZXOS's own loader, or a file put on the card.
+- A Next of `-multi` other than the primary one gets no card in its second slot, and `-sdcard-readonly` is the same for all of them.
+- `-tape`, `-snapshot`, `-script`, `-disk` and the like go to one machine only (the first, or the Next). There is no way to give them to another.
+- A machine added from the dock has no link, and a link cannot be given or taken away from the GUI.
+- The link's two ports are fixed at 16384 and 16385 from the command line (`Link.SetPorts` exists for a program that embeds ZenZX).
+- The host cannot tell from the socket when the machine has taken a byte, and nothing limits how many bytes it may queue.
+- Not seen on macOS or Windows.
+
+Scope: each of these is a small piece of its own; do them as they are wanted.
 
 ---
 

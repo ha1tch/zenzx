@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -73,14 +73,14 @@ type SpectrumIO struct {
 	fdc           *FDC765         // FDC implementation
 	fdcDebug      bool            // Debug flag for FDC operations
 
-	hasDivMMC bool     // DivMMC interface present (T-36)
+	hasDivMMC bool // DivMMC interface present (T-36)
 	// nextResetRequest is a reset asked for through NextREG 0x02 and not yet carried out
 	// (nextconfig.go): 0 none, nextResetSoft or nextResetHard.
 	nextResetRequest int
 	// nextVideoLineFn gives the line the display is drawing, for NextREG 0x1E and 0x1F
 	// (nextvideoline.go); nil outside a full machine, where both read 0.
 	nextVideoLineFn func() int
-	divMMC    *DivMMC  // DivMMC implementation (divmmc.go)
+	divMMC          *DivMMC // DivMMC implementation (divmmc.go)
 
 	// Audio support
 	audio       *AudioWrapper // Reference to audio manager wrapper (changed from *AudioManager)
@@ -90,10 +90,14 @@ type SpectrumIO struct {
 	borderHistory *BorderHistory // Track border changes per frame
 	cpu           Z80CPU         // Reference to CPU for cycle count (interface, not pointer)
 
+	// link is the machine's byte channel to the outside, or nil: link.go.
+	link *Link
+
 	// Joystick support (joystick.go)
 	joystickMode   JoystickMode
-	kempstonState  uint8 // Current Kempston port 0x1F byte, updated by SetJoystickState
-	kempston2State uint8 // Current second Kempston port 0x37 byte (neo-Spectrum platforms only, joystick.go)
+	joyPressed     [8]uint8 // keys a Sinclair or Cursor joystick holds down, a bit set for each: joyports.go
+	kempstonState  uint8    // Current Kempston port 0x1F byte, updated by SetJoystickState
+	kempston2State uint8    // Current second Kempston port 0x37 byte (neo-Spectrum platforms only, joystick.go)
 
 	// Mouse support (mouse.go)
 	mouseMode            MouseMode
@@ -101,8 +105,10 @@ type SpectrumIO struct {
 	kempstonMouseY       uint8   // Wrapping Y counter, port 0xFFDF
 	kempstonMouseButtons uint8   // Port 0xFADF, active low, unused bits high
 	mouseRemX, mouseRemY float32 // Fractional remainder carried between frames
-	amxMouseButtons      uint8   // Port 0xDF bits 5-7, active high
-	amxPortValue         uint8   // What port 0x1F/0x3F return until the next popped request
+	mouseWheel           uint8   // a Next's wheel position, bits 7-4 of port 0xFADF
+	mouseWheelRem        float32
+	amxMouseButtons      uint8 // Port 0xDF bits 5-7, active high
+	amxPortValue         uint8 // What port 0x1F/0x3F return until the next popped request
 	amxIntQueue          []amxInterruptRequest
 	amxPendingVector     uint8 // Vector GetInterruptVector should hand out next
 	amxVectorPending     bool
@@ -133,6 +139,29 @@ type SpectrumIO struct {
 	// (the port handler, not machine-type gating).
 	nextRegs       *NextRegisterFile
 	nextRegClipWin *nextRegClip
+	// The sprites' clip window (NextREG 0x19) and the ULA's (0x1A); nextframe.go.
+	nextClipSprites *nextRegClip
+	nextRegLog      nextRegLog // -nextreg-log: nextreglog.go
+	// The frame drawn in pieces as the beam goes down it, and the copper that follows the
+	// beam (nextraster.go, nextcopper.go). rasterTimingFn and rasterScreen come from the
+	// front end (rasterEnable); without them every frame is composed whole.
+	raster         nextRaster
+	copper         nextCopper
+	rasterTimingFn func() nextRasterTiming
+	rasterScreen   *SpectrumScreen
+	nextSpeed      nextCPUSpeed   // NextREG 0x07: nextspeed.go
+	nextLineInt    nextLineInt    // NextREG 0x22, 0x23: nextlineint.go
+	dma            nextDMA        // ports 0x6B and 0x0B: nextdma.go
+	nextInt        nextInterrupts // NextREG 0xC0-0xC9 and the CTC: nextint.go
+	mf             nextMultiface  // the Multiface: nextmultiface.go
+	intVector      uint8          // the byte last given to the CPU as its IM 2 vector: im2vector.go
+	nextClipULA    *nextRegClip
+	// tilemap is the tilemap's own state beyond the register file: its clip window
+	// (nexttilemap.go).
+	tilemap tilemapState
+	// nextTimexPort is the last value written to port 0xFF on a Next: the Timex screen
+	// mode and the hi-res colour (nexttimex.go).
+	nextTimexPort uint8
 
 	// sprites is T-30 (wave ti0.r4)'s attribute table and pattern memory
 	// (sprite.go), constructed alongside nextRegs/nextRegClipWin by
@@ -188,16 +217,19 @@ type Z80CPU interface {
 
 func NewSpectrumIO(memory *SpectrumMemory, audio *AudioWrapper) *SpectrumIO {
 	io := &SpectrumIO{
-		memory:         memory,
-		audio:          audio, // Initialize audio reference (can be nil)
-		hasFDC:         false,
-		fdc:            nil,
-		fdcDebug:       false,
-		borderHistory:  NewBorderHistory(),
-		nextRegs:       newNextRegisterFile(),
-		nextRegClipWin: newNextRegClip(),
-		sprites:        newSpriteSystem(),
-		nextPalette:    newNextPaletteSystem(),
+		memory:          memory,
+		audio:           audio, // Initialize audio reference (can be nil)
+		hasFDC:          false,
+		fdc:             nil,
+		fdcDebug:        false,
+		borderHistory:   NewBorderHistory(),
+		nextRegs:        newNextRegisterFile(),
+		nextRegClipWin:  newNextRegClip(),
+		nextClipSprites: newNextRegClip(),
+		nextClipULA:     newNextRegClip(),
+		tilemap:         newTilemapState(),
+		sprites:         newSpriteSystem(),
+		nextPalette:     newNextPaletteSystem(),
 	}
 	for i := range io.keyboard {
 		io.keyboard[i] = 0x1F // No keys pressed
@@ -251,6 +283,23 @@ func (io *SpectrumIO) Out(port uint16, value uint8) {
 // ============================================================================
 
 func (io *SpectrumIO) ReadPort(port uint16) uint8 {
+	// The link's two ports are answered before anything else: link.go.
+	if io.link != nil {
+		if v, ok := io.link.readPort(port); ok {
+			return v
+		}
+	}
+	if (port&0xFF == 0x6B || port&0xFF == 0x0B) && io.memory != nil && io.memory.isNext {
+		return io.dmaPortRead() // the Next's DMA: nextdma.go
+	}
+	if ch := ctcChannelOfPort(port); ch >= 0 && io.nextIsNext() {
+		return io.ctcPortRead(ch) // nextint.go
+	}
+	if io.mf.active {
+		if v, ok := io.mfPortRead(port); ok { // nextmultiface.go
+			return v
+		}
+	}
 	// ZX Spectrum Next NextREG ports (0x243B/0x253B, nextreg.go): fully
 	// 16-bit decoded on real hardware, checked first so no partial-decode
 	// branch below (which only matches a handful of address bits) can
@@ -262,6 +311,9 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 	}
 	if port == nextRegDataPort {
 		return io.nextRegReadSelected()
+	}
+	if port == 0x303B && io.memory != nil && io.memory.isNext {
+		return 0 // sprite status: no collision, no line overflow (spriteports.go)
 	}
 	if port == layer2AccessPortAddr {
 		// Read-back of the port's own last-written control byte -- no
@@ -289,7 +341,7 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 		// Check keyboard rows
 		for row := 0; row < 8; row++ {
 			if port&(1<<uint(row+8)) == 0 {
-				result &= io.keyboard[row]
+				result &= io.keyboard[row] &^ io.joyPressed[row]
 			}
 		}
 
@@ -375,7 +427,7 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 		case 0xE3:
 			return io.divMMC.ReadControl()
 		case 0xEB:
-			return io.divMMC.SD().ReadData()
+			return io.divMMC.ReadData()
 		}
 	}
 
@@ -389,13 +441,16 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 		return io.kempstonMouseY
 	}
 	if port&0x0FFF == 0x0ADF {
+		if io.mouseMode == MouseKempston && io.memory != nil && io.memory.isNext && io.kempstonMouseButtons == 0xFF {
+			return 0x07 // a Next before the mouse has been touched: no buttons, wheel at 0
+		}
 		return io.kempstonMouseButtons
 	}
 
 	// +3 FDC ports
 	if io.memory.isPlus3 {
 		if io.fdcDebug && ((port&0xF000) == 0x2000 || (port&0xF000) == 0x3000) {
-			fmt.Printf("Port read: 0x%04X (A0=%d, A7=%d, A10=%d, bits 12-13=%02b)\n",
+			sayf("Port read: 0x%04X (A0=%d, A7=%d, A10=%d, bits 12-13=%02b)\n",
 				port, port&1, (port>>7)&1, (port>>10)&1, (port>>12)&3)
 		}
 
@@ -404,7 +459,7 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 			if io.hasFDC && io.fdc != nil {
 				status := io.fdc.ReadStatus()
 				if io.fdcDebug {
-					fmt.Printf("FDC Status Read: port=0x%04X status=0x%02X\n", port, status)
+					sayf("FDC Status Read: port=0x%04X status=0x%02X\n", port, status)
 				}
 				return status
 			}
@@ -416,7 +471,7 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 			if io.hasFDC && io.fdc != nil {
 				data := io.fdc.ReadData()
 				if io.fdcDebug {
-					fmt.Printf("FDC Data Read: port=0x%04X data=0x%02X\n", port, data)
+					sayf("FDC Data Read: port=0x%04X data=0x%02X\n", port, data)
 				}
 				return data
 			}
@@ -444,6 +499,9 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 }
 
 func (io *SpectrumIO) WritePort(port uint16, value uint8) {
+	if io.link != nil && io.link.writePort(port, value) {
+		return // link.go
+	}
 	// ZX Spectrum Next NextREG ports: see the matching comment in
 	// ReadPort above.
 	if port == nextRegSelectPort {
@@ -453,6 +511,35 @@ func (io *SpectrumIO) WritePort(port uint16, value uint8) {
 	if port == nextRegDataPort {
 		io.nextRegWriteSelected(value)
 		return
+	}
+	io.rasterBeforePortWrite(port, value) // nextraster.go
+	if io.memory != nil && io.memory.isNext {
+		io.mfPortWrite(port, value) // nextmultiface.go
+	}
+	if (port&0xFF == 0x6B || port&0xFF == 0x0B) && io.memory != nil && io.memory.isNext {
+		io.dmaPortWrite(port, value) // the Next's DMA: nextdma.go
+		return
+	}
+	if ch := ctcChannelOfPort(port); ch >= 0 && io.nextIsNext() {
+		io.ctcPortWrite(ch, value) // nextint.go
+		return
+	}
+	if port&0xFF == 0xFF && io.memory != nil && io.memory.isNext {
+		io.nextTimexPortWrite(value) // the Timex screen modes: nexttimex.go
+		return
+	}
+	if io.memory != nil && io.memory.isNext && io.sprites != nil { // the sprite ports: spriteports.go
+		switch {
+		case port == 0x303B:
+			io.spriteSlotPortWrite(value)
+			return
+		case port&0xFF == 0x57:
+			io.spriteAttributePortWrite(value)
+			return
+		case port&0xFF == 0x5B:
+			io.spritePatternPortWrite(value)
+			return
+		}
 	}
 	if port == layer2AccessPortAddr {
 		io.layer2Access.raw = value
@@ -498,10 +585,10 @@ func (io *SpectrumIO) WritePort(port uint16, value uint8) {
 			io.divMMC.WriteControl(value)
 			return
 		case 0xE7:
-			io.divMMC.SD().WriteCS(value)
+			io.divMMC.WriteCS(value) // one card or the other: sdcard2.go
 			return
 		case 0xEB:
-			io.divMMC.SD().WriteData(value)
+			io.divMMC.WriteData(value)
 			return
 		}
 	}
@@ -537,7 +624,7 @@ func (io *SpectrumIO) WritePort(port uint16, value uint8) {
 		if (port&0x0081) == 0x0081 && (port&0xF400) == 0x3400 {
 			if io.hasFDC && io.fdc != nil {
 				if io.fdcDebug {
-					fmt.Printf("FDC Data Write: port=%04X value=%02X\n", port, value)
+					sayf("FDC Data Write: port=%04X value=%02X\n", port, value)
 				}
 				io.fdc.WriteData(value)
 			}
@@ -579,11 +666,19 @@ func (io *SpectrumIO) WritePort(port uint16, value uint8) {
 
 // StartFrame prepares for a new frame's border tracking
 func (io *SpectrumIO) StartFrame() {
+	io.rasterFrameStart() // nextraster.go
+	io.nextLineIntFrameStart()
 	io.borderHistory.Clear()
 	// Record initial border color at start of frame
 	if io.cpu != nil {
 		io.borderHistory.Record(io.cpu.GetCycles(), io.borderColor)
 	}
+}
+
+// EndFrame is the end of a frame's T-states: on a Next the copper runs to the end of it
+// (nextraster.go).
+func (io *SpectrumIO) EndFrame() {
+	io.rasterFrameEnd()
 }
 
 // GetBorderHistory returns the border change history for rendering
@@ -647,13 +742,13 @@ func (io *SpectrumIO) EnableFDC() {
 	if io.fdc != nil {
 		io.fdc.EnableDebug(io.fdcDebug)
 	}
-	fmt.Println("FDC enabled, hasFDC =", io.hasFDC)
+	sayln("FDC enabled, hasFDC =", io.hasFDC)
 }
 
 // DisableFDC disables Floppy Disk Controller emulation
 func (io *SpectrumIO) DisableFDC() {
 	io.hasFDC = false
-	fmt.Println("FDC disabled, hasFDC =", io.hasFDC)
+	sayln("FDC disabled, hasFDC =", io.hasFDC)
 }
 
 // SetFDCDebug enables or disables FDC debug output
@@ -662,7 +757,7 @@ func (io *SpectrumIO) SetFDCDebug(enable bool) {
 	if io.fdc != nil {
 		io.fdc.EnableDebug(enable)
 	}
-	fmt.Printf("FDC debug set to %v\n", enable)
+	sayf("FDC debug set to %v\n", enable)
 }
 
 // EnableDivMMC attaches a DivMMC interface (T-36): the automap/CONMEM
@@ -710,7 +805,7 @@ func (io *SpectrumIO) FDCTick(frame, debounceFrames int) {
 	}
 	io.fdc.Tick(frame)
 	if io.fdc.AutoCommit(debounceFrames) {
-		fmt.Printf("Disk auto-committed: %s\n", io.fdc.diskFilename)
+		sayf("Disk auto-committed: %s\n", io.fdc.diskFilename)
 	}
 }
 
@@ -725,12 +820,21 @@ func (io *SpectrumIO) SaveDisk() error {
 // SaveDiskAs saves the current disk image with a new filename
 func (io *SpectrumIO) SaveDiskAs(filename string) error {
 	if io.fdc != nil && io.hasFDC && io.fdc.HasDisk() {
-		err := os.WriteFile(filename, io.fdc.diskImage, 0644)
-		if err != nil {
+		// A disc read from a DSK file lives in the parsed structure, not in
+		// the flat image: write whichever the drive is reading from.
+		data := io.fdc.diskImage
+		if io.fdc.disk != nil {
+			data = io.fdc.disk.Serialize()
+		}
+		if err := os.WriteFile(filename, data, 0644); err != nil {
 			return err
+		}
+		if io.fdc.disk != nil {
+			io.fdc.disk.Modified = false
 		}
 		io.fdc.diskFilename = filename
 		io.fdc.diskModified = false
+		io.fdc.diskStamp, io.fdc.conflictSaid = stampOf(filename), false
 		return nil
 	}
 	return fmt.Errorf("no disk to save")

@@ -1,8 +1,8 @@
-package main
+package zenzx
 
 // Shared display constants, raylib-free, compiled into both GUI and headless
 // builds. The GUI renderer (display.go) and the headless framebuffer decoder
-// (display_headless.go) both depend on these.
+// (DecodeDisplay in zenzx.go) both depend on these.
 const (
 	// Display dimensions
 	ScreenWidth   = 256

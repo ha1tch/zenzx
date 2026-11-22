@@ -36,7 +36,7 @@ zenscript `shot` command) goes through this one method and never touches a
 `VideoRenderer` directly.
 
 Implementing a new mode is: write a `VideoRenderer`, register it. Nothing
-in `display.go`, `display_headless.go`, or either main needs to change.
+in `display.go`, `display_core.go` or either program needs to change.
 
 ## Three design decisions (2026-08-17)
 

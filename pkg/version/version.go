@@ -8,4 +8,4 @@ package version
 
 // Version is the current version of ZenZX.
 // This MUST match the contents of the VERSION file.
-const Version = "0.11.0"
+const Version = "0.50.0"

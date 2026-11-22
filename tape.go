@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -84,7 +84,7 @@ func (t *Tape) Tick(cycles int) {
 		if t.st.Position >= len(t.st.Pulses) {
 			// Stop at end
 			t.st.Playing = false
-			fmt.Println("Tape: End of tape reached")
+			sayln("Tape: End of tape reached")
 		}
 		return
 	}

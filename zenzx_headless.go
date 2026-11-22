@@ -1,13 +1,12 @@
 //go:build headless
 
-package main
+package zenzx
 
 import (
 	"bufio"
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -25,45 +24,161 @@ import (
 //   zenzx-headless -tape=game.tap -frames=2000 -shot-interval=100
 // ============================================================================
 
-func main() {
-	model := flag.String("model", "48k", "Spectrum model: 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3, ts2068, next")
-	romPath := flag.String("rom", "", "Custom ROM bank(s), comma-separated, positionally mapped to bank 0,1,2,3 (up to the model's own bank count); applied on top of -model's standard set, not instead of it")
-	rom0 := flag.String("rom0", "", "Override just ROM bank 0, leaving the rest of -model's standard set intact")
-	rom1 := flag.String("rom1", "", "Override just ROM bank 1, leaving the rest of -model's standard set intact")
-	rom2 := flag.String("rom2", "", "Override just ROM bank 2, leaving the rest of -model's standard set intact")
-	rom3 := flag.String("rom3", "", "Override just ROM bank 3 (e.g. +3DOS on a +3), leaving the rest of -model's standard set intact")
-	customROMsMenu := flag.Bool("custom-roms-menu", false, "Interactively pick a ROM from -custom-roms-dir and a bank to apply it to")
-	customROMsDir := flag.String("custom-roms-dir", CustomROMDir, "Directory scanned by -custom-roms-menu")
-	romDir := flag.String("romdir", "./rom", "Directory containing ROM files")
-	snapshot := flag.String("snapshot", "", "Load snapshot on startup")
-	snapshotFormat := flag.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only)")
-	tapeFile := flag.String("tape", "", "Load tape file (.tap or .tzx)")
-	tapeMode := flag.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
-	binFile := flag.String("bin", "", "Load a raw binary blob directly into memory")
-	binAddr := flag.String("binaddr", "0x8000", "Load address for -bin (hex 0x.. or decimal)")
-	binStart := flag.String("binstart", "", "PC start address after -bin (hex/decimal; empty = use load address; -1 = leave PC unchanged)")
-	z80n := flag.Bool("z80n", false, "Enable the CPU core's Z80N (ZX Spectrum Next) extended instruction set. CPU-level only -- no other Next hardware (memory paging, sprites, the copper, etc.) is emulated; intended for Z80N instruction verification (e.g. via -bin plus a \"dump-mem\" script action), not as a claim of Next machine emulation.")
-	scrFile := flag.String("scr", "", "Load a raw .scr screen dump onto the display (still image)")
-	noFdc := flag.Bool("nofdc", false, "Disable FDC emulation for +3")
-	disk := flag.String("disk", "", "Path to +3 disk image (.dsk)")
-	sdCard := flag.String("sdcard", "", "Path to a raw FAT16/FAT32 SD card image, attached via DivMMC (T-36, docs/TRACKING.md) -- requires -divmmc-rom too. Pages in via automap at the usual RST-vector entry points on ANY model, not just -model=next; does not by itself model the Next's own separate config-mode boot ROM (item 6)")
-	divMMCROM := flag.String("divmmc-rom", "", "Path to the DivMMC/ESXDOS boot ROM image (8K) that -sdcard pages in -- a real ESXDOS build, not sourced or embedded by zenzx itself")
-	bootROM := flag.String("bootrom", "", "Path to the FPGA config-mode boot ROM image (8K, e.g. nextboot.rom) -- a real, separate first-stage ROM, not enNxtmmc.rom/-divmmc-rom; runs SD init/FAT32/TBBLUE.FW loading before NextREG 0x03 disables it (T-36)")
-	divMMCDebug := flag.Bool("divmmc-debug", false, "Log DivMMC automap transitions and SD card command/response frames to stderr")
+// RunHeadless is the ZenZX program without a window: it parses args (the
+// command line without the program's name), runs the frames asked for, and
+// exits the process on error. cmd/zenzx-headless is this and nothing else.
+func RunHeadless(args []string) {
+	SetLogOutput(os.Stdout)
+	SetTraceOutput(os.Stderr)
+	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	model := fs.String("model", "48k", "Spectrum model: 48k, 128k, plus2, plus2a, plus3, spanish48k, spanish128k, spanishplus2, spanishplus3, ts2068, next")
+	romPath := fs.String("rom", "", "Custom ROM bank(s), comma-separated, positionally mapped to bank 0,1,2,3 (up to the model's own bank count); applied on top of -model's standard set, not instead of it")
+	rom0 := fs.String("rom0", "", "Override just ROM bank 0, leaving the rest of -model's standard set intact")
+	rom1 := fs.String("rom1", "", "Override just ROM bank 1, leaving the rest of -model's standard set intact")
+	rom2 := fs.String("rom2", "", "Override just ROM bank 2, leaving the rest of -model's standard set intact")
+	rom3 := fs.String("rom3", "", "Override just ROM bank 3 (e.g. +3DOS on a +3), leaving the rest of -model's standard set intact")
+	customROMsMenu := fs.Bool("custom-roms-menu", false, "Interactively pick a ROM from -custom-roms-dir and a bank to apply it to")
+	customROMsDir := fs.String("custom-roms-dir", CustomROMDir, "Directory scanned by -custom-roms-menu")
+	romDir := fs.String("romdir", "./rom", "Directory containing ROM files")
+	snapshot := fs.String("snapshot", "", "Load snapshot on startup")
+	snapshotFormat := fs.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only)")
+	tapeFile := fs.String("tape", "", "Load tape file (.tap or .tzx)")
+	tapeMode := fs.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
+	binFile := fs.String("bin", "", "Load a raw binary blob directly into memory")
+	binAddr := fs.String("binaddr", "0x8000", "Load address for -bin (hex 0x.. or decimal)")
+	binStart := fs.String("binstart", "", "PC start address after -bin (hex/decimal; empty = use load address; -1 = leave PC unchanged)")
+	z80n := fs.Bool("z80n", false, "Enable the CPU core's Z80N (ZX Spectrum Next) extended instruction set. CPU-level only -- no other Next hardware (memory paging, sprites, the copper, etc.) is emulated; intended for Z80N instruction verification (e.g. via -bin plus a \"dump-mem\" script action), not as a claim of Next machine emulation.")
+	scrFile := fs.String("scr", "", "Load a raw .scr screen dump onto the display (still image)")
+	noFdc := fs.Bool("nofdc", false, "Disable FDC emulation for +3")
+	disk := fs.String("disk", "", "Path to +3 disk image (.dsk)")
+	sdCard := fs.String("sdcard", "", "Path to a raw FAT16/FAT32 SD card image, attached via DivMMC (T-36, docs/TRACKING.md) -- requires -divmmc-rom too. Pages in via automap at the usual RST-vector entry points on ANY model, not just -model=next; does not by itself model the Next's own separate config-mode boot ROM (item 6)")
+	divMMCROM := fs.String("divmmc-rom", "", "Path to the DivMMC/ESXDOS boot ROM image (8K) that -sdcard pages in -- a real ESXDOS build, not sourced or embedded by zenzx itself")
+	bootROM := fs.String("bootrom", "", "Path to the FPGA config-mode boot ROM image (8K, e.g. nextboot.rom) -- a real, separate first-stage ROM, not enNxtmmc.rom/-divmmc-rom; runs SD init/FAT32/TBBLUE.FW loading before NextREG 0x03 disables it (T-36)")
+	nextRegLogFlag := fs.String("nextreg-log", "", "Next: log writes to these NextREG registers to stderr: hex numbers separated by commas, or all")
+	nextDump := fs.Bool("next-dump", false, "Next: at the end of the run print the registers, the memory mapping and the start of the palettes")
+	sdCardReadOnly := fs.Bool("sdcard-readonly", false, "Write-protect the -sdcard image: the machine reads it and every write is refused. Without this the image is opened for writing and the firmware and NextZXOS change it, as they do a real card")
+	divMMCDebug := fs.Bool("divmmc-debug", false, "Log DivMMC automap transitions and SD card command/response frames to stderr")
+	nextFilesFlag := fs.String("next-files", "", nextFilesHelp)
+	nextClassic := fs.Bool("next-classic", false, nextClassicHelp)
+	nextExamplesFlag := fs.Bool("next-examples", false, nextExamplesHelp)
+	nextAddFlag := fs.String("next-add", "", nextAddHelp)
+	sdCard2 := fs.String("sdcard2", "", sdCard2Help)
+	nextNewCard := fs.String("next-new-card", "", nextNewCardHelp)
+	nextBootable := fs.String("next-bootable", "", nextBootableHelp)
+	nextExamplesCard := fs.String("next-examples-card", "", nextExCardHelp)
+	nextIssue := fs.Int("next-issue", 5, nextIssueHelp)
+	nextSetupFlag := fs.Bool("next-setup", false, "Next: download the boot files once (the emulator distribution, about 70 MB, and the boot ROM), build and verify the SD card, and exit. They go to the -next-files folder, or the per-user one. What is already there is kept")
+	nextDistURL := fs.String("next-distribution", "", "Next: address of the emulator distribution zip for -next-setup (default: the 26.11 distribution at specnext.com)")
+	nextBootURL := fs.String("next-bootrom-url", "", "Next: address of the boot ROM for -next-setup")
 
-	frames := flag.Int("frames", 100, "Number of frames to run")
-	shotInterval := flag.Int("shot-interval", 0, "Capture a screenshot every N frames (0 = only the final frame)")
-	shotDir := flag.String("shot-dir", ".", "Directory to write screenshots into")
-	shotPrefix := flag.String("shot-prefix", "zenzx", "Filename prefix for screenshots")
-	quiet := flag.Bool("quiet", false, "Suppress per-frame logging")
-	scriptFile := flag.String("script", "", "Path to a .zen action script to drive the emulator")
-	nonStandard := flag.String("non-standard", "off", "Master switch for non-standard features: on or off. Gates all -ns-* flags.")
-	nsGraphics := flag.String("ns-graphics", "", "Non-standard graphics mode (requires -non-standard on): "+nsGraphicsUsage)
-	nsStorage := flag.String("ns-storage", "", "Non-standard storage backend (requires -non-standard on): "+nsStorageUsage)
-	joystick := flag.String("joystick", "auto", "Joystick emulation: auto (the selected -model's own built-in configuration), none, kempston, sinclair (alias for sinclair1), sinclair1, sinclair2, sinclair-both")
-	mouse := flag.String("mouse", "none", "Mouse emulation: none or kempston")
-	showVersion := flag.Bool("version", false, "Print version and exit")
-	flag.Parse()
+	frames := fs.Int("frames", 100, framesHelp)
+	multiFlag := fs.String("multi", "", multiHelp)
+	listenFlag := fs.String("listen", "", listenHelp)
+	listenHost := fs.String("listen-host", "127.0.0.1", listenHostHelp)
+	autorunFlag := fs.String("autorun", "", autorunHelp)
+	layoutFlag := fs.String("layout", "", layoutHelp)
+	paceFlag := fs.String("pace", "", paceHelp)
+	shotInterval := fs.Int("shot-interval", 0, "Capture a screenshot every N frames (0 = only the final frame)")
+	shotDir := fs.String("shot-dir", ".", "Directory to write screenshots into")
+	shotPrefix := fs.String("shot-prefix", "zenzx", "Filename prefix for screenshots")
+	quiet := fs.Bool("quiet", false, "Suppress per-frame logging")
+	scriptFile := fs.String("script", "", "Path to a .zen action script to drive the emulator")
+	nonStandard := fs.String("non-standard", "off", "Master switch for non-standard features: on or off. Gates all -ns-* flags.")
+	nsGraphics := fs.String("ns-graphics", "", "Non-standard graphics mode (requires -non-standard on): "+nsGraphicsUsage)
+	nsStorage := fs.String("ns-storage", "", "Non-standard storage backend (requires -non-standard on): "+nsStorageUsage)
+	joystick := fs.String("joystick", "auto", "Joystick emulation: auto (the selected -model's own built-in configuration; on a Next, what NextREG 0x05 chooses for each port), none, kempston, kempston2, kempston-both, sinclair (alias for sinclair1), sinclair1, sinclair2, sinclair-both, cursor")
+	mouse := fs.String("mouse", "auto", "Mouse emulation: auto (kempston on a Next, none on the other models), none, kempston or amx")
+	showVersion := fs.Bool("version", false, "Print version and exit")
+	fs.Parse(args)
+
+	// Several machines (multi.go). The primary one is set up below as a
+	// single machine always was, with -model standing for its model; the
+	// others are made just before the run.
+	models, cardNames, multiErr := parseMulti(*multiFlag, *model)
+	if multiErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", multiErr)
+		os.Exit(2)
+	}
+	primary := primaryMachine(models, cardNames)
+	*model = models[primary]
+	cards, cardFiles, cardErr := nextCardsOf(models, cardNames, *nextFilesFlag)
+	if cardErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", cardErr)
+		os.Exit(2)
+	}
+	if cards[primary] != "" && (*sdCard != "" || *nextClassic) {
+		fmt.Fprintln(os.Stderr, "Error: -multi names an SD card for this Next: it cannot be used with -sdcard or -next-classic")
+		os.Exit(2)
+	}
+	listenPorts, listenErr := parseListen(*listenFlag, len(models))
+	if listenErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", listenErr)
+		os.Exit(2)
+	}
+	autorunFiles, autorunErr := parseAutorun(*autorunFlag, len(models))
+	if autorunErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", autorunErr)
+		os.Exit(2)
+	}
+	if _, err := parseLayout(*layoutFlag); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	if autorunFiles[primary] != "" && (*tapeFile != "" || *snapshot != "") {
+		fmt.Fprintln(os.Stderr, "Error: -autorun puts its own tape in the machine and runs it from a cold start: it cannot be used with -tape or -snapshot")
+		os.Exit(2)
+	}
+	if len(listenPorts) > 0 && !flagGiven(fs, "frames") {
+		*frames = 0 // a machine that listens runs until it is stopped
+	}
+	paceReal, paceErr := realPace(*paceFlag, *frames)
+	if paceErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", paceErr)
+		os.Exit(2)
+	}
+
+	if *nextSetupFlag {
+		dir, err := nextDownloadDir(*nextFilesFlag)
+		if err == nil {
+			err = runNextSetup(dir, *nextDistURL, *nextBootURL, os.Stderr)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *nextNewCard != "" {
+		path, err := newEmptyCard(*nextNewCard, smallestCard)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "Made %s: an empty FAT32 card, %d MB\n", path, smallestCard>>20)
+		return
+	}
+	if *nextBootable != "" {
+		if err := runNextBootable(*nextFilesFlag, *nextBootable, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *nextExamplesCard != "" {
+		if err := runNextExamplesCard(*nextExamplesCard, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *nextExamplesFlag || *nextAddFlag != "" {
+		if err := runNextAdd(*nextFilesFlag, *nextExamplesFlag, *nextAddFlag, os.Stderr); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *showVersion {
 		fmt.Printf("ZenZX %s (headless)\n", version)
@@ -86,7 +201,7 @@ func main() {
 	if strings.EqualFold(strings.TrimSpace(*joystick), "auto") && joystickMode != JoystickNone {
 		logf(*quiet, "Joystick: %s (built into -model=%s)", joystickMode, *model)
 	}
-	mouseMode, err := ParseMouseMode(*mouse)
+	mouseMode, err := resolveMouseMode(*mouse, *model)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -99,6 +214,14 @@ func main() {
 	// Audio: headless always uses the Oto backend object but never opens a
 	// device. NewZenZX wires the wrapper; we simply never call Initialize.
 	zx := NewZenZX(AudioBackendOto)
+	if err := zx.io.setNextRegLog(*nextRegLogFlag); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if err := zx.memory.SetNextIssue(*nextIssue); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	if *z80n {
 		zx.EnableZ80N()
 		logf(*quiet, "Z80N (ZX Spectrum Next) instruction set enabled")
@@ -188,7 +311,7 @@ func main() {
 		romLoaded = false
 		if data, err := loadPlus3Bytes(*romDir, "plus3-0.rom", "plus3-1.rom", "plus3-2.rom", "plus3-3.rom"); err == nil {
 			if zx.LoadPlus3ROMBytes(data[0], data[1], data[2], data[3]) == nil {
-				logf(*quiet, "Loaded ZX Spectrum Next (+3 ROM base, matching real hardware's classic-compatible boot personality -- no NextZXOS boot chain yet, see T-32)")
+				logf(*quiet, "Loaded ZX Spectrum Next (+3 ROM base; NextZXOS boots with -bootrom, -divmmc-rom and -sdcard, see docs/MANUAL.md)")
 				romLoaded = true
 			}
 		}
@@ -371,7 +494,7 @@ func main() {
 		// every emulated sector access for as long as zx runs, and this
 		// is a short-lived CLI process where exit is an acceptable
 		// substitute for an explicit Close.
-		sdFile, err := os.Open(*sdCard)
+		sdFile, sdProtected, err := openSDCardImage(*sdCard, *sdCardReadOnly)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening -sdcard %s: %v\n", *sdCard, err)
 			os.Exit(1)
@@ -382,11 +505,40 @@ func main() {
 			os.Exit(1)
 		}
 		zx.EnableDivMMC(sdFile, info.Size(), romBytes)
+		zx.io.divMMC.SD().wr.WriteProtected = sdProtected
 		if *divMMCDebug {
 			zx.io.divMMC.Debug = true
 			zx.io.divMMC.SD().Debug = true
 		}
-		logf(*quiet, "DivMMC attached: rom=%s sdcard=%s (%d bytes)", *divMMCROM, *sdCard, info.Size())
+		logf(*quiet, "DivMMC attached: rom=%s sdcard=%s (%d bytes, write-protected: %v)", *divMMCROM, *sdCard, info.Size(), sdProtected)
+		if sdProtected && !*sdCardReadOnly {
+			fmt.Fprintf(os.Stderr, "Warning: %s could not be opened for writing, so the card is write-protected and nothing can be saved to it\n", *sdCard)
+		}
+	}
+
+	// The Next's boot chain from its folder (nextchain.go).
+	if wantNextBootChain(*model, *nextClassic, *bootROM, *divMMCROM, *sdCard, *snapshot, *binFile, *tapeFile, *scrFile) {
+		if f, ok, note := locateNextFiles(*nextFilesFlag); ok {
+			if cards[primary] != "" {
+				f.Card = cards[primary] // the card -multi names for this Next
+			}
+			protected, err := zx.attachNextBootChain(f, *sdCardReadOnly, *divMMCDebug)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: the Next boot files in %s could not be used: %v\n", f.Dir, err)
+				os.Exit(1)
+			}
+			logf(*quiet, "%s", describeNextChain(f, protected))
+			line, err := zx.insertOwnOrGivenCard(*sdCard2, *sdCardReadOnly)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: the second SD card could not be used: %v\n", err)
+				os.Exit(1)
+			}
+			if line != "" {
+				logf(*quiet, "%s", line)
+			}
+		} else {
+			logf(*quiet, "%s", nextSetupHint(os.Args[0], note))
+		}
 	}
 
 	// --- Raw binary --------------------------------------------------------
@@ -443,9 +595,69 @@ func main() {
 		logf(*quiet, "Loaded script: %s (%d actions)", *scriptFile, len(script.Actions))
 	}
 
-	logf(*quiet, "Running %d frames (model=%s)", *frames, *model)
+	// --- The other machines, the links and the autoruns (multi.go) --------
+	machines := make([]*ZenZX, len(models))
+	machines[primary] = zx
+	for i, m := range models {
+		if i == primary {
+			continue
+		}
+		other, err := newMachine(m, *romDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: machine %d: %v\n", i+1, err)
+			os.Exit(1)
+		}
+		other.nonStandard = nsConfig
+		if m == "next" {
+			// Every Next but the primary one has a card of its own (parseMulti).
+			line, err := bootNextFrom(other, cardFiles, cards[i], *sdCardReadOnly, *divMMCDebug)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: machine %d: %v\n", i+1, err)
+				os.Exit(1)
+			}
+			logf(*quiet, "Machine %d: %s", i+1, line)
+		}
+		machines[i] = other
+	}
+	if len(machines) > 1 {
+		logf(*quiet, "%d machines: %s", len(machines), strings.Join(models, ", "))
+	}
+	links, err := startLinks(machines, *listenHost, listenPorts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	for i, l := range links {
+		logf(*quiet, "Machine %d (%s): link on %s", i+1, models[i], l.Addr())
+	}
+	if err := startAutoruns(machines, models, autorunFiles); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	for i, file := range autorunFiles {
+		if file != "" && machines[i].AutorunPending() {
+			logf(*quiet, "Machine %d (%s): will run %s", i+1, models[i], file)
+		}
+	}
+
+	if *frames == 0 {
+		logf(*quiet, "Running until interrupted (model=%s)", *model)
+	} else {
+		logf(*quiet, "Running %d frames (model=%s)", *frames, *model)
+	}
+	stopAsked := interrupted()
+	var clock frameClock
 	shots := 0
-	for f := 1; f <= *frames; f++ {
+	ran := 0
+	for f := 1; *frames == 0 || f <= *frames; f++ {
+		if stopAsked() {
+			logf(*quiet, "Interrupted after %d frames", ran)
+			if sched == nil && ran > 0 {
+				shots += captureMachines(machines, *shotDir, *shotPrefix, ran, *quiet)
+			}
+			break
+		}
+		ran = f
 		if sched != nil {
 			sched.Tick(zx)
 			if sched.QuitRequested() {
@@ -464,6 +676,12 @@ func main() {
 		blockedOnRealMemory := sched != nil && sched.BlockingOnRealMemory()
 		zx.RunTurboAwareFrame(blockedOnRealMemory)
 		zx.io.FDCTick(f, 30*50)
+		for i, other := range machines {
+			if i != primary {
+				other.RunTurboAwareFrame(false)
+				other.io.FDCTick(f, 30*50)
+			}
+		}
 
 		// Legacy interval/final-frame capture is disabled while a script is
 		// driving the run: the script's own shot actions own capture, and
@@ -478,15 +696,15 @@ func main() {
 				capture = true // always capture the final frame
 			}
 			if capture {
-				path := filepath.Join(*shotDir, fmt.Sprintf("%s-frame%06d.png", *shotPrefix, f))
-				if err := writeScreenPNG(path, zx, 1); err != nil {
-					fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", path, err)
-				} else {
-					shots++
-					logf(*quiet, "  frame %d -> %s", f, path)
-				}
+				shots += captureMachines(machines, *shotDir, *shotPrefix, f, *quiet)
 			}
 		}
+		if paceReal {
+			clock.wait()
+		}
+	}
+	for _, l := range links {
+		l.Close()
 	}
 
 	// Commit any disk changes made during the run (e.g. by a script driving a
@@ -498,9 +716,12 @@ func main() {
 	}
 
 	if sched != nil {
-		fmt.Printf("Done: %d frames, %d script screenshot(s) written to %s\n", *frames, sched.ShotsTaken(), *shotDir)
+		fmt.Printf("Done: %d frames, %d script screenshot(s) written to %s\n", ran, sched.ShotsTaken(), *shotDir)
 	} else {
-		fmt.Printf("Done: %d frames, %d screenshot(s) written to %s\n", *frames, shots, *shotDir)
+		fmt.Printf("Done: %d frames, %d screenshot(s) written to %s\n", ran, shots, *shotDir)
+	}
+	if *nextDump {
+		zx.DumpNextState(os.Stdout)
 	}
 }
 

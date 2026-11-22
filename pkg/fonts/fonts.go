@@ -4,6 +4,7 @@
 // Bundled faces:
 //
 //	Sinclair    8x8   — the ZX Spectrum 48K ROM character set (period-correct)
+//	SinclairNarrow 6x8 — Sinclair Narrow, a 6-wide face derived from the Sinclair 8x8
 //	Cozette     6x13  — a modern, legible programming bitmap face
 //	TomThumb    4x6   — extremely small, for space-constrained UI
 //	Spleen      5x8   — small, clean, modern bitmap face
@@ -24,11 +25,14 @@ import (
 	"bytes"
 	_ "embed"
 
-	"github.com/ha1tch/zenzx/pkg/bdf"
+	"github.com/ha1tch/zentools/pkg/bdf"
 )
 
 //go:embed sinclair.bdf
 var sinclairBDF []byte
+
+//go:embed sinclair-narrow.bdf
+var sinclairNarrowBDF []byte
 
 //go:embed cozette.bdf
 var cozetteBDF []byte
@@ -47,6 +51,11 @@ var haxorMediumBDF []byte
 
 // Sinclair decodes the bundled ZX Spectrum 8x8 face.
 func Sinclair() (*bdf.Font, error) { return bdf.Parse(bytes.NewReader(sinclairBDF)) }
+
+// SinclairNarrow decodes the "Sinclair Narrow" 6x8 face, derived from Sinclair
+// by dropping the far-right column and the fourth column from the left of each
+// 8-wide cell, with a number of glyphs hand-redrawn.
+func SinclairNarrow() (*bdf.Font, error) { return bdf.Parse(bytes.NewReader(sinclairNarrowBDF)) }
 
 // Cozette decodes the bundled 6x13 programming face.
 func Cozette() (*bdf.Font, error) { return bdf.Parse(bytes.NewReader(cozetteBDF)) }
@@ -80,19 +89,20 @@ func defensiveCopy(b []byte) []byte {
 type Name string
 
 const (
-	NameSinclair    Name = "Sinclair"
-	NameCozette     Name = "Cozette"
-	NameTomThumb    Name = "TomThumb"
-	NameSpleen      Name = "Spleen"
-	NameCreep       Name = "Creep"
-	NameHaxorMedium Name = "HaxorMedium"
+	NameSinclair       Name = "Sinclair"
+	NameSinclairNarrow Name = "SinclairNarrow"
+	NameCozette        Name = "Cozette"
+	NameTomThumb       Name = "TomThumb"
+	NameSpleen         Name = "Spleen"
+	NameCreep          Name = "Creep"
+	NameHaxorMedium    Name = "HaxorMedium"
 )
 
 // All lists every bundled face name, in a fixed, deliberate display order
 // (roughly smallest/most utilitarian to largest/most decorative) --
 // callers building a selection menu can range over this directly rather
 // than maintaining their own parallel list.
-var All = []Name{NameSinclair, NameTomThumb, NameSpleen, NameCozette, NameCreep, NameHaxorMedium}
+var All = []Name{NameSinclair, NameSinclairNarrow, NameTomThumb, NameSpleen, NameCozette, NameCreep, NameHaxorMedium}
 
 // Load decodes the named bundled face. Returns an error for a name not in
 // All -- there is no silent fallback to a default face, since a caller
@@ -102,6 +112,8 @@ func Load(name Name) (*bdf.Font, error) {
 	switch name {
 	case NameSinclair:
 		return Sinclair()
+	case NameSinclairNarrow:
+		return SinclairNarrow()
 	case NameCozette:
 		return Cozette()
 	case NameTomThumb:

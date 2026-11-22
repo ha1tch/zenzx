@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // ============================================================================
 // Action scheduler
@@ -58,6 +58,7 @@ type Scheduler struct {
 	expectFailures int           // count of failed expect-screen assertions
 	waiting        *BootDetector // non-nil while a wait-boot action is blocking
 	keys           *KeyQueue     // non-nil while scripted keys are being injected
+	pressed        heldKeys      // keys a press action holds down, until release
 	keyHold        int           // configured key hold frames
 	keyGap         int           // configured key gap frames
 
@@ -151,6 +152,14 @@ func (s *Scheduler) BlockingOnRealMemory() bool {
 	return s.waiting != nil || s.waitScreenActive || s.waitAttrActive || s.waitMemActive
 }
 
+// heldKeys is the set of keys held down by press actions.
+type heldKeys map[matrixPos]bool
+
+// OwnsKeyboard reports whether the script has keys down: typing in progress, or a key a
+// press action still holds. A front end that fills the key matrix from the host keyboard
+// each frame must leave it alone meanwhile, or the script's keys never reach the machine.
+func (s *Scheduler) OwnsKeyboard() bool { return s.keys != nil || len(s.pressed) > 0 }
+
 // ShotsTaken returns the number of screenshots the script has captured.
 func (s *Scheduler) ShotsTaken() int { return s.shotsTaken }
 
@@ -213,6 +222,7 @@ func (s *Scheduler) Tick(zx *ZenZX) {
 		}
 		// Queue just finished on this frame.
 		zx.io.ResetKeyboard()
+		s.pressed = nil
 		s.keys = nil
 		s.rebase = s.frame
 		s.logf("script: key input complete at frame %d; rebasing timeline", s.frame)
@@ -412,14 +422,14 @@ func (s *Scheduler) Tick(zx *ZenZX) {
 // logf prints an informational message unless quiet.
 func (s *Scheduler) logf(format string, args ...any) {
 	if !s.cfg.Quiet {
-		fmt.Printf(format+"\n", args...)
+		sayf(format+"\n", args...)
 	}
 }
 
 // warnf prints a warning unless quiet.
 func (s *Scheduler) warnf(format string, args ...any) {
 	if !s.cfg.Quiet {
-		fmt.Fprintf(os.Stderr, "script warning: "+format+"\n", args...)
+		tracef("script warning: "+format+"\n", args...)
 	}
 }
 
@@ -653,13 +663,13 @@ func (s *Scheduler) doDumpScreen(zx *ZenZX, a Action) error {
 		if err != nil || row < 0 || row >= screenRows {
 			return fmt.Errorf("row must be 0..%d", screenRows-1)
 		}
-		fmt.Printf("screen[%02d]: %q\n", row, strings.TrimRight(ReadScreenRow(zx, row), " "))
+		sayf("screen[%02d]: %q\n", row, strings.TrimRight(ReadScreenRow(zx, row), " "))
 		return nil
 	}
 	for r, line := range ReadScreen(zx) {
 		trimmed := strings.TrimRight(line, " ")
 		if trimmed != "" {
-			fmt.Printf("screen[%02d]: %q\n", r, trimmed)
+			sayf("screen[%02d]: %q\n", r, trimmed)
 		}
 	}
 	return nil
@@ -975,11 +985,11 @@ func (s *Scheduler) doDumpMem(zx *ZenZX, a Action) error {
 	switch size {
 	case 8:
 		v := zx.memory.Read(addr)
-		fmt.Printf("%s=%d\n", label, v)
+		sayf("%s=%d\n", label, v)
 	case 16:
 		lo := uint16(zx.memory.Read(addr))
 		hi := uint16(zx.memory.Read(addr + 1))
-		fmt.Printf("%s=%d\n", label, hi*256+lo)
+		sayf("%s=%d\n", label, hi*256+lo)
 	}
 	return nil
 }
@@ -1067,6 +1077,10 @@ func (s *Scheduler) doPress(zx *ZenZX, a Action) error {
 	}
 	for _, k := range chord {
 		zx.io.PressKey(k.row, k.col)
+		if s.pressed == nil {
+			s.pressed = heldKeys{}
+		}
+		s.pressed[k] = true
 	}
 	s.logf("script: frame %d -> press %s", s.frame, name)
 	return nil
@@ -1081,6 +1095,7 @@ func (s *Scheduler) doRelease(zx *ZenZX, a Action) error {
 	name := strings.ToLower(a.Args[0])
 	if name == "all" {
 		zx.io.ResetKeyboard()
+		s.pressed = nil
 		s.logf("script: frame %d -> release all", s.frame)
 		return nil
 	}
@@ -1098,6 +1113,7 @@ func (s *Scheduler) doRelease(zx *ZenZX, a Action) error {
 	}
 	for _, k := range chord {
 		zx.io.ReleaseKey(k.row, k.col)
+		delete(s.pressed, k)
 	}
 	s.logf("script: frame %d -> release %s", s.frame, name)
 	return nil

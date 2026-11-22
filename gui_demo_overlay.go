@@ -1,15 +1,15 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"fmt"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 
+	"github.com/ha1tch/zenui"
+	"github.com/ha1tch/zenui/zenuiraylib"
 	"github.com/ha1tch/zenzx/pkg/fonts"
-	"github.com/ha1tch/zenzx/pkg/zenui"
-	"github.com/ha1tch/zenzx/pkg/zenuiraylib"
 )
 
 // demoOverlayKind identifies which widget (if any) demoOverlay currently

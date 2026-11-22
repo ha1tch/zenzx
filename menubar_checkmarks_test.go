@@ -1,14 +1,14 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/ha1tch/zenui"
 	"github.com/ha1tch/zenzx/pkg/fonts"
 	"github.com/ha1tch/zenzx/pkg/machineconfig"
-	"github.com/ha1tch/zenzx/pkg/zenui"
 )
 
 func TestMachineMenuFlatListStructure(t *testing.T) {
@@ -252,7 +252,7 @@ func TestApplyZoomUpdatesZoomChecked(t *testing.T) {
 
 func TestViewFPSCheckboxPointsAtDisplayField(t *testing.T) {
 	zx := testZX()
-	zx.display.showFPS = true
+	zx.window().showFPS = true
 	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
 		t.Fatalf("newAppMenuBar: %v", err)
@@ -263,7 +263,7 @@ func TestViewFPSCheckboxPointsAtDisplayField(t *testing.T) {
 	// which happens completely outside the menu) and confirm the
 	// menu's own checkmark state (which is the very same pointer, not
 	// a synced copy) reflects it immediately, with no refresh step.
-	zx.display.showFPS = false
+	zx.window().showFPS = false
 
 	items := b.widget.ItemsFor(barView)
 	if items[0].Checked == nil {
@@ -276,7 +276,7 @@ func TestViewFPSCheckboxPointsAtDisplayField(t *testing.T) {
 
 func TestViewBorderCheckboxPointsAtDisplayField(t *testing.T) {
 	zx := testZX()
-	zx.display.showBorder = true
+	zx.window().showBorder = true
 	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
 		t.Fatalf("newAppMenuBar: %v", err)
@@ -284,7 +284,7 @@ func TestViewBorderCheckboxPointsAtDisplayField(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barView)
-	if items[1].Checked != &zx.display.showBorder {
+	if items[1].Checked != &zx.window().showBorder {
 		t.Error("Border item's Checked pointer is not the same address as zx.display.showBorder -- should be directly wired, not a copy")
 	}
 }
@@ -344,14 +344,14 @@ func TestViewBorderToggleTriggersResizeAnimation(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	if zx.display.isAnimating {
+	if zx.window().isAnimating {
 		t.Fatal("setup: isAnimating should start false")
 	}
 
 	// Border's action closure is index 1 in b.actions[barView].
 	b.actions[barView][1](zx)
 
-	if !zx.display.isAnimating {
+	if !zx.window().isAnimating {
 		t.Error("Border's action closure should trigger the window-resize animation (isAnimating=true), matching Alt+B's real behaviour")
 	}
 }
@@ -370,9 +370,49 @@ func TestRefreshViewItemsStructure(t *testing.T) {
 	b.refreshViewItems(zx)
 	items := b.widget.ItemsFor(barView)
 
-	if len(items) != 7 {
-		t.Fatalf("len(items) = %d, want 7 (3 + separator + 3)", len(items))
+	if want := 8 + len(deckLayoutNames) + 1; len(items) != want {
+		t.Fatalf("len(items) = %d, want %d (3 + separator + 3 zooms + separator + the layouts + Rotate)", len(items), want)
 	}
+	if last := items[len(items)-1]; last.Label != viewRotateLabel || !last.Disabled {
+		t.Errorf("the last item is %q (disabled %v), want Rotate Machines, greyed for one machine", last.Label, last.Disabled)
+	}
+	if !items[7].Separator {
+		t.Error("items[7] should be the separator between the zoom group and the layouts")
+	}
+	// With one machine and no dock: One Machine ticked, the tiled layouts
+	// greyed, the zoom available.
+	for i, name := range deckLayoutNames {
+		it := items[8+i]
+		if it.Label != name {
+			t.Errorf("items[%d].Label = %q, want %q", 8+i, it.Label, name)
+		}
+		if it.Checked == nil || *it.Checked != (i == 0) {
+			t.Errorf("%s: wrongly ticked for one machine", name)
+		}
+		if it.Disabled != (i != 0) {
+			t.Errorf("%s: Disabled = %v for one machine", name, it.Disabled)
+		}
+	}
+
+	// With three machines side by side: every layout offered, that one
+	// ticked, and the zoom greyed, since it is for one machine filling the
+	// window.
+	b.layoutState = func() (deckLayout, int) { return layoutColumns, 3 }
+	b.refreshViewItems(zx)
+	items = b.widget.ItemsFor(barView)
+	for i := range deckLayoutNames {
+		if items[8+i].Disabled || *items[8+i].Checked != (deckLayout(i) == layoutColumns) {
+			t.Errorf("%s with three machines side by side: disabled %v, ticked %v", deckLayoutNames[i], items[8+i].Disabled, *items[8+i].Checked)
+		}
+	}
+	for i := 4; i < 7; i++ {
+		if !items[i].Disabled {
+			t.Errorf("%s is offered in a tiled layout", items[i].Label)
+		}
+	}
+	b.layoutState = nil
+	b.refreshViewItems(zx)
+	items = b.widget.ItemsFor(barView)
 	if !items[3].Separator {
 		t.Error("items[3] should be the separator between the base options and the zoom group")
 	}
@@ -389,7 +429,7 @@ func TestRefreshViewItemsChecksCurrentScale(t *testing.T) {
 	if err := zx.LoadROM("./rom/48.rom"); err != nil {
 		t.Fatalf("LoadROM: %v", err)
 	}
-	zx.display.SetScale(2)
+	zx.window().SetScale(2)
 
 	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
@@ -426,7 +466,7 @@ func TestRefreshViewItemsDisablesScalesAboveLimit(t *testing.T) {
 	b.refreshViewItems(zx)
 	items := b.widget.ItemsFor(barView)
 
-	limit := zx.display.maxMultiplierThatFits()
+	limit := zx.window().maxMultiplierThatFits()
 	for i, n := range []int{1, 2, 3} {
 		item := items[4+i]
 		want := n > limit
@@ -449,8 +489,8 @@ func TestViewZoomDispatchesToSetScale(t *testing.T) {
 
 	// index 6 = "X 3" (0:FPS, 1:Border, 2:Show Status, 3:separator, 4:X1, 5:X2, 6:X3)
 	b.actions[barView][6](zx)
-	if zx.display.screen.multiplier != 3 {
-		t.Errorf("multiplier = %d, want 3 after dispatching the X 3 action", zx.display.screen.multiplier)
+	if zx.window().screen.multiplier != 3 {
+		t.Errorf("multiplier = %d, want 3 after dispatching the X 3 action", zx.window().screen.multiplier)
 	}
 }
 
@@ -460,13 +500,15 @@ func TestInSpanishGroupListsExpectedModels(t *testing.T) {
 		t.Fatalf("machineconfig.Load: %v", err)
 	}
 
-	// The Spanish-market section is a flat run of indent=2 Models
+	// The Spanish-market section is a flat run of indent=1 Models
 	// directly under one top-level "In Spanish" Title -- no
 	// per-manufacturer sub-titles (Sinclair/Investrónica/Amstrad)
-	// the way an earlier machines.json revision had it. This
-	// replaces the old TestEnEspanolAttributesEachModelToItsOwnManufacturer,
-	// which asserted that now-removed nested structure and so no
-	// longer matches machines.json.
+	// the way an earlier machines.json revision had it. The models
+	// sit at indent 1, level with every other maker's models (the
+	// Spanish group was brought up one level from the deeper indent 2
+	// an earlier revision used). This replaces the old
+	// TestEnEspanolAttributesEachModelToItsOwnManufacturer, which
+	// asserted a now-removed nested structure.
 	items := machinesRes.Config.Items
 	start := -1
 	for i, node := range items {
@@ -486,6 +528,9 @@ func TestInSpanishGroupListsExpectedModels(t *testing.T) {
 		if node.Type == machineconfig.Title && node.Indent == 0 {
 			break // reached the next top-level group
 		}
+		if node.Type == machineconfig.Separator {
+			break // a separator ends the group too: machines without a maker's title follow one
+		}
 		if node.Type == machineconfig.Title {
 			t.Errorf("unexpected nested Title %q (indent %d) inside \"In Spanish\" -- this group is flat, with no manufacturer sub-titles", node.Label, node.Indent)
 			continue
@@ -493,8 +538,8 @@ func TestInSpanishGroupListsExpectedModels(t *testing.T) {
 		if node.Type != machineconfig.Model {
 			continue
 		}
-		if node.Indent != 2 {
-			t.Errorf("model %q has indent %d, want 2", node.ID, node.Indent)
+		if node.Indent != 1 {
+			t.Errorf("model %q has indent %d, want 1", node.ID, node.Indent)
 		}
 		got = append(got, node.ID)
 	}

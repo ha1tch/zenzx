@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"image"
@@ -200,7 +200,21 @@ func (io *SpectrumIO) layer2Enabled() bool {
 // layer2BaseBank returns NR 0x12's current value: the first of the six
 // consecutive 8K pages backing the visible Layer 2 framebuffer.
 func (io *SpectrumIO) layer2BaseBank() uint8 {
-	return io.GetNextRegister(0x12)
+	return layer2BankToPage(io.GetNextRegister(0x12))
+}
+
+// layer2ShadowBasePage is the same for NextREG 0x13, the shadow Layer 2 that port 0x123B
+// bit 3 maps instead of the visible one.
+func (io *SpectrumIO) layer2ShadowBasePage() uint8 {
+	return layer2BankToPage(io.GetNextRegister(0x13))
+}
+
+// layer2BankToPage turns the value of NextREG 0x12 or 0x13 into the first of the six 8K
+// pages of that Layer 2. The registers hold a 16K RAM bank number in bits 6-0 (the Next's
+// registers.txt: "Starting 16K RAM bank", reset 8 and 11), so the page is twice the bank.
+// Until 0.11.0 the value was used as a page number (T-42).
+func layer2BankToPage(reg uint8) uint8 {
+	return (reg & 0x7F) * 2
 }
 
 // layer2PaletteOffset returns NR 0x70 bits 3-0: added to the top nibble of

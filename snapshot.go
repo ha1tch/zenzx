@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"bytes"
@@ -515,12 +515,12 @@ func (zx *ZenZX) SaveSnapshot(filename string) error {
 
 	if err := os.WriteFile(metaFilename, metaData, 0644); err != nil {
 		// Non-fatal: snapshot is still valid without metadata
-		fmt.Printf("Warning: Could not save metadata file: %v\n", err)
+		sayf("Warning: Could not save metadata file: %v\n", err)
 	} else {
-		fmt.Printf("Saved metadata to %s\n", metaFilename)
+		sayf("Saved metadata to %s\n", metaFilename)
 	}
 
-	fmt.Printf("Snapshot saved: %s (PC=%04X, Halted=%v, Cycles=%d)\n",
+	sayf("Snapshot saved: %s (PC=%04X, Halted=%v, Cycles=%d)\n",
 		filename, zx.cpu.PC, zx.cpu.Halted, zx.cpu.Cycles)
 
 	return nil
@@ -528,7 +528,7 @@ func (zx *ZenZX) SaveSnapshot(filename string) error {
 
 // LoadSnapshot loads emulator state from a file with optional metadata validation
 func (zx *ZenZX) LoadSnapshot(filename string) error {
-	fmt.Printf("Loading snapshot from %s\n", filename)
+	sayf("Loading snapshot from %s\n", filename)
 
 	// Check for metadata file
 	metaFilename := strings.TrimSuffix(filename, ".zxs") + ".json"
@@ -537,10 +537,10 @@ func (zx *ZenZX) LoadSnapshot(filename string) error {
 	if metaData, err := os.ReadFile(metaFilename); err == nil {
 		metadata = &SnapshotMetadata{}
 		if err := json.Unmarshal(metaData, metadata); err != nil {
-			fmt.Printf("Warning: Could not parse metadata file: %v\n", err)
+			sayf("Warning: Could not parse metadata file: %v\n", err)
 			metadata = nil
 		} else {
-			fmt.Printf("Found metadata: Model=%s, Time=%s, PC=%s, Halted=%v\n",
+			sayf("Found metadata: Model=%s, Time=%s, PC=%s, Halted=%v\n",
 				metadata.Model, metadata.Timestamp.Format("2006-01-02 15:04:05"),
 				metadata.CPU.PC, metadata.CPU.Halted)
 		}
@@ -572,13 +572,13 @@ func (zx *ZenZX) LoadSnapshot(filename string) error {
 
 	// Save current state that we want to preserve
 	currentDisplay := zx.display // Preserve display manager
-	currentNoEsc := zx.noEscKey  // Preserve user preferences
+	currentEscape := zx.escape   // Preserve user preferences
 
 	// Clear any pending interrupts before loading new state
 	zx.cpu.INT = false
 	zx.cpu.NMI = false
 
-	fmt.Printf("Loading snapshot: PC before = 0x%04X, running = %v\n", zx.cpu.PC, zx.running)
+	sayf("Loading snapshot: PC before = 0x%04X, running = %v\n", zx.cpu.PC, zx.running)
 
 	// Track checksums if metadata available
 	actualChecksums := make(map[string]string)
@@ -664,7 +664,7 @@ func (zx *ZenZX) LoadSnapshot(filename string) error {
 
 		default:
 			// Unknown chunk - skip it for forward compatibility
-			fmt.Printf("Skipping unknown chunk: 0x%04X\n", chunkHeader.ID)
+			sayf("Skipping unknown chunk: 0x%04X\n", chunkHeader.ID)
 		}
 	}
 
@@ -673,7 +673,7 @@ func (zx *ZenZX) LoadSnapshot(filename string) error {
 		for name, expected := range metadata.Checksums {
 			if actual, ok := actualChecksums[name]; ok {
 				if actual != expected {
-					fmt.Printf("Warning: Checksum mismatch for %s chunk (expected %s, got %s)\n",
+					sayf("Warning: Checksum mismatch for %s chunk (expected %s, got %s)\n",
 						name, expected, actual)
 				}
 			}
@@ -683,13 +683,13 @@ func (zx *ZenZX) LoadSnapshot(filename string) error {
 	// Restore preserved state
 	zx.running = true           // Ensure emulator is running
 	zx.display = currentDisplay // Keep the same display manager
-	zx.noEscKey = currentNoEsc  // Keep user preferences
+	zx.escape = currentEscape   // Keep user preferences
 
 	// Restore pause state from metadata if available
 	if metadata != nil {
 		if pausedVal, ok := metadata.Debug["paused"].(bool); ok {
 			zx.paused = pausedVal
-			fmt.Printf("Restored pause state: %v\n", zx.paused)
+			sayf("Restored pause state: %v\n", zx.paused)
 		} else {
 			// If no pause state in metadata, stay paused for safety
 			zx.paused = true
@@ -699,12 +699,12 @@ func (zx *ZenZX) LoadSnapshot(filename string) error {
 		zx.paused = true
 	}
 
-	fmt.Printf("Snapshot loaded: PC after = 0x%04X, Halted = %v, IFF1 = %v, Cycles = %d\n",
+	sayf("Snapshot loaded: PC after = 0x%04X, Halted = %v, IFF1 = %v, Cycles = %d\n",
 		zx.cpu.PC, zx.cpu.Halted, zx.cpu.IFF1, zx.cpu.Cycles)
 
 	// Log additional info if metadata available
 	if metadata != nil {
-		fmt.Printf("Snapshot info: Created %s, Model %s, Emulator %s %s\n",
+		sayf("Snapshot info: Created %s, Model %s, Emulator %s %s\n",
 			metadata.Timestamp.Format("2006-01-02 15:04:05"),
 			metadata.Model, metadata.Emulator, metadata.EmulatorVer)
 	}
@@ -746,7 +746,7 @@ func (zx *ZenZX) QuickSave() error {
 	if err := zx.SaveSnapshot(filename); err != nil {
 		return err
 	}
-	fmt.Printf("Quick saved to %s\n", filename)
+	sayf("Quick saved to %s\n", filename)
 	return nil
 }
 
@@ -759,7 +759,7 @@ func (zx *ZenZX) QuickLoad() error {
 	if err := zx.LoadSnapshot(filename); err != nil {
 		return err
 	}
-	fmt.Printf("Quick loaded from %s\n", filename)
+	sayf("Quick loaded from %s\n", filename)
 	return nil
 }
 
@@ -770,7 +770,7 @@ func (zx *ZenZX) AutoSave() error {
 	if err := zx.SaveSnapshot(filename); err != nil {
 		return err
 	}
-	fmt.Printf("Auto-saved to %s\n", filename)
+	sayf("Auto-saved to %s\n", filename)
 	return nil
 }
 

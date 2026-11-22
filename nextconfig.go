@@ -1,6 +1,4 @@
-package main
-
-import "fmt"
+package zenzx
 
 // Next config mode: how the firmware puts the machine's ROMs in place (T-36).
 //
@@ -151,9 +149,11 @@ func (io *SpectrumIO) nextConfigRegWrite(reg uint8, value uint8) {
 			io.nextResetRequest = nextResetHard
 		case value&0x01 != 0:
 			io.nextResetRequest = nextResetSoft
+		case value&0x08 != 0:
+			io.mfRequestNMI() // nextmultiface.go
 		}
 		if debug && io.nextResetRequest != 0 {
-			fmt.Printf("[nextreg] 0x02 <- 0x%02X (reset requested: %d)\n", value, io.nextResetRequest)
+			sayf("[nextreg] 0x02 <- 0x%02X (reset requested: %d)\n", value, io.nextResetRequest)
 		}
 	case 0x03:
 		switch t := value & 0x07; {
@@ -163,11 +163,11 @@ func (io *SpectrumIO) nextConfigRegWrite(reg uint8, value uint8) {
 			m.nextCfg.machineType = t
 			m.nextCfg.active = false
 			if t != 3 {
-				fmt.Printf("Next: the firmware chose machine type %d; only type 3 (+3, the Next's own) is modelled, continuing as +3\n", t)
+				sayf("Next: the firmware chose machine type %d; only type 3 (+3, the Next's own) is modelled, continuing as +3\n", t)
 			}
 		}
 		if debug {
-			fmt.Printf("[nextreg] 0x03 <- 0x%02X (config mode %v, machine type %d)\n", value, m.nextCfg.active, m.nextCfg.machineType)
+			sayf("[nextreg] 0x03 <- 0x%02X (config mode %v, machine type %d)\n", value, m.nextCfg.active, m.nextCfg.machineType)
 		}
 	case 0x04:
 		m.nextCfg.bank = value & 0x7F
@@ -218,6 +218,17 @@ func (zx *ZenZX) serviceNextReset() {
 		zx.io.SetNextRegister(uint8(0x50+slot), page)
 	}
 	zx.io.layer2Access = layer2AccessPort{}
+	zx.io.copperStop() // its program stays in memory
+	zx.io.nextSpeed = nextCPUSpeed{}
+	zx.io.nextRegs.regs[0x07] = 0
+	zx.io.nextLineInt = nextLineInt{}
+	zx.io.dma.reset()
+	zx.io.nextInt = nextInterrupts{}
+	zx.io.mfReset()
+	for _, r := range []uint8{0xC0, 0xC4, 0xC5, 0xC8, 0xC9} {
+		zx.io.nextRegs.regs[r] = 0
+	}
+	zx.io.nextRegs.regs[0x22], zx.io.nextRegs.regs[0x23] = 0, 0
 	if zx.io.divMMC != nil {
 		zx.io.divMMC.softReset()
 		zx.io.wireNextConfigDivMMC() // NextREG 0xB8-0xBB read back their reset values again
@@ -240,7 +251,7 @@ func (zx *ZenZX) serviceNextReset() {
 	}
 	zx.cpu.Reset()
 	if zx.io.hasDivMMC && zx.io.divMMC != nil && zx.io.divMMC.Debug {
-		fmt.Printf("[next] reset %d done: config mode %v, boot ROM %v, machine type %d\n",
+		sayf("[next] reset %d done: config mode %v, boot ROM %v, machine type %d\n",
 			kind, m.nextCfg.active, m.bootROMEnabled, m.nextCfg.machineType)
 	}
 }

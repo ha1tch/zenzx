@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // ============================================================================
 // DSK disk image parsing (standard and extended CPC/+3 format)

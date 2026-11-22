@@ -1,11 +1,11 @@
-package main
+package zenzx
 
 import (
 	"image"
 	"image/color"
 	"testing"
 
-	"github.com/ha1tch/zenzx/pkg/zxpalette"
+	"github.com/ha1tch/zenui/zxpalette"
 )
 
 // T-29 (wave ti0.r3) tests. Pattern A (register/memory-only, no CPU) below
@@ -55,7 +55,7 @@ func TestLayer2BaseBankReadsRegister0x12(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
-	io.SetNextRegister(0x12, 0x20)
+	io.SetNextRegister(0x12, 0x10) // bank 16 = page 0x20
 	if got := io.layer2BaseBank(); got != 0x20 {
 		t.Fatalf("layer2BaseBank() = 0x%02X, want 0x20", got)
 	}
@@ -72,7 +72,7 @@ func TestLayer2PixelReadsFromConfiguredBaseBank(t *testing.T) {
 	// at all. NR 0x12 defaults to page 0 (see nextreg.go's own registered
 	// default), so this must explicitly select page 16 as the base bank --
 	// discovered by this test itself initially failing without it.
-	io.SetNextRegister(0x12, 16)
+	io.SetNextRegister(0x12, 8)
 	mem.nextPageWrite(16, 0, 0xF0) // pixel (0,0): raw byte 0xF0, offset 0 -> idx 0xF0
 	got := mem.layer2Pixel(io, 0, 0)
 	if got != 0xF0 {
@@ -160,7 +160,7 @@ func TestLayer2Pixel320x256UsesColumnMajorAddressing(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
-	io.SetNextRegister(0x12, 16)        // base bank
+	io.SetNextRegister(0x12, 8)         // base bank
 	io.SetNextRegister(0x70, 0b0001<<4) // mode %01, 320x256x8bpp
 
 	// Screen (x=0,y=1) -- "first pixel on second line" -- must land at
@@ -188,7 +188,7 @@ func TestLayer2Pixel640x256PacksTwoPixelsPerByte(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
-	io.SetNextRegister(0x12, 16)
+	io.SetNextRegister(0x12, 8)
 	io.SetNextRegister(0x70, 0b0010<<4) // mode %10, 640x256x4bpp
 
 	// Byte at column-major address (pairX=0, y=0) = address 0. Top
@@ -209,7 +209,7 @@ func TestLayer2AccessPortStandardModeMapsReadsAndWrites(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
-	io.SetNextRegister(0x12, 32) // visible base bank = page 32
+	io.SetNextRegister(0x12, 16) // visible base bank = page 32
 
 	// Port 0x123B: bits7-6=00 (first 16K third), bit3=0 (target NR 0x12,
 	// visible), bit2=1 (read enable), bit0=1 (write enable).
@@ -251,8 +251,8 @@ func TestLayer2AccessPortUsesShadowBankWhenSelected(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	mem.EnableNext()
 	io := NewSpectrumIO(mem, nil)
-	io.SetNextRegister(0x12, 32) // visible bank
-	io.SetNextRegister(0x13, 64) // shadow bank
+	io.SetNextRegister(0x12, 16) // visible bank
+	io.SetNextRegister(0x13, 32) // shadow bank
 
 	// bit3=1 selects NR 0x13 (shadow) as the mapped bank; read+write
 	// enabled.
@@ -436,16 +436,10 @@ func TestT29NextModeLayer2EndToEnd(t *testing.T) {
 
 	// NEXTREG $12,$10 -- Layer 2 visible base bank = page 16 (first extra
 	// page, clear of the aliased-to-ram range).
-	run(0x8000, []uint8{0xED, 0x91, 0x12, 0x10})
-	// Explicitly select %000 S L U (Layer2-over-ULA) via NR 0x15 rather than
-	// relying on the construction-time default -- that default is actually
-	// 0x08 (bits 4-2 = %010 S U L, ULA-on-top per layer2ULAOnTop's corrected
-	// decode), NOT 0x00/%000 as this test's comment previously and
-	// incorrectly assumed; that wrong assumption happened to still pass
-	// before this session's %010 classification fix, since the old (buggy)
-	// layer2ULAOnTop also returned Layer2-on-top for %010, for the wrong
-	// reason. Explicit here so this test's pass/fail no longer depends on
-	// what NR 0x15 happens to default to.
+	run(0x8000, []uint8{0xED, 0x91, 0x12, 0x08})
+	// Select %000 S L U (Layer 2 over the ULA) through NR 0x15. It is also the
+	// reset value since 0.11.0 (the table held 0x08, S U L, before); it is
+	// written here so that the test does not depend on the reset value.
 	run(0x8020, []uint8{0xED, 0x91, 0x15, 0b00000000})
 
 	// Give the ULA screen a known, different colour (paper attribute byte
@@ -473,8 +467,10 @@ func TestT29NextModeLayer2EndToEnd(t *testing.T) {
 	// (R=7 G=7 B=3, third blue bit synthesised as 1 OR 1 = 1 -> B=7).
 	run(0x8050, []uint8{0xED, 0x91, 0x41, 0xFF})
 
+	// The picture is the Next's 320x256 frame (nextframe.go): the classic picture's (0,0),
+	// and Layer 2's in its 256x192 mode, is at (32,32) of it.
 	img := zx.DecodeDisplay()
-	got := img.RGBAAt(0, 0)
+	got := img.RGBAAt(nextFrameInset, nextFrameInset)
 	wantN := zxpalette.DecodeRGB9From8Bit(0xFF).Colour()
 	want := color.RGBA{R: wantN.R, G: wantN.G, B: wantN.B, A: wantN.A} // opaque (A=0xff), so NRGBA==RGBA channel-for-channel
 	if got != want {
@@ -485,7 +481,7 @@ func TestT29NextModeLayer2EndToEnd(t *testing.T) {
 	// confirm the same pixel now shows the ULA layer instead.
 	run(0x8010, []uint8{0xED, 0x91, 0x15, 0b00010000})
 	img2 := zx.DecodeDisplay()
-	got2 := img2.RGBAAt(0, 0)
+	got2 := img2.RGBAAt(nextFrameInset, nextFrameInset)
 	if got2 == want {
 		t.Fatalf("pixel (0,0) after switching NR 0x15 to ULA-on-top still shows Layer 2's colour %v", want)
 	}

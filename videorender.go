@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import (
 	"fmt"
@@ -30,7 +30,7 @@ import (
 // Registering a new mode's renderer (e.g. for T-09's mode-zenzx-01/02, or
 // T-11's mode-timex-001-hicolour) means implementing VideoRenderer and
 // calling RegisterVideoRenderer in an init() -- nothing in display.go,
-// display_headless.go, or either main needs to change.
+// display_core.go or either program needs to change.
 // ============================================================================
 
 // VideoRenderer turns Spectrum display memory into a displayed picture.

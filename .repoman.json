@@ -3,10 +3,18 @@
     "archive": {
       "exclude": [
         ".git/*",
+        ".git/*/*",
+        ".git/*/*/*",
+        ".git/*/*/*/*",
+        ".git/*/*/*/*/*",
+        ".git/*/*/*/*/*/*",
+        "examples/next/*/build/*",
+        "examples/next/*/build.log",
         "__pycache__/*",
         "*.pyc",
         "zenzx",
         "zenzx-headless",
+        "dist/*",
         "zenzx_linux",
         "zenzx_windows*",
         "zenzx_darwin*",
@@ -18,7 +26,8 @@
         "test-output.json",
         "cover-summary.txt",
         "*.test",
-        "*.png",
+        "st-*.png",
+        "zenzx-frame*.png",
         ".DS_Store",
         "*.swp",
         ".ed-journal.json",
@@ -52,6 +61,11 @@
         "always": true,
         "name": "go-sanity",
         "run": "repoman gomod check"
+      },
+      {
+        "always": true,
+        "name": "gofmt",
+        "run": "sh ./check_gofmt.sh"
       },
       {
         "name": "gui-check",

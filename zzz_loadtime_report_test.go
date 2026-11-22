@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // One-off load-time measurement for two specific titles, requested
 // directly rather than via the 31-game corpus sweep. Reuses

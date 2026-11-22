@@ -1,9 +1,9 @@
-package main
+package zenzx
 
 import (
 	"testing"
 
-	"github.com/ha1tch/zenzx/pkg/zxpalette"
+	"github.com/ha1tch/zenui/zxpalette"
 )
 
 // T-31 (wave ti0.r5) tests. Pattern A (register/memory-only, no CPU) below
@@ -321,7 +321,7 @@ func TestT31NextModePaletteEndToEnd(t *testing.T) {
 
 	// Layer 2: base bank = page 16, raw byte 0x11 at (0,0) -> resolved
 	// index 0x11 (no palette offset, NR 0x70 left at its default 0).
-	run(0x8010, []uint8{0xED, 0x91, 0x12, 0x10})
+	run(0x8010, []uint8{0xED, 0x91, 0x12, 0x08})
 	zx.memory.nextPageWrite(16, 0, 0x11)
 
 	// Write a known 9-bit colour to Layer2-1st palette index 0x11 via the
@@ -350,7 +350,7 @@ func TestT31NextModePaletteEndToEnd(t *testing.T) {
 	img := zx.DecodeDisplay()
 
 	wantLayer2 := zxpalette.DecodeRGB9From9Bit(0b11100100, 0b00000001).Colour()
-	gotLayer2 := img.RGBAAt(0, 0)
+	gotLayer2 := img.RGBAAt(nextFrameInset, nextFrameInset) // the frame: Layer 2's (0,0) is at (32,32)
 	if gotLayer2.R != wantLayer2.R || gotLayer2.G != wantLayer2.G || gotLayer2.B != wantLayer2.B {
 		t.Fatalf("Layer 2 pixel (0,0) = %+v, want %+v (9-bit palette entry at index 0x11)", gotLayer2, wantLayer2)
 	}

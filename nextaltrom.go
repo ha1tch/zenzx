@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 // NextREG 0x8C: the alternate ROM and the ROM lock (T-36).
 //

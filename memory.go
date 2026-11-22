@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import "fmt"
 
@@ -169,6 +169,10 @@ type SpectrumMemory struct {
 	bootROM        [8192]byte
 	bootROMLoaded  bool
 	bootROMEnabled bool
+	// mfPaged: the Next's Multiface ROM and RAM are over the bottom 16K (nextmultiface.go).
+	mfPaged bool
+	// nextPhys is the Next's SRAM that only a physical address reaches (nextphys.go).
+	nextPhys nextPhysical
 
 	// nextCfg is the Next's config mode (nextconfig.go): the window through which the
 	// firmware loads the ROMs into SRAM.
@@ -584,6 +588,9 @@ func (m *SpectrumMemory) Read(address uint16) uint8 {
 	if m.bootROMEnabled && address < 0x4000 {
 		return m.bootROM[address&0x1FFF]
 	}
+	if m.mfPaged && address < 0x4000 { // the Multiface: nextmultiface.go
+		return m.nextCfg.scratch[1][address]
+	}
 	// DivMMC automap/CONMEM overlay (T-36): see divMMCReadFn's own
 	// field comment above for why this precedes even the Next MMU
 	// gate below.
@@ -740,6 +747,12 @@ func (m *SpectrumMemory) Write(address uint16, value uint8) {
 	// enabled is simply dropped, matching every other ROM region in
 	// this codebase.
 	if m.bootROMEnabled && address < 0x4000 {
+		return
+	}
+	if m.mfPaged && address < 0x4000 { // the Multiface: its ROM, then its RAM
+		if address >= 0x2000 {
+			m.nextCfg.scratch[1][address] = value
+		}
 		return
 	}
 	// DivMMC automap/CONMEM overlay (T-36): same gate as Read -- see

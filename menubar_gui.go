@@ -1,20 +1,22 @@
 //go:build !headless
 
-package main
+package zenzx
 
 import (
 	_ "embed"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 
+	"github.com/ha1tch/zenui"
+	"github.com/ha1tch/zenui/zenuiraylib"
 	"github.com/ha1tch/zenzx/pkg/fonts"
 	"github.com/ha1tch/zenzx/pkg/machineconfig"
+	"github.com/ha1tch/zenzx/pkg/nextcard"
 	"github.com/ha1tch/zenzx/pkg/settingsconfig"
-	"github.com/ha1tch/zenzx/pkg/zenui"
-	"github.com/ha1tch/zenzx/pkg/zenuiraylib"
 )
 
 //go:embed machines.json
@@ -85,6 +87,10 @@ const (
 // nothing.
 var zoomLevels = []int{1, 2, 3}
 
+// viewRotateLabel is the View menu's item that moves every machine to the
+// next place in the layout.
+const viewRotateLabel = "Rotate Machines"
+
 // barState is the slide animation's lifecycle.
 type barState int
 
@@ -140,6 +146,19 @@ type appMenuBar struct {
 	// browser, not a flat item list -- drawn and updated independently
 	// of b.widget.
 	diskDialog *zenui.Dialog
+	// dialogIsCard is set while diskDialog is the SD Card menu's browser for a card image
+	// and not the Floppy Disk menu's for a disk (sdcardmenu_gui.go).
+	dialogIsCard bool
+	// newCardSize, when not 0, makes that browser the one that names a new empty card of
+	// this many bytes.
+	newCardSize int64
+	// The bar's fourth menu is Floppy Disk, or SD Card while a Next that boots NextZXOS is
+	// running: diskItems is the first's items, sdActions the second's actions, storageIsSD
+	// which it is now, nextCard2 the -sdcard2 option.
+	diskItems   []zenui.Item
+	sdActions   []func(zx *ZenZX)
+	storageIsSD bool
+	nextCard2   string
 
 	// logoMenu is the small dropdown associated with the rainbow
 	// (Spectrum theme) / ZSP logo (Dark/Light) decoration on the
@@ -154,7 +173,16 @@ type appMenuBar struct {
 	// otherwise) -- a single field, not two, since only one can ever
 	// be open at a time (both are only reachable through logoMenu,
 	// which itself can't be open at the same time as either).
-	activeModal *markdownModal
+	activeModal *zenui.TextModal
+
+	// nextSetup is the first-start dialog of the Next while it is open (nextsetup_gui.go).
+	// The four settings beside it come from the command line: where the boot files are
+	// looked for, whether the card is write-protected, DivMMC logging, and -next-classic.
+	nextSetup    *nextSetup
+	nextFilesDir string
+	nextReadOnly bool
+	nextDebug    bool
+	nextClassic  bool
 	// fixed keeps the bar permanently shown, bypassing the normal
 	// idle-at-edge auto-hide entirely, when true.
 	fixed bool
@@ -210,6 +238,27 @@ type appMenuBar struct {
 	// nesting at one level (see pkg/machineconfig's Submenu doc
 	// comment for why), so this never needs a third level of its own.
 	machineSubmenuFlags map[int][]string
+
+	// cards is the SD Cards window while it is open (sdcards_gui.go).
+	// cardUse tells where a card image is among the window's machines and
+	// machineNumber a machine's number in the dock (machinedeck_gui.go);
+	// with neither set there is one machine, number 1.
+	cards         *cardsWindow
+	cardUse       func(path string) cardUse
+	machineNumber func(zx *ZenZX) int
+	// disks is the Floppy Disks window while it is open (floppies_gui.go);
+	// diskUse tells which machine has a disc file in its drive and machineAt
+	// returns the machine with a number, both the dock's.
+	// layoutState and setLayout are the dock's tiled layouts for the View
+	// menu: the layout in use and the number of machines, and choosing one.
+	layoutState func() (layout deckLayout, machines int)
+	setLayout   func(l deckLayout)
+	// rotateMachines moves every machine to the next place in the layout.
+	rotateMachines func()
+
+	disks     *disksWindow
+	diskUse   func(path string) int
+	machineAt func(n int) *ZenZX
 
 	text      *zenuiraylib.BDFText
 	renderer  zenuiraylib.Renderer
@@ -337,7 +386,7 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		func(zx *ZenZX) { zx.RewindTape() },
 		func(zx *ZenZX) {}, // separator placeholder
 		func(zx *ZenZX) { zx.ToggleTapeMode() },
-		func(zx *ZenZX) { zx.ShowTapeInfo() },
+		func(zx *ZenZX) { b.showInfo("TAPE INFO", tapeInfoText(zx)) }, // info_gui.go
 	}
 
 	diskItems := []zenui.Item{
@@ -345,8 +394,9 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		{Separator: true},
 		{Label: "Save Disk"}, {Label: "Save Disk As..."},
 		{Separator: true},
-		{Label: "Eject Disk"}, {Label: "Disk Info"},
+		{Label: "Eject Disk"}, {Label: "Disk Info"}, {Label: "Manage Disks..."},
 	}
+	b.diskItems = diskItems
 	b.actions[barFloppyDisk] = []func(zx *ZenZX){
 		func(zx *ZenZX) { b.openDiskDialog(zx) },
 		func(zx *ZenZX) { zx.handleInsertBlankDisk() },
@@ -355,7 +405,8 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		func(zx *ZenZX) { zx.handleSaveDiskAs() },
 		func(zx *ZenZX) {}, // separator placeholder
 		func(zx *ZenZX) { zx.handleEjectDisk() },
-		func(zx *ZenZX) { printDiskInfo(zx) },
+		func(zx *ZenZX) { b.showInfo("DISK INFO", diskInfoText(zx)) },
+		func(zx *ZenZX) { b.openDisks(zx) },
 	}
 
 	snapItems := []zenui.Item{
@@ -368,7 +419,7 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		func(zx *ZenZX) { zx.handleQuickLoad() },
 		func(zx *ZenZX) { zx.handleAutoSave() },
 		func(zx *ZenZX) {}, // separator placeholder
-		func(zx *ZenZX) { fmt.Println("Snapshot loading: Drop a .zxs file onto the window") },
+		func(zx *ZenZX) { b.showInfo("SNAPSHOT INFO", snapshotInfoText()) },
 		func(zx *ZenZX) {
 			fmt.Println("\nRunning snapshot diagnostics...")
 			NewDebugSnapshot(zx).RunFullDiagnostics()
@@ -385,21 +436,40 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 	// an accepted, minor trade-off given the checkbox itself now makes
 	// the state visible without needing the console at all.
 	viewItems := []zenui.Item{
-		{Label: "FPS Counter", Checked: &zx.display.showFPS, Toggle: true},
-		{Label: "Border Display", Checked: &zx.display.showBorder, Toggle: true},
+		{Label: "FPS Counter", Checked: &zx.window().showFPS, Toggle: true},
+		{Label: "Border Display", Checked: &zx.window().showBorder, Toggle: true},
 		{Label: "Show Status"},
 		{Separator: true},
 		{Label: "X 1"}, {Label: "X 2"}, {Label: "X 3"}, // real Checked/Disabled values are set by refreshViewItems each frame the bar is shown
+		{Separator: true},
 	}
+	for _, name := range deckLayoutNames { // the layouts; refreshViewItems sets their state too
+		viewItems = append(viewItems, zenui.Item{Label: name})
+	}
+	viewItems = append(viewItems, zenui.Item{Label: viewRotateLabel})
 	b.actions[barView] = []func(zx *ZenZX){
 		func(zx *ZenZX) {}, // FPS is a pure checkbox: Item.Toggle flips the bool directly and ToggleFPS has no other side effect, so this generic-dispatch entry is a genuine no-op
-		func(zx *ZenZX) { zx.display.updateTargetSize() }, // Border's own ToggleBorder does more than flip a bool: it also triggers a window-resize animation via updateTargetSize (isAnimating=true, animated in UpdateWindowSize). Item.Toggle already flipped showBorder directly; this closure -- which the generic dispatch already calls for every Toggled event, not just Accepted -- supplies the second half so Alt+B and this checkbox behave identically, not just agree on the bool.
+		func(zx *ZenZX) { zx.window().updateTargetSize() }, // Border's own ToggleBorder does more than flip a bool: it also triggers a window-resize animation via updateTargetSize (isAnimating=true, animated in UpdateWindowSize). Item.Toggle already flipped showBorder directly; this closure -- which the generic dispatch already calls for every Toggled event, not just Accepted -- supplies the second half so Alt+B and this checkbox behave identically, not just agree on the bool.
 		func(zx *ZenZX) { zx.showStatus() },
 		func(zx *ZenZX) {}, // the separator's own index -- never actually called, Menu.itemEnabled excludes separators from selection entirely, but the generic dispatch is a flat index into this slice, so a placeholder keeps X1/X2/X3 below aligned
-		func(zx *ZenZX) { zx.display.SetScale(1); b.saveSettings(zx) },
-		func(zx *ZenZX) { zx.display.SetScale(2); b.saveSettings(zx) },
-		func(zx *ZenZX) { zx.display.SetScale(3); b.saveSettings(zx) },
+		func(zx *ZenZX) { zx.window().SetScale(1); b.saveSettings(zx) },
+		func(zx *ZenZX) { zx.window().SetScale(2); b.saveSettings(zx) },
+		func(zx *ZenZX) { zx.window().SetScale(3); b.saveSettings(zx) },
+		func(zx *ZenZX) {}, // the separator before the layouts
 	}
+	for i := range deckLayoutNames {
+		l := deckLayout(i)
+		b.actions[barView] = append(b.actions[barView], func(zx *ZenZX) {
+			if b.setLayout != nil {
+				b.setLayout(l)
+			}
+		})
+	}
+	b.actions[barView] = append(b.actions[barView], func(zx *ZenZX) {
+		if b.rotateMachines != nil {
+			b.rotateMachines()
+		}
+	})
 
 	themeItems := make([]zenui.Item, len(zenui.Themes))
 	themeActions := make([]func(zx *ZenZX), len(zenui.Themes))
@@ -525,7 +595,7 @@ func (b *appMenuBar) ApplyZoom(scale int) {
 // drifted near the top edge, whether or not anything was actually
 // open, and permanently while the bar was fixed.
 func (b *appMenuBar) Active() bool {
-	return b.widget.Active() || b.diskDialog != nil || b.logoMenu != nil || b.activeModal != nil
+	return b.widget.Active() || b.diskDialog != nil || b.logoMenu != nil || b.activeModal != nil || b.nextSetup != nil || b.cards != nil || b.disks != nil
 }
 
 func (b *appMenuBar) show() {
@@ -592,6 +662,11 @@ func (b *appMenuBar) buildMachineNodes(nodes []machineconfig.Node, initialModel 
 // menu's "View ZenZX Homepage" item.
 const zenZXHomepageURL = "https://ha1tch.github.io/zsp/projects/zenzx"
 
+// openURL hands a URL to the system's browser. It is a variable so that the tests can
+// replace it: run on a machine with a display, a test that reached rl.OpenURL started a
+// real browser, which then kept the test run from ending.
+var openURL = rl.OpenURL
+
 // logoHotZone returns the clickable area associated with the rainbow
 // (Spectrum theme) / ZSP logo (Dark/Light) decoration -- everything
 // to the right of the bar's own labels, up to the screen's own right
@@ -637,9 +712,9 @@ func (b *appMenuBar) openLogoMenu(screenW int) {
 func (b *appMenuBar) applyFixedState(zx *ZenZX) {
 	if b.fixed {
 		b.show()
-		zx.display.SetReservedTopHeight(menuStripHeight)
+		zx.window().SetReservedTopHeight(menuStripHeight)
 	} else {
-		zx.display.SetReservedTopHeight(0)
+		zx.window().SetReservedTopHeight(0)
 	}
 	b.saveSettings(zx)
 }
@@ -662,7 +737,7 @@ func (b *appMenuBar) saveSettings(zx *ZenZX) {
 		Theme:        string(b.themeName),
 		Font:         string(b.fontName),
 		FontZoom:     b.scale,
-		DisplayScale: zx.display.screen.multiplier,
+		DisplayScale: zx.window().screen.multiplier,
 		FixedMenuBar: b.fixed,
 	}
 	if err := settingsconfig.Save(b.settingsPath, s); err != nil {
@@ -678,12 +753,75 @@ func (b *appMenuBar) saveSettings(zx *ZenZX) {
 func (b *appMenuBar) handleLogoMenuResult(zx *ZenZX, result int) {
 	switch result {
 	case 1: // ZenZX website
-		rl.OpenURL(zenZXHomepageURL)
+		openURL(zenZXHomepageURL)
 	case 2: // Help
-		b.activeModal = newMarkdownModal("HELP", helpText, false)
+		b.activeModal = newHelpModal()
 	case 3: // About...
 		aboutText := strings.ReplaceAll(aboutTextTemplate, "__VERSION__", version)
-		b.activeModal = newMarkdownModal("ABOUT", aboutText, true)
+		b.activeModal = newAboutModal(aboutText)
+	}
+}
+
+// switchModel is the Machine menu's choice of a model: the live switch, and for a Next its
+// boot chain.
+func (b *appMenuBar) switchModel(zx *ZenZX, model string) {
+	zx.detachNextBootChain()
+	switchModelLive(zx, model, b.romDir)
+	if model == "next" {
+		b.startNext(zx)
+	}
+}
+
+// startNext makes a machine that is already a Next boot NextZXOS: from its boot files when
+// they are there, and otherwise by opening the first-start dialog, which downloads them.
+// With -next-classic it does neither.
+func (b *appMenuBar) startNext(zx *ZenZX) {
+	if b.nextClassic {
+		return
+	}
+	f, ok, note := locateNextFiles(b.nextFilesDir)
+	if ok {
+		b.attachNext(zx, f)
+		return
+	}
+	if note != "" {
+		fmt.Printf("Next: boot files found but not usable: %s\n", note)
+	}
+	dir, err := nextDownloadDir(b.nextFilesDir)
+	if err != nil {
+		fmt.Printf("Next: no folder to keep the boot files in: %v\n", err)
+		return
+	}
+	b.nextSetup = newNextSetup(dir, note)
+}
+
+// attachNext attaches the boot chain and starts the machine from its boot ROM.
+func (b *appMenuBar) attachNext(zx *ZenZX, f nextcard.Files) {
+	protected, err := zx.attachNextBootChain(f, b.nextReadOnly, b.nextDebug)
+	if err != nil {
+		fmt.Printf("Next: the boot files in %s could not be used: %v\n", f.Dir, err)
+		return
+	}
+	zx.Reset()
+	zx.io.nextResetRequest = nextResetHard
+	fmt.Println(describeNextChain(f, protected))
+	card2 := b.nextCard2
+	if card2 != "none" {
+		// The card this Next would get in its second slot may be in another
+		// machine already.
+		path := card2
+		if path == "" {
+			path = filepath.Join(f.Dir, ownCardName)
+		}
+		if u := b.whereIs(path); u.machine != 0 && u.machine != b.numberOf(zx) {
+			fmt.Printf("Next: %s is in machine %d; slot 2 of this machine is left empty\n", filepath.Base(path), u.machine)
+			card2 = "none"
+		}
+	}
+	if line, err := zx.insertOwnOrGivenCard(card2, b.nextReadOnly); err != nil {
+		fmt.Printf("Next: the second SD card could not be used: %v\n", err)
+	} else if line != "" {
+		fmt.Println(line)
 	}
 }
 
@@ -717,25 +855,6 @@ func (b *appMenuBar) openDiskDialog(zx *ZenZX) {
 	})
 }
 
-// printDiskInfo reports the floppy controller's actual current state --
-// replaces the old static "restart with -disk=..." message, which is
-// outdated now that Open DSK Image loads a disk live.
-func printDiskInfo(zx *ZenZX) {
-	if !zx.io.hasFDC {
-		fmt.Println("Disk: no floppy controller on this model (+3 and Spanish +3 only)")
-		return
-	}
-	if zx.io.fdc == nil || zx.io.fdc.diskFilename == "" {
-		fmt.Println("Disk: floppy controller present, no disk loaded")
-		return
-	}
-	modified := ""
-	if zx.io.fdc.diskModified {
-		modified = " (modified, not yet saved)"
-	}
-	fmt.Printf("Disk: %s%s\n", zx.io.fdc.diskFilename, modified)
-}
-
 // refreshViewItems rebuilds the View menu's zoom items (X1/X2/X3) each
 // frame the bar is shown -- Item.Disabled (which of these fit the
 // current monitor, via maxMultiplierThatFits) has no pointer-based
@@ -753,27 +872,37 @@ func printDiskInfo(zx *ZenZX) {
 // the entire time it was open. Fixed in pkg/zenui/menubar.go itself.
 func (b *appMenuBar) refreshViewItems(zx *ZenZX) {
 	items := []zenui.Item{
-		{Label: "FPS Counter", Checked: &zx.display.showFPS, Toggle: true},
-		{Label: "Border Display", Checked: &zx.display.showBorder, Toggle: true},
+		{Label: "FPS Counter", Checked: &zx.window().showFPS, Toggle: true},
+		{Label: "Border Display", Checked: &zx.window().showBorder, Toggle: true},
 		{Label: "Show Status"},
 		{Separator: true},
 	}
-	limit := zx.display.maxMultiplierThatFits()
+	layout, machines := layoutSingle, 1
+	if b.layoutState != nil {
+		layout, machines = b.layoutState()
+	}
+	limit := zx.window().maxMultiplierThatFits()
 	// min (2026-09-15, T-29 GUI-wiring pass): Layer 2's 640x256x4bpp mode
 	// gates out 1x (see DisplayManager.minMultiplierForMode's own
 	// comment) -- the X1 item is disabled the same way an X-item above
 	// the monitor-fit limit already is, rather than silently doing
 	// nothing when clicked.
-	min := zx.display.MinMultiplierForMode()
+	min := zx.window().MinMultiplierForMode()
 	for n := 1; n <= 3; n++ {
-		checked := zx.display.screen.multiplier == n
+		checked := zx.window().screen.multiplier == n
 		b.displayScaleChecked[n] = &checked
 		items = append(items, zenui.Item{
 			Label:    fmt.Sprintf("X %d", n),
 			Checked:  b.displayScaleChecked[n],
-			Disabled: n > limit || n < min,
+			Disabled: n > limit || n < min || layout != layoutSingle, // the zoom is for one machine filling the window
 		})
 	}
+	items = append(items, zenui.Item{Separator: true})
+	for i, name := range deckLayoutNames {
+		checked := deckLayout(i) == layout
+		items = append(items, zenui.Item{Label: name, Checked: &checked, Disabled: !layoutAllowed(deckLayout(i), machines)})
+	}
+	items = append(items, zenui.Item{Label: viewRotateLabel, Disabled: machines < 2})
 	b.widget.SetItems(barView, items)
 }
 
@@ -815,8 +944,28 @@ func (b *appMenuBar) refreshCustomROMItems(zx *ZenZX) {
 // itself, dispatching any accepted selection to the right action (or, for
 // Custom ROM, advancing the two-step flow).
 func (b *appMenuBar) Update(zx *ZenZX) {
+	if b.cards != nil {
+		b.updateCards(zx)
+		return
+	}
+	if b.disks != nil {
+		b.updateDisks()
+		return
+	}
+	if b.nextSetup != nil {
+		switch b.nextSetup.update(zenuiraylib.Input()) {
+		case nextSetupReady:
+			dir := b.nextSetup.dir
+			b.nextSetup = nil
+			b.attachNext(zx, nextcard.In(dir))
+		case nextSetupDeclined:
+			b.nextSetup = nil
+		}
+		return
+	}
+
 	if b.activeModal != nil {
-		if !b.activeModal.update(zenuiraylib.Input()) {
+		if !b.activeModal.Update(zenuiraylib.Input()) {
 			b.activeModal = nil
 		}
 		return
@@ -827,13 +976,25 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 		case zenui.Accepted:
 			path := b.diskDialog.Result()
 			b.diskDialog = nil
-			if err := zx.io.LoadDisk(path); err != nil {
+			if b.dialogIsCard {
+				size := b.newCardSize
+				b.dialogIsCard, b.newCardSize = false, 0
+				if size != 0 {
+					b.newCard(zx, path, size)
+				} else {
+					b.insertCard(zx, path)
+				}
+				return
+			}
+			if n, taken := b.diskTakenElsewhere(zx, path); taken {
+				fmt.Printf("Open DSK Image: %s is in the drive of machine %d; a disc file is in one machine at a time\n", path, n)
+			} else if err := zx.io.LoadDisk(path); err != nil {
 				fmt.Printf("Open DSK Image: could not load %s: %v\n", path, err)
 			} else {
 				fmt.Printf("Loaded disk: %s\n", path)
 			}
 		case zenui.Cancelled:
-			b.diskDialog = nil
+			b.diskDialog, b.dialogIsCard, b.newCardSize = nil, false, 0
 		}
 		return
 	}
@@ -907,6 +1068,7 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	if b.state == barShown {
 		b.refreshCustomROMItems(zx)
 		b.refreshViewItems(zx)
+		b.refreshStorageMenu(zx) // Floppy Disk, or SD Card on a Next: sdcardmenu_gui.go
 	}
 
 	// Widget interaction (hover-to-open, click-to-select) is gated on
@@ -974,8 +1136,11 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 		} else if sel.ItemIndex < len(b.machineModelFlags) {
 			flag = b.machineModelFlags[sel.ItemIndex]
 		}
+		if flag == "next" && b.needsOwnCard(zx) {
+			return // the SD Cards window is open: the machine becomes a Next when a card is chosen
+		}
 		if flag != "" {
-			switchModelLive(zx, flag, b.romDir)
+			b.switchModel(zx, flag)
 			b.setCurrentModel(flag)
 		}
 		return
@@ -994,6 +1159,11 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 		return
 	}
 
+	if sel.BarIndex == barFloppyDisk && b.storageIsSD {
+		b.storageSelected(zx, sel.ItemIndex, sel.SubIndex)
+		return
+	}
+
 	if list, ok := b.actions[sel.BarIndex]; ok && sel.ItemIndex >= 0 && sel.ItemIndex < len(list) {
 		list[sel.ItemIndex](zx)
 	}
@@ -1002,6 +1172,17 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 // setCurrentModel updates modelChecked so the Machine menu's submenus
 // show a checkmark on whichever model is now running, clearing every
 // other model's checkmark first.
+// currentModel is the model the Machine menu has ticked, "" when it is none
+// of the menu's.
+func (b *appMenuBar) currentModel() string {
+	for k, checked := range b.modelChecked {
+		if *checked {
+			return k
+		}
+	}
+	return ""
+}
+
 func (b *appMenuBar) setCurrentModel(model string) {
 	for k, checked := range b.modelChecked {
 		*checked = k == model
@@ -1016,8 +1197,20 @@ func (b *appMenuBar) setCurrentModel(model string) {
 // Renderer interface -- this file has no raylib calls of its own left for
 // either.
 func (b *appMenuBar) Draw(screenW, screenH int) {
+	if b.cards != nil {
+		b.cards.Draw(b.renderer, screenW, screenH, b.theme)
+		return
+	}
+	if b.disks != nil {
+		b.disks.Draw(b.renderer, screenW, screenH, b.theme)
+		return
+	}
+	if b.nextSetup != nil {
+		b.nextSetup.draw(b.renderer, screenW, screenH, b.theme)
+		return
+	}
 	if b.activeModal != nil {
-		b.activeModal.draw(b.renderer, screenW, screenH, b.theme)
+		b.activeModal.Draw(b.renderer, screenW, screenH, b.theme)
 		return
 	}
 	if b.diskDialog != nil {

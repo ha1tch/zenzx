@@ -1,4 +1,4 @@
-package main
+package zenzx
 
 import "testing"
 
@@ -202,15 +202,15 @@ func TestNextRegReadOnly(t *testing.T) {
 }
 
 // TestNextRegDefaults spot-checks power-on defaults documented by the
-// SpecNext wiki: register 0x15's default sprite/layer priority
-// ("S L U", value 0x08) and the Layer 2 clip window's full-screen
+// The Next's registers.txt: register 0x15's reset value (0x00, the layer
+// order S L U) and the Layer 2 clip window's full-screen
 // default (0,255,0,191).
 func TestNextRegDefaults(t *testing.T) {
 	mem, _ := newTestMemoryAndScreen()
 	io := NewSpectrumIO(mem, nil)
 
-	if got := io.GetNextRegister(0x15); got != 0x08 {
-		t.Fatalf("register 0x15 power-on default = 0x%02X, want 0x08 (S L U)", got)
+	if got := io.GetNextRegister(0x15); got != 0x00 {
+		t.Fatalf("register 0x15 power-on default = 0x%02X, want 0x00 (S L U)", got)
 	}
 
 	io.WritePort(nextRegSelectPort, 0x18)
