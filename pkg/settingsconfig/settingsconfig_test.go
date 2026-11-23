@@ -229,3 +229,74 @@ func TestSchemaMaxDisplayScaleMatchesDisplayPackage(t *testing.T) {
 		t.Errorf("MaxDisplayScale = %d, want 5 (must match display.MaxMultiplier -- update both together)", MaxDisplayScale)
 	}
 }
+
+// A settings.json from before the dock, multi and drop keys existed is still valid, and
+// reads as the program always behaved: dock on, several machines on, a plain drop asks,
+// Shift runs.
+func TestOptionalKeysDefaultWhenAbsent(t *testing.T) {
+	s, err := parseAndValidate([]byte(validSettingsJSON()), testThemes, testFonts)
+	if err != nil {
+		t.Fatalf("an old settings file was refused: %v", err)
+	}
+	if !s.DockOn() || !s.MultiOn() || s.DropAction() != "ask" || s.DropShiftAction() != "run" {
+		t.Errorf("defaults are dock=%v multi=%v drop=%q dropShift=%q", s.DockOn(), s.MultiOn(), s.DropAction(), s.DropShiftAction())
+	}
+	var none *Settings
+	if !none.DockOn() || !none.MultiOn() || none.DropAction() != "ask" || none.DropShiftAction() != "run" {
+		t.Error("a nil *Settings must read as the defaults")
+	}
+}
+
+func TestOptionalKeysRoundTrip(t *testing.T) {
+	off := false
+	in := &Settings{Version: 1, Theme: "Dark", Font: "Sinclair", FontZoom: 2, DisplayScale: 2,
+		Dock: &off, Multi: &off, Drop: "copy", DropShift: "ask"}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := Save(path, in); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Load(path, []byte(validSettingsJSON()), testThemes, testFonts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.FromDisk {
+		t.Fatalf("the saved file was refused: %s", res.Warning)
+	}
+	s := res.Settings
+	if s.DockOn() || s.MultiOn() || s.DropAction() != "copy" || s.DropShiftAction() != "ask" {
+		t.Errorf("read back dock=%v multi=%v drop=%q dropShift=%q", s.DockOn(), s.MultiOn(), s.DropAction(), s.DropShiftAction())
+	}
+}
+
+func TestDropWordsAreAClosedSet(t *testing.T) {
+	bad := strings.Replace(validSettingsJSON(), `"fixedMenuBar": false`, `"fixedMenuBar": false, "drop": "explode"`, 1)
+	if _, err := parseAndValidate([]byte(bad), testThemes, testFonts); err == nil {
+		t.Error(`"drop": "explode" was accepted`)
+	}
+}
+
+// A settings.json from before snapshotStart existed reads as "paused" (the way a loaded
+// snapshot has always waited), the word is a closed set, and the choice survives a save
+// and a load.
+func TestSnapshotStartDefaultsToPausedAndRoundTrips(t *testing.T) {
+	var none *Settings
+	if none.SnapshotStartAction() != "paused" || (&Settings{}).SnapshotStartAction() != "paused" {
+		t.Error("the default is not paused")
+	}
+	bad := strings.Replace(validSettingsJSON(), `"fixedMenuBar": false`, `"fixedMenuBar": false, "snapshotStart": "sometimes"`, 1)
+	if _, err := parseAndValidate([]byte(bad), testThemes, testFonts); err == nil {
+		t.Error(`"snapshotStart": "sometimes" was accepted`)
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := Save(path, &Settings{Version: 1, Theme: "Dark", Font: "Sinclair", FontZoom: 1,
+		DisplayScale: 2, SnapshotStart: "play"}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Load(path, []byte(validSettingsJSON()), testThemes, testFonts)
+	if err != nil || !res.FromDisk {
+		t.Fatalf("the saved file was refused: %v %s", err, res.Warning)
+	}
+	if res.Settings.SnapshotStartAction() != "play" {
+		t.Errorf("read back %q", res.Settings.SnapshotStartAction())
+	}
+}

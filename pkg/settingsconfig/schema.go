@@ -24,5 +24,10 @@ func Schema(validThemes, validFonts []string) qf.Schema {
 		Field("font", builders.String().Enum(validFonts...).Required()).
 		Field("fontZoom", builders.Number().Integer().Min(1).Max(3).Required()).
 		Field("displayScale", builders.Number().Integer().Min(1).Max(MaxDisplayScale).Required()).
-		Field("fixedMenuBar", builders.Bool().Required())
+		Field("fixedMenuBar", builders.Bool().Required()).
+		Field("dock", builders.Bool()).
+		Field("multi", builders.Bool()).
+		Field("drop", builders.String().Enum("ask", "copy", "run")).
+		Field("dropShift", builders.String().Enum("ask", "copy", "run")).
+		Field("snapshotStart", builders.String().Enum("paused", "play"))
 }

@@ -60,7 +60,7 @@ anything starts, and no card may be named twice.
 
 The boot ROM and the DivMMC ROM are the same for every Next and come from
 the boot-files folder, so those files must be in place: start a Next on
-its own once, or run `zenzx-headless -next-setup`. A card to name is a copy
+its own once, or run `zenzx-headless -next-firmware setup`. A card to name is a copy
 of the standard one, `next-card.img` in that folder, made with the SD
 Cards window's Copy or with `cp`; or a new card with only the system on
 it, which holds far less:

@@ -3,10 +3,8 @@
 package zenzx
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -18,8 +16,9 @@ import (
 // The window that appears the first time a Next is started without its boot files: it says
 // why they are needed, asks before downloading, lets the two addresses be changed, shows
 // the progress of the download and of the card being built, and reports the verification.
-// The work itself is nextcard.Setup, on a goroutine of its own; the window only reads its
-// progress, so the machine and the window keep running meanwhile.
+// The work itself is a firmwareJob (nextfirmware.go), on a goroutine of its own, the one
+// -next-firmware setup runs on the command line; the window only reads its progress, so the
+// machine and the window keep running meanwhile.
 //
 // It is drawn as the Help and About windows are (markdownmodal_gui.go): the same backdrop
 // and panel in the colours of the selected theme, the same text size, and a body that
@@ -73,19 +72,14 @@ type nextSetup struct {
 	mouseX   int
 	mouseY   int
 
-	cancel    context.CancelFunc
 	cancelled bool // Cancel was chosen while the work was running
 	// run is the function that does the work; a test replaces it.
-	run func(ctx context.Context, opts nextcard.Options, progress nextcard.Progress) error
+	run firmwareRunFunc
 	// paste returns the clipboard's text when Ctrl+V (Cmd+V) was pressed this frame.
 	paste func() (string, bool)
 
-	mu       sync.Mutex
-	stage    nextcard.Stage
-	done     int64
-	total    int64
-	finished bool
-	err      error
+	// job is the work that is going on, or has gone on, since Download was chosen.
+	job *firmwareJob
 }
 
 // newNextSetup makes the window for downloads to dir. note, when not empty, says why boot
@@ -114,9 +108,7 @@ func (s *nextSetup) content() (title string, lines, buttons []string) {
 	folder := zenui.WrapText(s.dir, nextSetupCols-2, "  ")
 	switch s.phase {
 	case nextSetupRunning:
-		s.mu.Lock()
-		stage := s.stage
-		s.mu.Unlock()
+		stage := s.job.State().Stage
 		lines = []string{fmt.Sprintf("## Step %d of 5: %s", int(stage)+1, stage), "", "The files go to:"}
 		lines = append(lines, folder...)
 		return "ZX SPECTRUM NEXT: GETTING THE FILES", lines, []string{"Cancel"}
@@ -306,9 +298,8 @@ func (s *nextSetup) draw(r zenui.Renderer, screenW, screenH int, theme zenui.The
 			}
 		}
 	case nextSetupRunning:
-		s.mu.Lock()
-		done, total := s.done, s.total
-		s.mu.Unlock()
+		st := s.job.State()
+		done, total := st.Done, st.Total
 		zenui.DrawProgressBar(r, s.bar, done, total, theme)
 		r.DrawText(zenui.ProgressText(done, total), s.bar.X, s.bar.Y+s.bar.H+2, s.effScale, theme.Text)
 	}
@@ -322,22 +313,8 @@ func (s *nextSetup) draw(r zenui.Renderer, screenW, screenH int, theme zenui.The
 
 func (s *nextSetup) start() {
 	s.phase, s.scroll, s.cancelled = nextSetupRunning, 0, false
-	s.mu.Lock()
-	s.stage, s.done, s.total, s.finished, s.err = nextcard.StageBootROM, 0, 0, false, nil
-	s.mu.Unlock()
-	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
-	opts := nextcard.Options{Dir: s.dir, DistributionURL: strings.TrimSpace(s.distURL), BootROMURL: strings.TrimSpace(s.bootURL)}
-	go func() {
-		err := s.run(ctx, opts, func(stage nextcard.Stage, done, total int64) {
-			s.mu.Lock()
-			s.stage, s.done, s.total = stage, done, total
-			s.mu.Unlock()
-		})
-		s.mu.Lock()
-		s.finished, s.err = true, err
-		s.mu.Unlock()
-	}()
+	s.job = newFirmwareJob(s.dir, s.distURL, s.bootURL, s.run)
+	s.job.Start()
 }
 
 // scrollInput moves the body: wheel, Page Up and Down, the arrow keys, and the scrollbar.
@@ -447,11 +424,10 @@ func (s *nextSetup) update(in zenui.Input) nextSetupResult {
 
 	switch s.phase {
 	case nextSetupRunning:
-		s.mu.Lock()
-		finished, err := s.finished, s.err
-		s.mu.Unlock()
+		st := s.job.State()
+		finished, err := st.Finished, st.Err
 		if finished {
-			s.cancel()
+			s.job.Cancel()
 			if err == nil {
 				return nextSetupReady
 			}
@@ -463,7 +439,7 @@ func (s *nextSetup) update(in zenui.Input) nextSetupResult {
 		}
 		if escape || closeBox || click == 0 {
 			s.cancelled = true
-			s.cancel() // the goroutine ends on its own; the window closes when it has
+			s.job.Cancel() // the goroutine ends on its own; the window closes when it has
 		}
 	case nextSetupFailed:
 		switch {

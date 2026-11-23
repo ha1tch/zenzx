@@ -349,6 +349,11 @@ func sanitizeName(s string) string {
 }
 
 func TestBatchThreeModeCompare(t *testing.T) {
+	// Without the corpus every game records a "tape load" error and the test would report a
+	// pass for a comparison that did not happen (T-81).
+	if _, err := os.Stat(corpusRoot); err != nil {
+		t.Skipf("the tape corpus is not here (%s): %v", corpusRoot, err)
+	}
 	startIdx := 0
 	endIdx := len(batchGames)
 	if v := os.Getenv("BATCH_START"); v != "" {

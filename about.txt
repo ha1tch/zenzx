@@ -16,6 +16,12 @@ variants of each, and the Timex Sinclair 2068.
   https://ha1tch.github.io/zsp/projects/zenzx
 
 
+## Acknowledgements
+
+  The friends of the project: Help > Acknowledgements..., or
+  https://github.com/ha1tch/zenzx/blob/main/ACKNOWLEDGEMENTS.md
+
+
 ## Licence
 
   Copyright (c) 2026 haitch

@@ -1,0 +1,86 @@
+{
+  "version": 3,
+  "timestamp": "2026-11-23T02:55:38.093454-03:00",
+  "model": "Spectrum +3",
+  "emulator": "ZenZX",
+  "emulator_version": "1.0",
+  "cpu": {
+    "pc": "0CB6",
+    "sp": "5BF9",
+    "af": "0322",
+    "bc": "0B23",
+    "de": "C74D",
+    "hl": "5C3B",
+    "ix": "F700",
+    "iy": "5C3A",
+    "i": "09",
+    "r": "05",
+    "iff1": true,
+    "iff2": true,
+    "im": 1,
+    "halted": true,
+    "cycles": 1092604701
+  },
+  "memory": {
+    "model": "Spectrum +3",
+    "rom_bank": 0,
+    "ram_bank_top": 7,
+    "screen_bank": 5,
+    "paging_locked": false,
+    "port_7ffd": "07",
+    "port_1ffd": "00"
+  },
+  "io": {
+    "border_color": 7,
+    "speaker": false,
+    "ay_register": 7,
+    "keyboard": "1F 1F 1F 1F 1F 1F 1F 1F"
+  },
+  "audio": {
+    "enabled": true,
+    "master_volume": 0.8,
+    "beeper_volume": 0.5,
+    "ay_volume": 0.5,
+    "speaker": false,
+    "ay_registers": [
+      "69",
+      "00",
+      "8C",
+      "00",
+      "53",
+      "00",
+      "00",
+      "3F",
+      "00",
+      "00",
+      "00",
+      "00",
+      "00",
+      "00",
+      "00",
+      "00"
+    ]
+  },
+  "checksums": {
+    "audio": "8B1B1A21",
+    "cpu": "58E4642F",
+    "io": "D16143CC",
+    "memory": "F50E19C7",
+    "paging": "070E504C",
+    "screen": "E72D5F05"
+  },
+  "chunk_sizes": {
+    "audio": 36,
+    "cpu": 49,
+    "io": 33,
+    "memory": 52630,
+    "paging": 13,
+    "screen": 6920
+  },
+  "debug": {
+    "cycleCount": 199677361,
+    "frameCount": 2816,
+    "paused": true,
+    "running": true
+  }
+}

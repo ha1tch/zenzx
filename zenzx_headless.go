@@ -37,6 +37,7 @@ func RunHeadless(args []string) {
 	rom1 := fs.String("rom1", "", "Override just ROM bank 1, leaving the rest of -model's standard set intact")
 	rom2 := fs.String("rom2", "", "Override just ROM bank 2, leaving the rest of -model's standard set intact")
 	rom3 := fs.String("rom3", "", "Override just ROM bank 3 (e.g. +3DOS on a +3), leaving the rest of -model's standard set intact")
+	romBin := addROMBinFlags(fs)
 	customROMsMenu := fs.Bool("custom-roms-menu", false, "Interactively pick a ROM from -custom-roms-dir and a bank to apply it to")
 	customROMsDir := fs.String("custom-roms-dir", CustomROMDir, "Directory scanned by -custom-roms-menu")
 	romDir := fs.String("romdir", "./rom", "Directory containing ROM files")
@@ -67,9 +68,11 @@ func RunHeadless(args []string) {
 	nextBootable := fs.String("next-bootable", "", nextBootableHelp)
 	nextExamplesCard := fs.String("next-examples-card", "", nextExCardHelp)
 	nextIssue := fs.Int("next-issue", 5, nextIssueHelp)
-	nextSetupFlag := fs.Bool("next-setup", false, "Next: download the boot files once (the emulator distribution, about 70 MB, and the boot ROM), build and verify the SD card, and exit. They go to the -next-files folder, or the per-user one. What is already there is kept")
-	nextDistURL := fs.String("next-distribution", "", "Next: address of the emulator distribution zip for -next-setup (default: the 26.11 distribution at specnext.com)")
-	nextBootURL := fs.String("next-bootrom-url", "", "Next: address of the boot ROM for -next-setup")
+	nextFirmwareFlag := fs.String("next-firmware", "", nextFirmwareHelp)
+	nextSetupFlag := fs.Bool("next-setup", false, nextSetupHelp)
+	nextDistURL := fs.String("next-distribution", "", nextDistributionHelp)
+	nextBootURL := fs.String("next-bootrom-url", "", nextBootROMURLHelp)
+	nextBootCacheFlag := fs.String("next-boot-cache", "off", nextBootCacheHelp)
 
 	frames := fs.Int("frames", 100, framesHelp)
 	multiFlag := fs.String("multi", "", multiHelp)
@@ -90,6 +93,10 @@ func RunHeadless(args []string) {
 	mouse := fs.String("mouse", "auto", "Mouse emulation: auto (kempston on a Next, none on the other models), none, kempston or amx")
 	showVersion := fs.Bool("version", false, "Print version and exit")
 	fs.Parse(args)
+	if err := romBin.check(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Several machines (multi.go). The primary one is set up below as a
 	// single machine always was, with -model standing for its model; the
@@ -137,14 +144,18 @@ func RunHeadless(args []string) {
 		os.Exit(2)
 	}
 
-	if *nextSetupFlag {
-		dir, err := nextDownloadDir(*nextFilesFlag)
-		if err == nil {
-			err = runNextSetup(dir, *nextDistURL, *nextBootURL, os.Stderr)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+	if err := applyNextBootCacheFlag(*nextBootCacheFlag); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	firmware, firmwareErr := nextFirmwareAction(*nextFirmwareFlag, *nextSetupFlag)
+	if firmwareErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", firmwareErr)
+		os.Exit(2)
+	}
+	if firmware != "" {
+		if code := runNextFirmware(firmware, *nextFilesFlag, *nextDistURL, *nextBootURL, os.Stdout, os.Stderr); code != 0 {
+			os.Exit(code)
 		}
 		return
 	}
@@ -391,35 +402,21 @@ func RunHeadless(args []string) {
 		os.Exit(1)
 	}
 
-	// --- ROM bank overrides --------------------------------------------
-	// Layered on top of the standard -model set just loaded, not instead
-	// of it -- -rom's positions fill in from bank 0 first, then any
-	// -romN individually overrides that specific bank regardless of what
-	// -rom already did, so -rom=a.rom,b.rom -rom3=c.rom composes exactly
-	// as it reads: banks 0 and 1 from -rom, bank 3 from -rom3, bank 2
-	// left as -model's own standard ROM.
-	if *romPath != "" {
-		for i, p := range strings.Split(*romPath, ",") {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			if err := zx.OverrideROMBank(i, p); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: -rom bank %d: %v\n", i, err)
-				continue
-			}
-			logf(*quiet, "ROM bank %d overridden: %s", i, p)
-		}
-	}
-	for bank, p := range map[int]*string{0: rom0, 1: rom1, 2: rom2, 3: rom3} {
-		if *p == "" {
-			continue
-		}
-		if err := zx.OverrideROMBank(bank, *p); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: -rom%d: %v\n", bank, err)
-			continue
-		}
-		logf(*quiet, "ROM bank %d overridden: %s", bank, *p)
+	// --- ROM switches: -rom, -rom0 .. -rom3, -rom-bin -------------------
+	// Layered on top of the standard -model set just loaded, not instead of it: -rom's
+	// positions fill in from bank 0 first, then any -romN individually overrides that
+	// specific bank, so -rom=a.rom,b.rom -rom3=c.rom composes exactly as it reads: banks 0
+	// and 1 from -rom, bank 3 from -rom3, bank 2 left as -model's own standard ROM. Then
+	// -rom-bin, so that -rom-fill rom overlays what they left in the bank; before the custom ROM
+	// menu, which keeps the last word. On a Next that boots from its card they wait for the
+	// firmware, which loads its own ROMs (rom_patches.go).
+	firmwareRoms := nextChainWillBoot(zx, *nextFilesFlag, *model, *nextClassic, *bootROM, *divMMCROM, *sdCard, *snapshot, *binFile, *tapeFile, *scrFile)
+	if err := zx.applyROMSwitches(romSwitches{list: *romPath, bank: [4]string{*rom0, *rom1, *rom2, *rom3}, bin: romBin}, firmwareRoms, romSink{
+		say:  func(s string) { logf(*quiet, "%s", s) },
+		warn: func(s string) { fmt.Fprintf(os.Stderr, "Warning: %s\n", s) },
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
 	// --- Interactive custom ROM menu ------------------------------------

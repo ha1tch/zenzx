@@ -59,7 +59,7 @@ func ownCardPath(flagDir string) (string, error) {
 		if note != "" {
 			return "", errors.New("the Next's boot files cannot be used (" + note + ")")
 		}
-		return "", errors.New("the Next's boot files were not found: get them first (the GUI offers to when the Next is chosen; the headless build has -next-setup)")
+		return "", errors.New("the Next's boot files were not found: get them first (the GUI offers to when the Next is chosen; -next-firmware setup does it from the command line)")
 	}
 	return filepath.Join(f.Dir, ownCardName), nil
 }

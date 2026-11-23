@@ -183,6 +183,65 @@ func TestDockLayoutStaysInTheWindow(t *testing.T) {
 	}
 }
 
+// The New button has its states, and the pointer is a hand over it only while it can be used.
+func TestDockNewButtonStatesAndCursor(t *testing.T) {
+	d := testDeck(t, 2)
+	add := len(d.machines)
+	d.state = barShown
+	if got := d.addState(); got != addIdle {
+		t.Errorf("at rest: state %v, want idle", got)
+	}
+	d.addHover = true
+	if got := d.addState(); got != addHover {
+		t.Errorf("under the pointer: state %v, want hover", got)
+	}
+	d.addDown = true
+	if got := d.addState(); got != addPressed {
+		t.Errorf("held: state %v, want pressed", got)
+	}
+	d.addHover = false
+	if got := d.addState(); got != addIdle {
+		t.Errorf("held but the pointer has moved off: state %v, want idle (the press can be taken back)", got)
+	}
+	d.addDown = false
+
+	if !d.addCursorWanted(add, false) {
+		t.Error("pointer on New: want a hand")
+	}
+	if d.addCursorWanted(add-1, false) || d.addCursorWanted(-1, false) {
+		t.Error("pointer on a picture or off the dock: want the arrow")
+	}
+	if d.addCursorWanted(add, true) {
+		t.Error("something else has the pointer: want the arrow")
+	}
+	d.state = barSlidingOut
+	if d.addCursorWanted(add, false) {
+		t.Error("dock on its way out: want the arrow")
+	}
+	d.state = barShown
+	d.pressOn = 0
+	if d.addCursorWanted(add, false) {
+		t.Error("a picture is being dragged: want the arrow")
+	}
+	d.pressOn = -1
+	d.multiOn = func() bool { return false }
+	if d.addCursorWanted(add, false) || d.addState() != addOff {
+		t.Error("adding machines off: New is greyed and the pointer stays the arrow")
+	}
+}
+
+// New grows as the pictures do, from 1, and a zero value counts as 1.
+func TestDockNewButtonMagnifyDefaultsToOne(t *testing.T) {
+	d := testDeck(t, 1)
+	if got := d.addMagnify(); got != 1 {
+		t.Errorf("addMagnify = %v before the dock has run, want 1", got)
+	}
+	d.addMag = 1.3
+	if got := d.addMagnify(); got != 1.3 {
+		t.Errorf("addMagnify = %v, want 1.3", got)
+	}
+}
+
 func TestGrownStandsOnTheSameSpot(t *testing.T) {
 	d := testDeck(t, 1)
 	d.progress = 1

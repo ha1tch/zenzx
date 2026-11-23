@@ -6,7 +6,7 @@
 package zenzx
 
 import (
-	rl "github.com/gen2brain/raylib-go/raylib"
+	"time"
 
 	"github.com/ha1tch/zenui"
 )
@@ -202,7 +202,7 @@ func (h *debugHUD) Draw(screenW, screenH int) {
 	// Input line at the panel bottom, with a blinking caret.
 	inputY := panelY + panelH - lineH - pad/2
 	caret := ""
-	if int(rl.GetTime()*2)%2 == 0 { // ~1Hz blink
+	if time.Now().UnixMilli()/500%2 == 0 { // ~1Hz blink
 		caret = "_"
 	}
 	h.renderer.DrawText("> "+string(h.input)+caret, pad, inputY, scale, th.Text)

@@ -430,7 +430,7 @@ func (am *AudioEngine) generateSamplesFromHistory(samples []float32, startCycle 
 	// Mix in AY samples if present - EXACTLY as Version O
 	if am.ay != nil && cycleCount > 0 {
 		am.ayMutex.RLock()
-		aySamples := am.ay.GenerateSamples(int(cycleCount), AudioSampleRate, CPUFrequency)
+		aySamples := am.ay.GenerateN(samplesNeeded, AudioSampleRate)
 		am.ayMutex.RUnlock()
 
 		for i := 0; i < samplesNeeded && i < len(aySamples); i++ {

@@ -114,21 +114,18 @@ func runGraphicalCustomROMMenu(zx *ZenZX, dir string) {
 // window closes -- there's nothing else competing for the frame here, the
 // menu loop has already returned.
 func showConfirmationOSD(message string, text *zenuiraylib.BDFText) {
-	caption := zenuiraylib.NewOSD()
+	caption := newToast(text)
 	caption.Start(message)
-
-	tw := text.Measure(message, 2)
-	th := text.CellH() * 2
 
 	for caption.Active() && !rl.WindowShouldClose() {
 		screenW, screenH := int(rl.GetScreenWidth()), int(rl.GetScreenHeight())
 		dt := rl.GetFrameTime()
 
-		caption.Update(dt, 0, message, tw, th)
+		caption.Update(dt, 0, message, screenW)
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Black)
-		caption.Draw(text, screenW-10, screenH-10, tw, th)
+		caption.Draw(screenW, screenH)
 		rl.EndDrawing()
 	}
 }

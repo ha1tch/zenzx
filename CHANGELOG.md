@@ -12,6 +12,89 @@ rework, and a documentation sweep.
 
 ### Added
 
+- **The logo is a button.** The Spectrum rainbow (or the logo of the Dark and Light
+  themes) at the right of the bar is the Help menu's button and looks it, in the manner
+  of a Windows 95 Start button: a light-and-dark bevel when the pointer is over it, the
+  bevel reversed and the face darkened while its menu is open. The menu now opens from
+  the logo and the corner beyond it, not from every empty part of the bar to the right
+  of the labels (those are still used when the window is too narrow to show the logo).
+  The pointer is a hand over the logo, and only over it.
+- **The dock's New tile is a button.** It has a face, raised at rest and brighter under the
+  pointer, which is pressed in while the mouse button is held on it; it adds a machine when
+  the button is let go on it (moving away before letting go takes the press back), and
+  is greyed, with the ordinary pointer, when adding machines is off in Preferences. The
+  pointer is a hand over it. It also rises to the pointer as the machines' pictures do and is
+  drawn among them in the same order; it used to be drawn last of all and so over the
+  neighbouring picture when that grew.
+- **A Play button in the middle of a paused machine's picture.** It replaces the word PAUSED
+  in the corner. The button is the debugger's Play sprite, the same pixel art, enlarged by whole
+  pixels (about a quarter of the picture's shorter side, 4 to 10 screen pixels to a sprite
+  pixel, none blurred) on a face made like the dock's New button: raised at rest, brighter under
+  the pointer, pressed in (the sprite a pixel down and right) while the mouse button is held, a
+  hand for the pointer over it, and it resumes the machine when the mouse button is let go on it
+  (moving away before letting go takes the press back), as F2 and Machine > Pause/Resume do. In a
+  tiled layout it is in the front machine's cell. It is not drawn while the debugger is open, and
+  it does not take a click from a menu, the dock, a dialog or the debugger. Dormant guard G-14
+  (`TestGLPlayButton`) draws it over the Next demos in three window sizes and its three looks and
+  checks the sprite's pixels, its centring, the round corners, the hover and pressed looks and
+  the pressed offset.
+- **Loaded snapshots may play at once (File > Preferences... > Machines > A loaded snapshot).**
+  **Waits paused**, the default and the way a snapshot has always been loaded, or **Plays at
+  once**. It applies to a `.zxs`, `.sna`, `.z80` or `.szx` that is opened or dropped on the window;
+  Quick Load (`F10`) and `-snapshot` are as they were. It is saved as `snapshotStart`
+  (`paused` or `play`) in `settings.json`, optional like the other new keys.
+- **`-next-firmware setup`, `check` and `cleanup`, in both builds.** `setup` is the first-start
+  window's download, card build and verification forced from the command line, with its
+  progress as lines (`-next-setup`, which only the headless build had, is the older spelling and
+  still works; `-next-distribution` and `-next-bootrom-url` are now in the GUI build too).
+  `check` lists the folders searched, says whether a Next can start from what is in them and
+  whether it is as a download leaves it, and exits 1 when there is nothing to start from.
+  `cleanup` deletes what a download that did not finish left (the `.part` files and the
+  distribution zip) and never the boot ROM, the DivMMC ROM or the card, which may hold saved
+  files. To make this one piece of work, the window's progress state moved out of it into
+  `firmwareJob` (`nextfirmware.go`), which the window polls and the command line waits on, and
+  `nextcard.Cleanup` and `nextcard.Leftovers` are new; the window keeps only its layout, address
+  fields and wording.
+- **A Next that has booted once starts from where it stopped (`-next-boot-cache`).** The first
+  start from the firmware makes two caches of the whole machine: one at the hand-over (frame 428:
+  the firmware has loaded its ROMs, left config mode and reset the Z80 into them) and one when
+  NextZXOS has come to rest at its welcome guide (frame 555). Later starts put the state back and
+  skip the boot, which is about a second of each start on the machine this was measured on, and
+  the machine is, field for field, the one a cold boot reaches. A cache is used only for the
+  firmware it was made from: its key is the boot ROM, the DivMMC ROM, one SHA-256 over the eight
+  firmware files on the card (sorted, with the lengths written first and the letter case of the
+  names folded, so that it comes out the same however the files are met), the board issue, the
+  ZenZX version and a fingerprint of the layout of the machine's state; the settled cache also
+  names the files NextZXOS reads at start and can do without (`nextcard.BootExtras`). Nothing
+  else on the card is in the key. A cache that does not match is named (`-next-firmware check`
+  says which part differs) and the Next boots from the firmware and makes a new one; a damaged
+  file, or one that cannot be put back, is refused and the boot runs. `-next-boot-cache` is `auto`
+  in the window (use a cache, make one when there is none), `off` in the headless build, which
+  keeps booting the firmware every time so that its tests do, and `refresh` boots and makes both
+  again. A scratch card (the one made to run one program) never uses or makes a settled cache. The
+  caches are in the per-user folder, or `ZENZX_NEXT_CACHE`, never on the card or in the tree.
+  `-next-firmware check` reports each stage's cache as valid, out of date (and in what) or
+  absent; `cleanup` and `setup` delete the caches that no firmware here can use. The state is
+  saved by `pkg/machinestate`, which walks the machine's structs by reflection instead of
+  keeping a list of fields that would drift from them; what it leaves out (the host's own
+  handles) is one list, and a test fails when a field is added that is neither saved nor on it.
+  Measured on the real firmware: the restored machine's pictures agree with a cold one's at rest,
+  at the menu, in the Browser and inside a folder, on a card that has files added since the
+  cache was made, and a SAVE from NextZXOS started from the cache puts its file where the new
+  card has free space, beside every file that was added (`nextcache_hw_test.go`,
+  `nextcache_save_hw_test.go`). This closes T-77 (`docs/RESOLVED.md`); the study is
+  `docs/proposals/NEXT_BOOT_CACHE.md`.
+- **A .nex runs from File > Open and from a drop.** On a Next that boots NextZXOS the file is
+  run by NextZXOS's own `.nexload`, started for the person, the least invasive way that
+  works: from the welcome screen, menu or Browser with no reset (the file goes on the second
+  SD card, the Browser is made to look at the cards, and the keys to the command line,
+  `cd "d:"` and `.nexload` are pressed frame by frame, the screen being recognised between
+  them); after a reset, with a question first, when the Next is running a program or is at
+  its command line; and from a scratch boot card with a one-line autoexec.bas when the keys
+  cannot be used. A NEX now offers copy-or-run like a tape, and what a plain drop and a drop
+  with Shift do (File > Preferences...) applies to it. A version 1.3 NEX is refused, as
+  `.nexload` does not load it. Dormant guard G-12 runs all three against the real firmware.
+  Loading a NEX without NextZXOS (T-32) is still open.
 - **Drop a file onto a storage slot.** Dragging a file over the window brings
   down a slot drawer (styled like the machine dock); dropping onto a slot copies
   the file into that slot's media -- a Next's SD card (slot 2) or the +3's disc,
@@ -26,9 +109,94 @@ rework, and a documentation sweep.
 - **Custom ROMs in `custom-roms/`:** the Microdigital TK90X (standard, Brazilian,
   Uruguayan) and TK95 (Portuguese, Spanish), and our own zenpoint 48K swap ROMs
   (Spanish, English).
+- **A File menu, first on the bar.** **Open...** is a file browser for anything the
+  program loads (`.tap .tzx .sna .z80 .szx .zxs .scr .dsk .nex`); what is chosen goes where
+  the same file dropped on the window would, through the same code. **Quit** ends the
+  program as closing the window does -- for systems with no application menu to quit from.
+  **Preferences...** is the next item. The bar now has eight labels, and the `bar*` index
+  constants moved up by one (`barFile` is 0).
+- **File > Preferences...: one window for every saved setting.** Theme, font, font zoom,
+  display zoom, fixed menu bar, and new: **Machine dock** (whether the dock may slide up, on
+  by default), **Several machines** (whether the dock's New tile may add machines, on by
+  default; `-multi` at launch is unaffected), and what a tape, screen or snapshot dropped on
+  a Next at its menu is done with by a plain drop and by a drop with Shift held (ask, copy
+  to the card, or load and run; ask and run by default, the old behaviour). The window is a
+  table of rows, each with a getter and a setter shared with the menu that sets the same
+  thing; it saves as each change is made. `settings.json` gains optional `dock`, `multi`,
+  `drop`, `dropShift` and `snapshotStart` keys; a file without them is still valid and reads as before.
+  Considered and left out: border display and the FPS counter (session diagnostics, kept in
+  the View menu, not persisted by design), sound and the Escape-key mode (command-line
+  choices).
+- **An Acknowledgements window (Help > Acknowledgements...),** showing
+  `ACKNOWLEDGEMENTS.md` from the source tree so there is one text of it, and a pointer to
+  that file on GitHub in About.
+- **`scripts/mkrom.py` makes a 16 KiB ROM from a binary file of any size,** to load with `-rom`.
+  The file goes at an address (0x0000 by default) and the rest is filled with zeroes or with
+  the original ROM, so the file is an overlay on it; the output is always exactly 16384 bytes,
+  and a file that would end beyond them is cut there with a warning. Python 3, standard
+  library only; its tests are `scripts/test_mkrom.py`.
+- **`-rom-bin FILE` makes the same ROM inside ZenZX, on the fly,** in both builds: the file,
+  of any size, goes at `-rom-at` (0x0000 by default) in the bank `-rom-bank` names (0 by
+  default), and what is around it is zeroes or, with `-rom-fill rom`, the ROM the bank has, so
+  the file is an overlay on it -- after `-rom` and `-rom0` .. `-rom3`, before
+  `-custom-roms-menu`. A file past the end of the ROM is cut at the last byte with a warning;
+  a bad address, an unreadable file, a bank the model has not got, or `-rom-at`, `-rom-fill`,
+  `-rom-bank` or `-rom-save` without `-rom-bin` stop the start with an error. `-rom-save OUT`
+  also writes the ROM, to load later with `-rom`. The TS2068's 8 KiB extension ROM (bank 1) is
+  built at its own size. The builder is `pkg/romimage`, whose tests include one that runs it
+  against `scripts/mkrom.py` on the same inputs and requires the same bytes and the same
+  warning; the machine-level ones, in `rom_overlay_test.go`, include a program built this way
+  that runs as the ROM. `OverrideROMBankBytes` is `OverrideROMBank` for bytes already in hand.
+- **`docs/ROMS.md` is a manual of ROM handling:** each model's ROM files and banks, where they come
+  from, the order `-rom`, `-rom0` to `-rom3`, `-rom-bin` and the custom ROM menu apply in, worked
+  examples (a program as the ROM; a patch over the 48K start-up message; keeping the result), and
+  the Spectrum Next. For the Next it records a measured limit: on a Next booted from the card, the
+  firmware's ROM load, about 450 frames into the start, replaces whatever those switches put in
+  the four ROM banks, and nothing says so. Two studies come with it, `docs/proposals/NEXT_ROM_OVERLAY.md`
+  (laying patches over the firmware's ROMs once it has loaded them) and
+  `docs/proposals/NEXT_BOOT_CACHE.md` (a Next that boots once, its settled state cached and
+  restored like a ROM, with `-next-firmware` running the checks that say a cache is stale). The first
+  is built, as the entry under Fixed says (T-76); nothing in the second is (T-77).
 
 ### Changed
 
+- **The Preferences window is in tabs, with its settings grouped.** It was one long panel of
+  every setting. It now has a strip of three tabs, the toolkit's own `Tabs` as zenplay uses them:
+  **Appearance** (Colours and text: theme, font, font zoom; Window: display zoom, fixed menu bar),
+  **Machines** (Dock and machines: machine dock, several machines; Snapshots: a loaded snapshot) and
+  **Files** (what a drop on a Next at its menu does, plain and with Shift). The panel is as tall as
+  the tallest tab, so choosing one does not move or resize the window; Left, Right and Tab change
+  tab, and a click on a tab does nothing else. Every setting, its getter and setter, and the
+  saving are as they were; a row on a tab that is not open is not there to be clicked.
+  `prefs_tabs_gui_test.go` holds the grouping, the clicks, the keys and the panel's size on every
+  tab at three window sizes, and `TestGLPreferencesTabs` draws each tab in a window (dormant guard
+  G-14).
+- **The FPS counter is off at start, and is drawn in the interface font.** It used to be on and
+  drawn in raylib's own font; it is now in the face chosen under Theme > Font, as the rest of the
+  interface is, red, at the bottom right of the window. `Alt+F` and View > FPS Counter
+  turn it on, and it is still not saved. The border-change warning at the foot of the window is
+  drawn in the same face. A GL test, `TestGLFPSCounter`, draws it in a window and finds the
+  font's own glyph pixels (dormant guard G-14).
+- **Toasts have a white face inside a pitch-black stroke, on a darkened rounded box, and are never
+  wider than half the window.** The old orange text is gone; the sparks around it stay. The box is
+  black, more see-through at its top edge than at its bottom one (45% to 80%, the direction of
+  the dock panel's gradient), with round corners, and it fades out with the text. A message too
+  long for half the window is drawn one notch smaller, and then broken into lines, so the box
+  never passes half the window (`toastlayout.go`, tested without a window in
+  `toastlayout_test.go`). `TestGLToastOverTheDemos` checks the white face, the black stroke, the
+  box, the width and the corners, and writes pictures over the Next demos (dormant guard G-14).
+- **The debugger HUD and the audio debug overlay no longer call the windowing layer themselves.**
+  The HUD's `HandleInput` and `UpdateResize` take the frame's `zenui.Input` (typed characters,
+  Enter, Backspace, the pointer) like every other zenui surface, and its caret blinks on the
+  clock; `hud_gui.go` and `hud_draw_gui.go` have no raylib call left. What the HUD needed that
+  `zenuiraylib.Input` does not do -- a frame with Alt held gives no keystrokes (Alt+D opened the
+  HUD), and keys are mapped to characters where the character queue is empty -- is in
+  `hudinput_gui.go`, the one place, until it can move into zenuiraylib. The audio overlay
+  (`audiodebug_gui.go`) is drawn with zenui's renderer in the interface font, one notch smaller
+  where a line would not fit; the program draws no text with raylib's own font any more, and the
+  overlay's lines are 16 pixels high where raylib's default face made them 14. New tests:
+  `TestHUDTakesItsKeysFromTheInput`, `TestHUDResizeFollowsThePointerInTheInput`,
+  `TestAudioHealthWords`, and in G-14 `TestGLAudioDebugOverlay`.
 - **The Machine menu groups every model under its maker** -- Sinclair Research
   Ltd, Amstrad plc, TBBlue / SpecNext Ltd, In Spanish, Timex -- all at one level,
   with the Spanish models brought up level with the rest.
@@ -37,9 +205,175 @@ rework, and a documentation sweep.
   timestamps, and the debugger HUD's grip animation is half speed.
 - **Documentation sweep:** the README compressed with captioned Next-example
   screenshots; `gui.md`/`MANUAL.md` document the slot drop; the stale `-noesc`
-  flag corrected to `-escape` and `-z80n` documented; and the changelog
-  consolidated, with older per-patch detail moved to
-  [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).## [0.42.9] - 2026-11-21
+  flag corrected to `-escape` and `-z80n` documented; the changelog consolidated,
+  with older per-patch detail moved to
+  [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md); and the one ASCII
+  diagram in the docs (the Next's three-stage boot sequence in
+  `NEXT_BOOT_REFERENCE.md`) redrawn as a theme-robust SVG.
+- **Drop a tape, .scr or snapshot on a Next and choose.** When one is dropped on
+  a Next sitting at its menu or Browser, a dialog asks whether to copy it to the
+  SD card or load and run it; holding Shift at the drop means run, with no dialog.
+  A `.dsk` has no run path on a Next (ZenZX does not emulate NextZXOS disc-image
+  mounting yet -- T-72), so it is copied to the card with no dialog instead of being a
+  dead end; a `.nex` is offered the choice too (see "A .nex runs", above). The full
+  per-machine, per-type routing is tabulated in the README and `docs/gui.md`.
+- **The storage menu carries one label, "Storage", on every machine.** It no
+  longer swaps "Floppy Disk" for "SD Card" under the user when a Next is running;
+  the two are now Title headings inside the menu, and a Next's menu adds a disabled
+  "Virtual Floppy" section signposting the NextZXOS disc-image mounting still to
+  come (T-72).
+- **The Help menu has titled sections and new entries.** Help (Help, About...,
+  **Acknowledgements...**, ZenZX website) and Tools (**Developer > Debugger**, which opens
+  the debugger HUD on the front machine, the same as `Alt+D`). Its short-lived Preferences
+  section (Fixed menu bar, Settings...) is now File > Preferences..., which replaces the
+  read-only Settings window with one that changes things.
+- **Menus are written once.** Each bar menu (Tape, Storage in both forms, Snapshot,
+  View, and the Help menu) is a table of rows that carries every row's label,
+  state and action, and the items the bar draws and the actions it runs are both
+  made from it. The parallel lists that had to be kept the same length by hand,
+  which is how an inserted title once moved every action after it, are gone.
+- **The border has one derivation.** Whether it is on the screen, and whether
+  Border Display has any say, is decided in one place (`borderView`) that the
+  window size, the drawing, the tiles, the View checkbox and `Alt+B` all ask. In a
+  tiled layout, in a Layer 2 mode that fills the 320x256 frame, or in a mode with no
+  border, the checkbox is greyed and shows what is on the screen, and `Alt+B` says
+  why it does nothing; the choice made is kept for when it applies again. The window
+  follows the border however it changed -- including a Next going into a full-frame
+  Layer 2 mode while the border was off, which used to cut the picture to the
+  classic area.
+
+### Fixed
+
+- **The AY played an octave low.** A tone toggled every 16 x period chip clocks, which makes
+  a whole wave 32 x period, where the datasheet's tone is clock / (16 x period): measured,
+  the emulation was at 0.48 of that (a 440 Hz A, period 252, played near 211 Hz). Tone now
+  toggles every 8 x period. Separately, a chunk of AY output was sometimes one sample short
+  of what the engine asked for, each costing the chip a sample's time and nudging the pitch
+  off; chunks are now exactly the size asked (`GenerateN`). Noise and envelope timing were
+  right and are unchanged. New `ay_pitch_test.go` holds the chip, and the engine's own stream
+  at several chunk sizes, to 5 cents of the datasheet's figure.
+- **Shift on a Next's menu did not copy a `.dsk` to the card.** The documentation
+  says it is copied whatever is chosen, Shift or not; with Shift it was sent to the
+  machine instead, which has no way to load one ("not implemented"). (A `.nex` was in the
+  same position until it became runnable.) Where a drop goes is
+  now decided in one function, `planDrop`, used for a drop on the window and for File > Open,
+  with a test of the whole table.
+- **The drop dialog's Copy to SD Card chose its slot from the button.** It used the pointer's
+  position at the click, which is over the button; it now remembers where the files were let go.
+  A file of another kind dropped with a tape on a Next at its menu is copied too, not ignored.
+- **The drop tests never ran.** `dropchoice_test.go` carried a `gui` build tag nothing sets; it
+  is on the default build now, beside the new tests.
+- **A menu bar saved as fixed has its space from the first frame.** The fixed
+  choice and the window's reserved height were two copies of one fact, set
+  together only when the checkbox was clicked, so a `settings.json` that said
+  fixed started with the bar over the top of the picture and no room made for it.
+  The height is now derived from the choice every frame, and the settings file is
+  written whenever the choice changes and not otherwise.
+- **A submenu with no room on the right opens to the left of its menu.** The Help
+  menu sits at the right edge of the window, and its Developer submenu used to open
+  over the menu's own rows (an earlier workaround moved the whole menu left to make
+  room). The placement is zenui's, fixed in **zenui 0.2.1**: with no room on the
+  right a submenu opens beside its parent on the left, its right edge on the
+  parent's left edge, and covers none of it. The workaround is gone. **zenui v0.2.1
+  has to be on GitHub, tagged, before this builds anywhere but here**, and its
+  tagged tree has to be the delivered one, `MANIFEST.sha256` included: `go.sum`
+  records `h1:dOP0HXuVNPik6XyDNPnxAsQs7DPFHt8Pv/q+b9M5Zt4=`, the hash Go computes
+  for that tree's module archive.
+- **The Help menu and a dropdown can no longer be open together, and a window has
+  the frame to itself.** One rule, applied every frame, closes whatever should not
+  be open beside what is; opening the Help menu closes any dropdown, and a Custom
+  ROM pick waiting for its bank is not left half done.
+- **Dialogs no longer black out the machine behind them.** The SD Card, Floppy
+  Disk and demo windows filled the screen with the raw backdrop colour, which in
+  the Spectrum theme is nearly opaque; they now use the same scaled darkening as
+  every other modal, so the machine dims rather than disappears.
+- **Alt+D no longer leaks a "d" to the debugger.** Opening the HUD with Alt+D
+  could drop the "d" into the debugger's input; input is now ignored while Alt is
+  held, so an Alt combo never lands as text.
+- **Resizing the window in the single-machine view snaps back.** A user drag of
+  the window edge now re-asserts the machine's own zoom-step size instead of
+  leaving the picture mis-sized; tiled layouts keep their aspect-snap.
+- **The ROM switches on a Next that boots from its card now take effect, and say so (T-76).**
+  `-rom`, `-rom0` to `-rom3` and `-rom-bin` were put in the four ROM banks at start, and the
+  firmware replaced all four when it loaded its own, about 450 frames in, with no word of it.
+  They are now kept as a list of patches on the machine and applied over the firmware's ROMs when
+  it leaves config mode (NextREG 0x03 choosing the machine, then the soft reset), and again after
+  every hard reset, which runs the firmware again; a warning at start says the firmware replaces
+  the ROM banks and the switches wait for it. `-rom-fill rom`, `-rom-save` and the warning for a
+  file cut at the end of the ROM are made at that event, since the base is what the firmware
+  loaded. On a Next `-rom-bank` takes 0-7 and `-rom-at` is a physical address over the first
+  256 KiB of the board's SRAM, so a file can run across banks and reach the alternate ROMs. Show
+  Status says which ROM the CPU is reading and why (lock bits, NextREG 0x8C, the ROM the ports
+  choose, the two lowest MMU slots). The boot cache's key carries one entry per patch, so a
+  cache made with one patch is not used with another. A Next with no boot files has no firmware
+  to wait for, and its switches act at once as on every other model. The unit tests drive the
+  firmware's side of config mode by hand (`rom_patches_test.go`); `TestNextROMPatchesOverTheFirmware`
+  does it against the real firmware (dormant guard G-16).
+- **A +3's lock bit was missed while special (all-RAM) paging was on (T-78).** A write to port
+  0x7FFD with bit 5 set returned before the lock was looked at, so the paging stayed open. The
+  lock is the 0x7FFD port's own and is now set first. The same change keeps the 128K/+3 latch
+  (RAM bank and ROM bit) when special paging is on, so that it comes back when special paging
+  ends. `paging_plus3_test.go` holds both.
+- **The picture is whole and in the middle of a window that is not the size the display asked
+  for (T-75).** A system may keep a window another size than the one asked for (macOS keeps it
+  inside the usable part of the screen, and a dragged window does not always go back), and the
+  picture was cropped or left a black area. When the window has kept another size for three
+  frames the display fits the zoom to what it has, and where the window stays a size the zoom
+  cannot fill the picture is drawn into a canvas of the size the display thinks it has and put
+  in the middle, scaled down when the window is smaller than it, with the same margin on both
+  sides. The size is the framebuffer's, in drawing units, so that a retina display gives the
+  same answer as an ordinary one. While the window is the size asked for nothing changes. The
+  arithmetic is `picturefit.go`, tested at HiDPI factors 1 and 2; `TestGLPictureFitsAWindowOfAnotherSize`
+  holds a window at four sizes and finds the picture's border (dormant guard G-14). It has not
+  been seen on a Mac: the register keeps the item open for that.
+- **`TestBatchThreeModeCompare` skips when its tape corpus is not there (T-81).** It used to
+  record a load error for every game and report a pass.
+
+### Real-firmware guard G-04, and how its results are checked
+
+- **G-04 ran against the real firmware and passes** (all nine `TestNextZXOS` tests, on the
+  26.11 boot files with a card that has been in use). Two of its tests had failed on that
+  card, and neither failure was the emulator's:
+  - **`TestNextZXOSSavesToCard` waited a fixed 400 frames for SAVE.** On a card that has been
+    in use the free clusters are far into the FAT and a save takes 600 to 700 frames; the test
+    read the directory entry while it still had a length of 0. It now waits for the length
+    (up to 2000 frames) and holds the time the save took to 0 to 1500 frames.
+  - **Making a minimal bootable card refused a source card that has been in use.**
+    `MakeBootable` held its source to `VerifyCard`, which asks for a free space record that
+    matches the FAT, as a download leaves it; a Next starts from a card without that, and the
+    card to copy from is usually one that has been in use. The source is now held to what
+    `Usable` asks (a FAT32 volume of enough clusters with the firmware on it, and the files it
+    is to copy); the card that is made is still held to `VerifyCard`.
+- **The real-firmware tests check the results, not only that they finish.** The screens cannot
+  be compared with golden images, so each check is something a wrong result breaks:
+  milestone frame counts within wide bounds (a boot that is suspiciously quick or very slow);
+  the welcome screen and the menu having the structure of text on a plain paper (colours,
+  size of the background, runs of one colour, rows in use), which blank, noise, loader stripes
+  and a smear are not; the menu holding still while it waits; the saved file being a +3DOS
+  BASIC program with a valid header (signature, length, type, checksum) and a tokenised
+  line 10 that is the REM typed; the saved card reading as a volume with the file in it, its
+  two FATs equal, and every block the save wrote in the FSInfo sector, the FATs, the root
+  directory or the file's own cluster; and the menu from a minimal card being the menu of the
+  card it was made from. Each of those checks is tested against pictures and files that are
+  wrong, in `next_quality_unit_test.go`, which runs without the firmware.
+- **Reset resets the machine, not only the CPU (T-74).** It restarted the CPU and nothing
+  else, so what a program had set stayed set. A 128K, +2, +2A or +3 started again in the ROM
+  the program had left selected: a 128K that had been in ROM 1 came up in the 48K BASIC,
+  never at its menu, and the paging lock, the +3's special paging, the AY's registers and
+  the +3 disc controller's command stayed too. The TS2068 kept its ports 0xF4 and 0xFF and
+  so its hi-colour mode. On a Next, the Machine menu, F1 and the debugger's reset never
+  asked for the hard reset that restarts the firmware, so the Next carried on in the +3 ROM
+  with its registers, Layer 2, tilemap, sprites, palettes, copper, interrupts and DMA as
+  the program had left them. Reset now puts back what the hardware's reset puts back,
+  model by model (reset.go), and a Next gets a hard reset that also restores every NextREG
+  and the peripherals they drive, and starts the firmware again from its boot ROM. RAM, a
+  disc in the drive, a tape and the ULA's border and speaker latch are kept, as on the
+  hardware. A Next with no boot ROM is no longer put into config mode by a hard reset.
+  Tested by comparing a machine that has run a real program and been reset with one just
+  switched on, field by field, on every model; a Next on the real firmware is reset in the
+  middle of three examples and NextZXOS comes back (dormant guard G-15).
+
+## [0.42.9] - 2026-11-21
 
 ### Added
 

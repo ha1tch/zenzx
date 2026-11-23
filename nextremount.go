@@ -78,6 +78,25 @@ func (zx *ZenZX) locateBrowserIdleLoop() (addr uint16, ok bool) {
 	return 0, false
 }
 
+// nextAtIdlePrompt reports whether this is a NextZXOS machine sitting at an idle
+// key-wait prompt -- its menu or its Browser -- rather than running a program.
+// Both the menu and the Browser spin on the same key-wait idle loop
+// (locateBrowserIdleLoop), so this is true when the CPU's PC is within that loop:
+// the states where a dropped file could sensibly be copied to the SD card instead
+// of loaded into the machine. It is false for a non-Next machine, a firmware with
+// no such loop, or while a program is running (PC elsewhere).
+func (zx *ZenZX) nextAtIdlePrompt() bool {
+	if zx.next == nil {
+		return false
+	}
+	addr, ok := zx.locateBrowserIdleLoop()
+	if !ok {
+		return false
+	}
+	pc := zx.cpu.PC
+	return pc >= addr && pc <= addr+8
+}
+
 // forceNextZXOSRemount drives NextZXOS's own M-then-Y Browser remount from the
 // host, so the Browser re-reads the SD cards and shows a file just written to
 // one, without any physical keypress. run advances the machine (the caller's

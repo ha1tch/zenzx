@@ -129,9 +129,14 @@ and [`docs/TS2068_TRACKING.md`](TS2068_TRACKING.md) for stage-by-stage detail.
 | `-rom0` .. `-rom3` | *(none)* | Override a single ROM bank, leaving the rest of `-model`'s standard set intact |
 | `-custom-roms-menu` | `false` | Interactively pick a ROM from `-custom-roms-dir` and a bank to apply it to |
 | `-custom-roms-dir` | `custom-roms` | Directory scanned by `-custom-roms-menu` |
+| `-rom-bin` | *(none)* | Make a ROM on the fly from this binary file, of any size, and use it as a ROM bank -- see [Making a ROM from a binary file](#making-a-rom-from-a-binary-file) |
+| `-rom-at` | `0x0000` | Where in the ROM the `-rom-bin` file goes: `0x1234`, `$1234` or decimal. On a Next it counts from the start of `-rom-bank`, and the file may run on into the banks after it, up to the 256 KiB |
+| `-rom-fill` | `zero` | What is around the `-rom-bin` file: `zero`, or `rom` (the ROM the bank has, so the file is an overlay on it) |
+| `-rom-bank` | `0` | The ROM bank the `-rom-bin` ROM goes in; 0-7 on a Next (see [the Next's ROM](ROMS.md#the-spectrum-next)) |
+| `-rom-save` | *(none)* | Also write the `-rom-bin` ROM to this file, to load later with `-rom` |
 | `-theme` | `Dark` | Menu bar UI theme: `Dark`, `Light`, or `Spectrum` (case-insensitive) |
 | `-scale` | `2` | Initial window scale (1-5) |
-| `-settings` | `settings.json` | Path to the settings file (persists theme/font/font-zoom/display-scale/fixed-menu-bar across sessions) |
+| `-settings` | `settings.json` | Path to the settings file (persists theme/font/font-zoom/display-scale/fixed-menu-bar/dock/multi/drop choices across sessions) |
 | `-noborder` | `false` | Start without border |
 | `-escape` | `on` | `Esc` key behaviour: `on` (quit at once), `off` (never quit), `close` (close an open dialog or the HUD only), `query` (ask before quitting) |
 | `-nofdc` | `false` | Disable FDC emulation for +3 |
@@ -159,6 +164,49 @@ and [`docs/TS2068_TRACKING.md`](TS2068_TRACKING.md) for stage-by-stage detail.
 | `-autorun` | *(none)* | Load and run a BASIC program from a text file once the machine has started; one file, or one place for each machine -- see [`docs/link.md`](link.md) |
 | `-layout` | `single` | With several machines, how the window tiles them at the start: `single`, `columns`, `rows`, `grid`, `main-left`, `main-right` -- the View menu's own layouts, changed any time from it |
 | `-version` | `false` | Print version and exit |
+
+### Making a ROM from a binary file
+
+A ROM is a whole 16 KiB, and a program that is smaller -- a patch, a boot loader, a test --
+has to be made into one before it can be loaded with `-rom`. ZenZX does it at start-up, from the
+file as it is. The whole of ROM handling -- each model's ROMs, the order the switches apply in,
+worked examples and the Spectrum Next -- is in [ROMS.md](ROMS.md).
+
+`-rom-bin FILE` places FILE, of any size, in a ROM bank (bank 0, unless `-rom-bank` says
+another) at an address: `-rom-at`, 0x0000 by default, written `0x1234`, `$1234` or decimal.
+What is around the file is zeroes or, with `-rom-fill rom`, the ROM the bank has, so that the
+file is an overlay on it. The ROM is always exactly the size of the bank (16384 bytes; 8192 for
+the TS2068's extension ROM, bank 1). A file that would end beyond the end of the ROM is cut at
+the last byte, and a warning says how much was left out.
+
+It is applied after `-rom` and `-rom0` .. `-rom3`, so `-rom-fill rom` overlays whatever they
+left in the bank, and before `-custom-roms-menu`, which keeps the last word. A mistake -- an
+address outside the ROM, a file that cannot be read, a bank the model has not got, `-rom-at`
+and the others without `-rom-bin` -- stops the start with an error and exit status 1, with
+nothing changed. `-rom-save OUT` writes the ROM as well, to load later with `-rom OUT` like any
+other; with the headless build, `-frames 1` makes that a way to make the file and nothing else.
+
+```
+./zenzx -rom-bin patch.bin -rom-at 0x0038 -rom-fill rom
+./zenzx-headless -rom-bin boot.bin -rom-save boot.rom -frames 1
+./zenzx -rom boot.rom
+```
+
+The ROM it makes is the one `scripts/mkrom.py` makes, byte for byte, when the bank is the 48K
+one; `pkg/romimage` tests the two against each other when Python is installed. The script does
+the same outside ZenZX: `scripts/mkrom.py` (Python 3, standard library only) turns a binary file of any size into a
+16 KiB ROM. The file is placed at an address (`-a`, 0x0000 by default, written `0x1234`,
+`$1234` or decimal) and what is left of the ROM is filled with zeroes or, with `-f rom`, with
+the original ROM (`rom/48.rom`, or the one `-r` names), so that the file is an overlay on it.
+The output is always 16384 bytes; a file that would end beyond them is cut at the end of the
+ROM and a warning says how much was left out.
+
+```
+python3 scripts/mkrom.py patch.bin -a 0x0038 -f rom -o patched.rom
+./zenzx -rom patched.rom
+```
+
+Its tests are `python3 scripts/test_mkrom.py`.
 
 ## Command-line reference -- headless
 
@@ -202,8 +250,8 @@ guest:
 | Key | Action |
 |-----|--------|
 | `Esc` | Quit (unless changed with `-escape`: may close a dialog/HUD, ask first, or be disabled) |
-| `F1` | Reset the machine |
-| `F2` | Pause / resume |
+| `F1` | Reset the machine, as its reset line does: the CPU, the memory paging and ROM choice, the sound chip, the Timex ports and the +3's disc controller start again, and a Next starts its firmware again from the boot ROM with every register as at power on. RAM, a disc in the drive, a tape and the border are kept |
+| `F2` | Pause / resume (a paused machine shows a Play button in the middle of its picture; clicking it resumes) |
 | `F3` | Print machine status to the console |
 | `F4` | Save the current disk image (+3, if modified) |
 | `F5` | Insert a blank disk (+3) |
@@ -215,8 +263,8 @@ guest:
 | `F11` | Save a timestamped snapshot |
 | `F12` | Snapshot info; `Shift+F12` runs snapshot diagnostics |
 | `Page Up` / `Page Down` | Increase / decrease window scale |
-| `Alt+F` | Toggle the FPS counter |
-| `Alt+B` | Toggle the border |
+| `Alt+F` | Toggle the FPS counter (off at start; drawn in the interface font) |
+| `Alt+B` | Toggle the border (where it is the user's to choose: not in a tiled layout or a full-frame Layer 2 mode) |
 | `Alt+P` | Play / stop the tape |
 | `Alt+R` | Rewind the tape |
 | `Alt+T` | Toggle tape mode (accurate / fast) |
@@ -317,16 +365,23 @@ focused one. See "Drag and drop" in [`gui.md`](gui.md) for the details.
 ## The menu bar (GUI)
 
 Hover the mouse within 10px of the top window edge and hold it still for
-100ms -- a menu bar slides in with seven menus: **Machine** (reset,
+100ms -- a menu bar slides in with eight menus: **File** (**Open...** for any
+file the program loads, routed as a drop is; **Preferences...**, one window for
+every setting kept between sessions, in three tabs (Appearance, Machines and Files; a click, or
+Left, Right and Tab, changes tab) with the settings grouped under headings in each; and **Quit**, for systems with no
+application menu), **Machine** (reset,
 pause/resume, and every supported model grouped by manufacturer, switched
-live without restarting), **Custom ROM**, **Tape**, **Floppy Disk** (or
-**SD Card**, while a Next that boots NextZXOS is running),
-**Snapshot**, **View** (FPS counter, border display, display scale),
+live without restarting), **Custom ROM**, **Tape**, **Storage** (the +3's
+floppy drive, or the SD cards and virtual floppy of a Next that boots NextZXOS),
+**Snapshot**, **View** (FPS counter, border display, display scale, layouts),
 and **Theme** (Dark/Light/Spectrum, plus a font submenu with six bundled
-BDF faces). A logo/rainbow element at the right of the bar opens its own
-dropdown: **Fixed menu bar** (pin it permanently shown), **ZenZX website**,
-**Help** (a scrollable in-app reference covering every menu, shortcut, and
-flag), and **About**.
+BDF faces). A logo/rainbow element at the right of the bar opens the Help
+menu, in titled sections: **Help** (the in-app reference
+covering every menu, shortcut and flag, **About...**, **Acknowledgements...**
+and **ZenZX website**),
+and **Tools** (**Developer** > **Debugger**). The border display is the
+user's to choose except where the picture decides it (a tiled layout, a Layer 2
+mode that fills the frame); see `docs/gui.md`.
 
 The emulator keeps running the whole time the bar is open -- only keyboard
 input to the guest is withheld while a dropdown, dialog, or modal is
@@ -403,7 +458,9 @@ types into. The others keep running behind it, silent.
 
 Rest the mouse at the bottom edge of the window, or press `Alt+M`, and a
 rounded dock rises from the bottom with a live picture of every machine and a
-**New** tile. The picture under the pointer grows. Click a picture, or
+**New** button. The picture under the pointer grows, and so does the button, which is
+raised under the pointer, pressed in while the mouse button is held on it, and shows a hand
+pointer; it adds a machine when the button is let go on it. Click a picture, or
 choose it with the arrow keys and `Enter`, and it grows out of the dock
 until it fills the screen: that machine is now in front. Everything in the
 menu bar acts on the machine in front.
@@ -493,9 +550,11 @@ default is used, never treated as fatal). Validated against a
 supported `-model` identifier must appear exactly once across the file;
 grouping and labelling are otherwise freely configurable.
 
-**`settings.json`** persists theme, font, font zoom, display scale, and
-whether the menu bar is pinned shown, updated automatically whenever one
-changes via a menu. `-settings=PATH` points at a different file. An
+**`settings.json`** persists theme, font, font zoom, display scale,
+whether the menu bar is pinned shown, whether the machine dock and adding
+machines are allowed, and what a plain drop and a Shift drop do on a Next at its
+menu (`ask`, `copy` or `run`), updated automatically whenever one changes via a
+menu or File > Preferences. `-settings=PATH` points at a different file. An
 explicitly passed `-theme` or `-scale` flag always wins over the
 persisted value; leave either unset and the persisted value applies
 instead of that flag's own default. The running `-model` and FPS/border
@@ -597,12 +656,31 @@ examples in its second slot; the card is also built on demand by
 `zenzx-headless -next-examples-card PATH`, which needs no boot files. A card
 that is already there is never replaced.
 
-The headless build asks nobody: it prints how to get the files, and
-`zenzx-headless -next-setup` does the same download, build and verification
-with its progress as lines (`-next-distribution=URL` and
-`-next-bootrom-url=URL` change the addresses). `-next-classic` runs the Next
+The headless build asks nobody: it prints how to get the files. In either
+build, `-next-firmware setup` does the same download, build and verification as
+the window, with its progress as lines (`-next-distribution=URL` and
+`-next-bootrom-url=URL` change the addresses), and exits. `-next-firmware check`
+lists the folders searched, says whether a Next can start from what is in them
+and whether it is as a download leaves it, and exits with 1 when there is
+nothing to start from. `-next-firmware cleanup` deletes what a download that did
+not finish left behind (`.part` files and the distribution zip) and never the
+boot ROM, the DivMMC ROM or the card, which may hold files saved on it.
+`-next-setup` is the older spelling of `-next-firmware setup`. The window and the
+command line run the same code (`firmwareJob` over `nextcard.Setup`). `-next-classic` runs the Next
 with the +3's ROMs even when the files are there, which is also what happens
 when something is loaded at start (`-snapshot`, `-bin`, `-tape`, `-scr`).
+
+**Starting without the boot.** The first Next start from the firmware keeps two caches of the
+machine, the second when NextZXOS is at its welcome guide, and later starts begin there instead of
+booting (about a second saved). `-next-boot-cache auto` is that, and the window's default;
+`off` always boots the firmware and keeps nothing (the headless build's default, so that a run
+is the same every time); `refresh` boots and makes both caches again. A cache belongs to the
+firmware on the card it was made from: change `TBBLUE.FW` or any of the firmware files, the DivMMC ROM or the
+boot ROM, or update ZenZX, and the cache is out of date and a boot makes a new one. Other
+files on the card do not matter, so a card can be written to and filled as it is used.
+`-next-firmware check` says, for each of the two, whether it is valid and what differs when it
+is not; `-next-firmware cleanup` deletes the caches no firmware here can use. They are in
+the `next-cache` folder in the per-user configuration folder, or the one `ZENZX_NEXT_CACHE` names.
 
 **The second card.** The Next has two SD card slots. NextZXOS boots from the
 first and gives a card in the second a drive letter of its own, D, so a
@@ -617,8 +695,9 @@ starts with that card in the second slot when it exists;
 `-sdcard2=PATH` puts another image there and `-sdcard2=none` leaves the slot
 empty. In NextZXOS, D in the Browser changes the drive and ENTER on a `.nex`
 file starts it; from the command line it is `cd "d:"` and `.nexload
-gallop.nex`. The examples and how they are built are in
-`examples/next/README.md`.
+gallop.nex`. The GUI does the same for a `.nex` chosen in File > Open or
+dropped on the window (docs/gui.md, "Running a .nex"). The examples and how
+they are built are in `examples/next/README.md`.
 
 In the GUI, while such a Next is running, the **SD Card** menu is where the
 Floppy Disk menu is for the other machines. It shows what is in the two

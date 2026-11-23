@@ -73,14 +73,9 @@ func TestNextSetupDownloadsWithTheAddressesShown(t *testing.T) {
 	if s.phase != nextSetupRunning {
 		t.Fatal("Enter did not start the download")
 	}
-	untilNextSetup(t, s, func() bool {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return s.total == 120
-	})
-	s.mu.Lock()
-	stage, done, total := s.stage, s.done, s.total
-	s.mu.Unlock()
+	untilNextSetup(t, s, func() bool { return s.job.State().Total == 120 })
+	st := s.job.State()
+	stage, done, total := st.Stage, st.Done, st.Total
 	if stage != nextcard.StageDownload || done != 30 || total != 120 {
 		t.Fatalf("progress seen by the dialog: stage %v, %d of %d", stage, done, total)
 	}

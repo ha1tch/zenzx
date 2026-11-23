@@ -330,13 +330,11 @@ func TestViewActionsNeverPanicIfCalled(t *testing.T) {
 	}
 }
 
-func TestViewBorderToggleTriggersResizeAnimation(t *testing.T) {
-	// Regression guard: Item.Toggle only flips zx.display.showBorder
-	// directly -- ToggleBorder's real behaviour also calls
-	// updateTargetSize (isAnimating=true, animated in
-	// UpdateWindowSize), which the checkbox's direct-pointer wiring
-	// alone doesn't trigger. The generic dispatch's Border action
-	// closure must supply that second half.
+func TestViewBorderToggleResizesTheWindow(t *testing.T) {
+	// Item.Toggle flips showBorder through the checkbox's pointer and nothing else. The
+	// window follows because UpdateWindowSize compares the border as borderView derives it
+	// with the border the window was last sized for: no action closure has to remember to
+	// ask for the resize, so Alt+B, the checkbox and a settings change all behave alike.
 	zx := testZX()
 	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
@@ -344,15 +342,20 @@ func TestViewBorderToggleTriggersResizeAnimation(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	if zx.window().isAnimating {
+	dm := zx.window()
+	if dm.isAnimating {
 		t.Fatal("setup: isAnimating should start false")
 	}
+	withBorder := dm.targetWidth
 
-	// Border's action closure is index 1 in b.actions[barView].
-	b.actions[barView][1](zx)
-
-	if !zx.window().isAnimating {
-		t.Error("Border's action closure should trigger the window-resize animation (isAnimating=true), matching Alt+B's real behaviour")
+	item := b.widget.ItemsFor(barView)[1]
+	if item.Label != "Border Display" || !item.Toggle || item.Disabled {
+		t.Fatalf("row 1 is %+v, want an enabled Border Display checkbox", item)
+	}
+	*item.Checked = false // what Item.Toggle does
+	dm.followBorder()     // the first thing UpdateWindowSize does each frame
+	if !dm.isAnimating || dm.targetWidth >= withBorder {
+		t.Errorf("after the border was switched off: animating=%v, target width %d (was %d); the window should be on its way to a smaller size", dm.isAnimating, dm.targetWidth, withBorder)
 	}
 }
 

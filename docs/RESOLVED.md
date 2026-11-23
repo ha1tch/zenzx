@@ -5,6 +5,63 @@ text verbatim as at closure, stamped with the closing version and date.
 The changelog says what shipped; this record says what was wrong and
 how it was resolved. Append-only.
 
+## [0.50.0] T-81 — TestBatchThreeModeCompare passes without its corpus instead of skipping (v0.50.0, 2026-11-23)
+
+Theme: testing · closed 0.50.0 · 2026-11-23
+Trigger: found 2026-11-23. `TestBatchThreeModeCompare` passes when its corpus is not there, so a run without the corpus reports a pass for a comparison that did not happen.
+
+Scope: make it skip, saying the corpus is missing, rather than pass. Done when: a run without the corpus shows SKIP and a run with it still compares.
+
+Resolved 0.50.0 (2026-11-23). Fix: the test stats `corpusRoot` first and skips, saying where it looked. Checked: a run here, without the corpus, shows SKIP. The run with the corpus was not made (the corpus is not in the sandbox); that path is untouched by the change.
+
+Cross-ref: CHANGELOG 0.50.0.
+
+## [0.50.0] T-78 — +3: a write to port 0x7FFD with bit 5 set does not lock paging while special (all-RAM) paging is on (v0.50.0, 2026-11-23)
+
+Theme: models · closed 0.50.0 · 2026-11-23
+Trigger: the T-74 reset test (reset_test.go, TestResetPutsBackThePaging) set special paging with port 0x1FFD and then wrote 0x37 to port 0x7FFD; the lock did not take. SpectrumMemory.SetPaging (memory.go) returns after the screen select in special mode, before bit 5 is looked at. The +3's lock latch is the 0x7FFD port's own, independent of the 0x1FFD paging mode, so the lock should be set there too. Scope: set the lock before the early return, with a test (special paging on, write 0x20 to 0x7FFD, assert pagingLocked and that a later 0x1FFD write is refused). Done when: the test passes and the +3 special-paging tests still do.
+
+Resolved 0.50.0 (2026-11-23). Cause: `SetPaging` returned after the screen select in special mode, before it looked at bit 5. Fix: the 0x7FFD latch (`port7FFD`) and the lock are now taken before the special-mode return, and `SetPlus3Paging` keeps the latch's RAM bank and ROM bit so that they come back when special paging ends. Tests: `paging_plus3_test.go` (`TestPlus3LockHoldsInSpecialPaging`, `TestPlus3LatchComesBackWhenSpecialPagingEnds`), and the +3 special-paging and reset tests still pass.
+
+Cross-ref: CHANGELOG 0.50.0.
+
+## [0.50.0] T-76 — Next booted from the card: -rom, -romN and -rom-bin are replaced by the firmware's ROM load, silently; hot patches over it (v0.50.0, 2026-11-23)
+
+Theme: next-support · closed 0.50.0 · 2026-11-23
+Trigger: a study of ROM handling, 2026-11-22. On a Next booted from the card, `-rom`, `-rom0` to `-rom3` and `-rom-bin` put their ROM in the four ROM banks at start, and the firmware replaces all four when it loads its ROMs, about 450 frames in. Measured on the real firmware. Nothing says so.
+
+Scope: `docs/proposals/NEXT_ROM_OVERLAY.md`. In order: (1) a warning at start, on a Next with the boot chain, that these switches are replaced by the firmware; (2) a patch list on the machine, applied when config mode is left (NextREG 0x03 choosing the machine), written through `nextPhysWrite` so that banks 0-7 are reached; (3) `-rom-fill rom`, `-rom-save` and the cut warning made at that event, since the base is what the firmware loaded; (4) `-rom-bank` 0-7 and a physical address on a Next, over a 256 KiB base; (5) a view of which ROM is live (lock bits, NextREG 0x8C, `romBank`, slots 0 and 1).
+
+Done when: with the real firmware, a patch over bank 0 runs at the hand-over and a patch of the same bytes still reaches the NextZXOS menu (G-04), a hard reset applies the list again, and the unit test of the config-mode sequence holds the rest.
+
+Resolved 0.50.0 (2026-11-23). Cause: the switches wrote their ROM into the four ROM banks at start, and the firmware's own load, about 450 frames in, wrote over all four. Fix: the switches are a patch list on the machine (`rom_patches.go`), applied when the firmware leaves config mode (NextREG 0x03 choosing the machine, then the soft reset ~10 frames on) and after every hard reset; a Next's `-rom-bank` takes 0-7 and `-rom-at` is a physical address over the first 256 KiB of SRAM (`rom_next_region.go`); `-rom-fill rom`, `-rom-save` and the cut warning are made at the hand-over; a warning at start says the firmware replaces the banks; Show Status says which ROM is live; the boot cache's key has one entry per patch. Tests: `rom_patches_test.go` (the config-mode sequence driven by hand: nothing before the firmware, the patch after it, again after a hard reset, not after a soft one; banks, alternate ROMs and the cut; the live-ROM view; the cache key) and, against the real firmware, `TestNextROMPatchesOverTheFirmware` (G-16, 2026-11-23), with G-04, G-13 and G-15 re-run after the change.
+
+Cross-ref: CHANGELOG 0.50.0.
+
+## [0.50.0] T-74 — Reset restarted only the CPU: paging, the AY, the Timex ports and, on a Next, the firmware and registers kept the running program's state (v0.50.0, 2026-11-23)
+
+Theme: next-support · closed 0.50.0 · 2026-11-23
+Trigger: feedback from a colleague testing 0.50.0, 2026-11-22: the Next emulation resets in a weird way. Widened by the tech team the next day: Reset has not been stable on any machine since the machines system, and does not completely reset some of them.
+
+Cause, measured: `ZenZX.Reset` restarted the CPU, the keyboard, the tape and the link, and nothing else. Every machine that was reset after running a program was compared field by field with one switched on, after loading real programs (testdata/snapshots, and the Next's examples gallop, fuji and orbit on the real firmware). The 48K was fine (the ROM clears RAM and writes the ULA's latch again). The 128K, +2, +2A and +3 started again in whatever ROM the program had left selected, so a 128K that had been in ROM 1 started in the 48K BASIC and never showed its menu; the paging lock, the +3's special paging and its 0x1FFD latch survived, and so did the AY's registers and counters. The TS2068 kept ports 0xF4 and 0xFF, and with them its hi-colour screen mode. The +3's disc controller kept its command and motor. On a Next, the Machine menu, F1 and the debugger's reset called only `Reset`, which never asked for the hard reset that restarts the firmware; the CPU started at 0 in the +3 ROM with config mode off, the boot ROM off, the machine type chosen, and every register, palette, sprite, the copper, the CTC and the DMA as the program had left them (Layer 2 and the tilemap over the boot screen). The hard reset that was there (serviceNextReset) put back the memory map, speed, line interrupt, DMA, interrupts, Multiface and DivMMC, but not the NextREG file, and it forced config mode on even with no boot ROM to run there.
+
+Fix (0.50.0): `Reset` now calls `resetHardware` (reset.go): memory paging, lock and special paging back to switch-on (the shadow screen is put back in its bank), the AY, the TS2068's ports and screen mode, the +3's controller (the disc stays in the drive), and on a Next a hard reset. A Next's hard reset now also puts back every NextREG, the clip windows, the tilemap's state, the sprites, the palettes, the copper, the Timex port and the DivMMC's automap, forgets the machine type, and goes into config mode only when there is a boot ROM. Kept, as the hardware keeps them: RAM, the ULA's border/speaker/MIC latch, a disc, a tape, the host's devices. The reference was the machine as switched on (the comparison is the machine-state codec's own dump, so a field added to a model later is compared too); CSpect itself was not available here.
+
+Test: `TestResetIsASwitchOn` (eight machine and program pairs, straight after Reset and 400 frames on), `TestResetPutsBackThePaging`, `TestResetKeepsTheShadowScreenInItsBank`, `TestResetSilencesTheAY`, `TestResetPutsBackTheTimexPorts`, `TestResetStartsTheDiscControllerAgain`, `TestResetKeepsMemoryAndTheULALatch` and `TestResetNextIsAHardReset` (reset_test.go) run with the ordinary suite; with the fix taken out, they fail on every model but the 48K, which was already right. `TestNextResetRestartsTheFirmware` (reset_next_hw_test.go, dormant guard G-15) resets a Next in the middle of each of three examples against the real firmware: config mode, the registers and the program's copper and interrupts are gone and NextZXOS comes back to its welcome screen and menu.
+
+Cross-ref: CHANGELOG 0.50.0.
+
+## [0.50.0] T-77 — A Next that boots once: the settled state cached on the first boot and restored like a ROM (v0.50.0, 2026-11-23)
+
+Theme: next-support · closed 0.50.0 · 2026-11-23
+Trigger: the idea, 2026-11-22, that the first boot of a Next, once NextZXOS is up and settled, caches the state of the machine and every later start restores it, so that the Next behaves like a ROM and boots once. The start to the menu is 760 frames, 15 s at the real speed.
+
+Scope: `docs/proposals/NEXT_BOOT_CACHE.md`. A detector of "booted and stable" (idle prompt, display steady, nothing in flight); a new state format for the Next, since the snapshots are 48K and 128K only; a key (boot files, one deterministic SHA-256 of the firmware files on the card (sorted, length-prefixed, case-folded paths), board issue, patch list, ZenZX version) and one function that compares a cache with it, which `-next-firmware check`, `setup` and `cleanup` and the start-up all use; `-next-boot-cache auto|off|refresh`. First a cache at the hand-over, with the cold-versus-restored difference test; then the settled state.
+
+Done when: a cold boot and a boot from the cache agree in memory, registers and screen at the same point and reach the menu in the same frames; a changed boot file, card, patch list or version, or a corrupt file, boots from the firmware; and `-next-firmware check` names what differs.
+
+Cross-ref: CHANGELOG 0.50.0.
+
 ## [0.41.0] T-71 — Switch the focused machine by keyboard (focus-by-number) in a multi-machine session (v0.41.0, 2026-11-18)
 
 Theme: input · closed 0.41.0 · 2026-11-18

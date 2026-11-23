@@ -76,7 +76,7 @@ type mountDrawer struct {
 	// result feedback: an OSD toast that rises and fades after a drop, so the
 	// acknowledgement outlives the drawer (which closes on drop). text is set
 	// and seq bumped on a result; the host drives the toast every frame.
-	toast    *zenuiraylib.OSD
+	toast    *toast
 	toastTxt *zenuiraylib.BDFText
 	msg      string
 	seq      int
@@ -105,9 +105,10 @@ type mountDrawer struct {
 }
 
 func newMountDrawer(zx *ZenZX) *mountDrawer {
-	m := &mountDrawer{zx: zx, toast: zenuiraylib.NewOSD()}
+	m := &mountDrawer{zx: zx}
 	if face, err := fonts.Sinclair(); err == nil {
 		m.toastTxt = zenuiraylib.NewBDFText(face)
+		m.toast = newToast(m.toastTxt)
 	}
 	return m
 }
@@ -139,8 +140,7 @@ func (m *mountDrawer) Tick() {
 	if m.toast == nil || m.toastTxt == nil {
 		return
 	}
-	tw, th := m.toastTxt.Measure(m.msg, 2), m.toastTxt.CellH()*2
-	m.toast.Update(rl.GetFrameTime(), m.seq, m.msg, tw, th)
+	m.toast.Update(rl.GetFrameTime(), m.seq, m.msg, rl.GetScreenWidth())
 }
 
 // armRemount schedules a NextZXOS Browser refresh after a mount onto the live
@@ -195,8 +195,7 @@ func (m *mountDrawer) DrawToast(screenW, screenH int) {
 	if m == nil || m.toast == nil || m.toastTxt == nil || !m.toast.Active() {
 		return
 	}
-	tw, th := m.toastTxt.Measure(m.msg, 2), m.toastTxt.CellH()*2
-	m.toast.Draw(m.toastTxt, screenW-10, screenH-10, tw, th)
+	m.toast.Draw(screenW, screenH)
 }
 
 // Visible reports whether the drawer should draw this frame.
@@ -297,7 +296,7 @@ func allMachineLoadable(files []string) bool {
 // the cursor -- or the nearest writable slot when the cursor is not over one --
 // and returns true to consume the drop. With no storage at all it returns
 // false so the file still reaches loadDroppedFile.
-func (m *mountDrawer) TryDrop(files []string) bool {
+func (m *mountDrawer) TryDrop(files []string, x int32) bool {
 	if m == nil {
 		return false
 	}
@@ -307,7 +306,7 @@ func (m *mountDrawer) TryDrop(files []string) bool {
 	}
 	m.rebuildSlots()
 
-	slot := m.slotForDrop(rl.GetMouseX())
+	slot := m.slotForDrop(x)
 	if slot == nil {
 		// Storage exists but no slot resolved (e.g. every slot inert): reveal
 		// the drawer so the user sees why, and consume the drop.
@@ -317,6 +316,35 @@ func (m *mountDrawer) TryDrop(files []string) bool {
 	}
 
 	m.reveal() // slide the drawer down as the acknowledgement
+	if !slot.target {
+		m.say(mountRefusedMsg(slot))
+		return true
+	}
+	m.mount(slot, files)
+	return true
+}
+
+// copyToCard copies files onto the focused machine's SD card, whatever their
+// type -- the path the Next drop-choice dialog takes for its "Copy to SD Card"
+// answer, where the files (a tape, a .scr, a snapshot) are machine-loadable types
+// TryDrop would otherwise send to the machine. It resolves the slot and mounts
+// the same way TryDrop does, and reports whether it had a slot to copy to.
+func (m *mountDrawer) copyToCard(files []string, x int32) bool {
+	if m == nil {
+		return false
+	}
+	m.useFront()
+	if !m.hasMountableSlots() {
+		return false
+	}
+	m.rebuildSlots()
+	slot := m.slotForDrop(x)
+	if slot == nil {
+		m.reveal()
+		m.say("no writable slot for the dropped file(s)")
+		return true
+	}
+	m.reveal()
 	if !slot.target {
 		m.say(mountRefusedMsg(slot))
 		return true

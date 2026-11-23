@@ -14,7 +14,7 @@ import (
 // A Next started without -bootrom, -divmmc-rom and -sdcard looks for the three files in a
 // folder (nextFilesDirs gives the order). When they are there the machine boots NextZXOS
 // from them. When they are not, the GUI offers to download them (nextsetup_gui.go) and the
-// headless build says how (-next-setup); without them the Next runs with the +3's ROMs, as
+// headless build says how (-next-firmware setup); without them the Next runs with the +3's ROMs, as
 // it did before the boot chain existed. -next-classic asks for that outright.
 
 // nextFilesEnv names a folder that holds the three files, as run_next_divmmc.sh and the
@@ -102,6 +102,16 @@ type nextChain struct {
 	files     nextcard.Files
 	card      *os.File
 	protected bool
+
+	// scratchDir is a temporary folder that holds the card, when it is one made to run a
+	// program (nexrun.go); home is then the files the machine was started from, which a
+	// second scratch card takes its system from, and which the person goes back to.
+	scratchDir string
+	home       *nextcard.Files
+
+	// cachePending is set when the chain is attached and a boot cache is wanted: the next
+	// frame boundary starts it (nextcacheuse.go).
+	cachePending bool
 }
 
 // attachNextBootChain gives a machine that is already a Next its boot ROM, DivMMC and card,
@@ -133,6 +143,8 @@ func (zx *ZenZX) attachNextBootChain(f nextcard.Files, readOnly, debug bool) (pr
 	zx.io.divMMC.Debug = debug
 	zx.io.divMMC.SD().Debug = debug
 	zx.next = &nextChain{files: f, card: card, protected: protected}
+	zx.noteROMPatchesForFirmware()
+	zx.armNextBootCache()
 	return protected, nil
 }
 
@@ -152,6 +164,9 @@ func (zx *ZenZX) detachNextBootChain() {
 	zx.memory.bootROMEnabled = false
 	zx.memory.nextCfg.active = false
 	zx.next.card.Close()
+	if zx.next.scratchDir != "" {
+		os.RemoveAll(zx.next.scratchDir)
+	}
 	zx.next = nil
 }
 
@@ -169,7 +184,7 @@ func nextSetupHint(binary, note string) string {
 		note = "Next boot files found but not usable: " + note + "\n"
 	}
 	return note + "No usable Next boot files found (" + nextcard.BootROMName + ", " + nextcard.DivMMCROMName + ", " + nextcard.CardName +
-		"): the Next runs with the +3's ROMs.\n  To download them once into " + dir + " and boot NextZXOS from then on:  " + binary + " -next-setup"
+		"): the Next runs with the +3's ROMs.\n  To download them once into " + dir + " and boot NextZXOS from then on:  " + binary + " -next-firmware setup"
 }
 
 // wantNextBootChain reports whether a front end should look for the boot files itself: the

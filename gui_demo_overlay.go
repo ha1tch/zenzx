@@ -45,7 +45,7 @@ type demoOverlay struct {
 
 	menu   *zenui.Menu
 	dialog *zenui.Dialog
-	toast  *zenuiraylib.OSD
+	toast  *toast
 }
 
 // newDemoOverlay builds an idle overlay, loading the Sinclair face once so
@@ -62,7 +62,7 @@ func newDemoOverlay() (*demoOverlay, error) {
 		text:     text,
 		renderer: zenuiraylib.Renderer{Text: text},
 		theme:    theme,
-		toast:    zenuiraylib.NewOSD(),
+		toast:    newToast(text),
 	}, nil
 }
 
@@ -127,9 +127,7 @@ func (d *demoOverlay) Update(screenW, screenH int) {
 		}
 	case demoOverlayNotification:
 		const msg = "Bogus notification!"
-		tw := d.text.Measure(msg, 2)
-		th := d.text.CellH() * 2
-		d.toast.Update(rl.GetFrameTime(), 1, msg, tw, th)
+		d.toast.Update(rl.GetFrameTime(), 1, msg, screenW)
 		if !d.toast.Active() {
 			d.kind = demoOverlayNone
 		}
@@ -146,7 +144,7 @@ func (d *demoOverlay) Draw(screenW, screenH int) {
 	if d.kind == demoOverlayNone {
 		return
 	}
-	d.renderer.FillRect(zenui.Rect{X: 0, Y: 0, W: screenW, H: screenH}, d.theme.Backdrop)
+	d.renderer.FillRect(zenui.Rect{X: 0, Y: 0, W: screenW, H: screenH}, zenui.ScaleAlpha(d.theme.Backdrop, zenui.ModalBackdropDarkening))
 
 	switch d.kind {
 	case demoOverlayMenu:
@@ -154,10 +152,7 @@ func (d *demoOverlay) Draw(screenW, screenH int) {
 	case demoOverlayDialog:
 		d.dialog.Draw(d.renderer, screenW, screenH, d.theme)
 	case demoOverlayNotification:
-		const msg = "Bogus notification!"
-		tw := d.text.Measure(msg, 2)
-		th := d.text.CellH() * 2
-		d.toast.Draw(d.text, screenW-10, screenH-10, tw, th)
+		d.toast.Draw(screenW, screenH)
 	}
 }
 

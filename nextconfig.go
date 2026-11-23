@@ -162,6 +162,7 @@ func (io *SpectrumIO) nextConfigRegWrite(reg uint8, value uint8) {
 		case t >= 1 && t <= 4 && m.nextCfg.active:
 			m.nextCfg.machineType = t
 			m.nextCfg.active = false
+			io.nextConfigLeft = true // the ROMs are in place: the soft reset that follows starts the machine
 			if t != 3 {
 				sayf("Next: the firmware chose machine type %d; only type 3 (+3, the Next's own) is modelled, continuing as +3\n", t)
 			}
@@ -202,12 +203,24 @@ var nextMMUResetDefaults = [8]uint8{0xFF, 0xFF, 0x0A, 0x0B, 0x04, 0x05, 0x00, 0x
 // between frames: the firmware spins after asking, so nothing is lost by waiting for the
 // frame to end, and the CPU is never reset half-way through an instruction.
 func (zx *ZenZX) serviceNextReset() {
+	if zx.next != nil && zx.next.cachePending {
+		zx.startNextBootCache()
+	}
+	if zx.nextSettle != nil {
+		zx.nextSettle.step()
+	}
 	kind := zx.io.nextResetRequest
 	if kind == 0 {
 		return
 	}
 	zx.io.nextResetRequest = 0
 	m := zx.memory
+
+	// A hard reset starts every register and peripheral again as at power on (reset.go); what
+	// follows then puts back, in the way each one has, what a soft reset puts back too.
+	if kind == nextResetHard {
+		zx.io.resetNextHard()
+	}
 
 	// Paging starts again; memory keeps its contents.
 	m.pagingLocked = false
@@ -243,9 +256,13 @@ func (zx *ZenZX) serviceNextReset() {
 	// NextREG 0x02 reads back the kind of the last reset: bit 1 hard, bit 0 soft.
 	zx.io.nextRegs.regs[0x02] = uint8(kind)
 	if kind == nextResetHard {
-		m.nextCfg.active = true
 		m.nextCfg.bank = 0
+		zx.io.nextConfigLeft = false
+		m.nextCfg.machineType = 0 // the firmware chooses the machine again
 		if m.bootROMLoaded {
+			// Only a Next that has its boot ROM starts in config mode: without one there is
+			// nothing to run there, and the bottom 16K would be the config window over the ROM.
+			m.nextCfg.active = true
 			m.bootROMEnabled = true
 		}
 	}
@@ -253,6 +270,17 @@ func (zx *ZenZX) serviceNextReset() {
 	if zx.io.hasDivMMC && zx.io.divMMC != nil && zx.io.divMMC.Debug {
 		sayf("[next] reset %d done: config mode %v, boot ROM %v, machine type %d\n",
 			kind, m.nextCfg.active, m.bootROMEnabled, m.nextCfg.machineType)
+	}
+	// The firmware is done: its ROMs are in SRAM, and the ROM switches go over them before the
+	// machine starts from them (rom_patches.go).
+	if kind == nextResetSoft && zx.io.nextConfigLeft && !m.nextCfg.active && m.nextCfg.machineType != 0 {
+		zx.io.nextConfigLeft = false
+		zx.replayROMPatches()
+	}
+	if kind == nextResetSoft && !m.nextCfg.active && m.nextCfg.machineType != 0 && zx.onNextHandOver != nil {
+		hook := zx.onNextHandOver
+		zx.onNextHandOver = nil
+		hook()
 	}
 }
 

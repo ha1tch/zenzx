@@ -76,6 +76,10 @@ type machineDeck struct {
 	machines []*deckMachine
 	front    int
 
+	// dockOn and multiOn, when set, are the Preferences: whether the dock may be shown, and
+	// whether it may add machines. Unset is on, as it always was.
+	dockOn, multiOn func() bool
+
 	// focusFollow, when set, moves the front (and so the keyboard) to the
 	// machine whose player beacon is set -- for an example whose program
 	// writes playerBeaconAddr. Off by default: an ordinary multi-machine
@@ -129,6 +133,15 @@ type machineDeck struct {
 	// machine (-1 for none).
 	edit    *zenui.TextField
 	editing int
+
+	// The New button: how far it has grown under the pointer, as a picture does; whether the
+	// pointer is on it and whether a press that began on it is still held (it acts when it is
+	// let go on it, so that a press can be taken back by moving away); and whether the pointer
+	// is a hand because of it.
+	addMag   float32
+	addHover bool
+	addDown  bool
+	addHand  bool
 }
 
 // newMachineDeck makes a deck holding one machine, which has the display and
@@ -504,14 +517,19 @@ func (m *deckMachine) refreshThumb() {
 	rl.UpdateTexture(m.thumb, m.pixels)
 }
 
+// dockAllowed and multiAllowed are the Preferences' say on the dock and on adding machines.
+func (d *machineDeck) dockAllowed() bool  { return d.dockOn == nil || d.dockOn() }
+func (d *machineDeck) multiAllowed() bool { return d.multiOn == nil || d.multiOn() }
+
 func (d *machineDeck) show(byKey bool) {
-	if d.state == barShown || d.state == barSlidingIn {
+	if d.state == barShown || d.state == barSlidingIn || !d.dockAllowed() {
 		return
 	}
 	d.state = barSlidingIn
 	d.stateChangedAt = time.Now()
 	d.byKey = byKey
 	d.sel = d.front
+	d.addMag, d.addDown = 1, false
 	for _, m := range d.machines {
 		m.mag = 1
 		m.refreshThumb()
@@ -617,7 +635,7 @@ func (d *machineDeck) screenRect(i int) rl.Rectangle {
 		return pictureIn(d.tileRectsWithFront(i)[i], m.thumbW, m.thumbH)
 	}
 	top := float32(d.dm.reservedTopHeight)
-	if m.thumbW == 256 && m.thumbH == 192 && d.dm.showBorder && d.dm.hasBorder() {
+	if m.thumbW == 256 && m.thumbH == 192 && d.dm.borderView().Shown {
 		x, y := d.dm.classicScreenOffset()
 		mult := float32(d.dm.screen.multiplier)
 		return rl.Rectangle{X: float32(x), Y: float32(y), Width: 256 * mult, Height: 192 * mult}
@@ -629,6 +647,10 @@ func (d *machineDeck) screenRect(i int) rl.Rectangle {
 // and sends it to the front.
 func (d *machineDeck) choose(i int, l dockLayout) {
 	if i == len(d.machines) {
+		if !d.multiAllowed() {
+			sayf("Machines: adding machines is off (File > Preferences...)\n")
+			return
+		}
 		at := l.tiles[i]
 		i = d.add(d.modelForNew())
 		d.machines[i].refreshThumb()
@@ -655,6 +677,12 @@ func (d *machineDeck) startFly(i int, from rl.Rectangle) {
 // window) has the keyboard and the pointer.
 func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) {
 	d.frame++
+	d.addHover = false
+	wantHand := false
+	defer func() { setHandCursor(&d.addHand, wantHand) }()
+	if !d.dockAllowed() {
+		d.hide() // turned off in Preferences while it was open
+	}
 	lineH := r.LineHeight(1)
 	mx, my := rl.GetMouseX(), rl.GetMouseY()
 	moved := mx != d.lastMouseX || my != d.lastMouseY
@@ -757,8 +785,15 @@ func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) 
 		if i < len(d.machines) {
 			m := d.machines[i]
 			m.mag += (target - m.mag) * dockMagnifySpeed
+		} else {
+			if !d.multiAllowed() {
+				target = 1 // off in Preferences: it does not rise to the pointer
+			}
+			d.addMag = d.addMagnify() + (target-d.addMagnify())*dockMagnifySpeed
 		}
 	}
+	d.addHover = hover == len(d.machines)
+	wantHand = d.addCursorWanted(hover, busy)
 	if d.state != barShown || d.flying {
 		return
 	}
@@ -802,6 +837,18 @@ func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) 
 		return
 	}
 
+	// A press on New is held until the button comes up: let go on it, it adds a machine;
+	// let go anywhere else, it does nothing.
+	if d.addDown {
+		if !rl.IsMouseButtonDown(rl.MouseLeftButton) {
+			d.addDown = false
+			if hover == len(d.machines) {
+				d.choose(hover, l)
+			}
+		}
+		return
+	}
+
 	if hover >= 0 && (moved || rl.IsMouseButtonPressed(rl.MouseLeftButton)) {
 		d.sel = hover
 	}
@@ -831,7 +878,7 @@ func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) 
 		}
 		switch {
 		case hover == len(d.machines):
-			d.choose(hover, l) // New
+			d.addDown = true // New: acts when let go on it
 		case hover >= 0 && fmy < l.tiles[hover].Y+l.tiles[hover].Height:
 			d.pressOn, d.pressX, d.pressY, d.dragX, d.dragY = hover, mx, my, fmx, fmy
 		case named >= 0:
@@ -868,13 +915,21 @@ func (d *machineDeck) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 
 		// The pictures, the one under the pointer last so that it lies over
 		// its neighbours.
-		order := make([]int, 0, len(d.machines))
+		// The New button is one of them: it grows as they do, and lies over or under its
+		// neighbour by the same rule, instead of always over.
+		mag := func(i int) float32 {
+			if i == len(d.machines) {
+				return d.addMagnify()
+			}
+			return d.machines[i].mag
+		}
+		order := make([]int, 0, len(d.machines)+1)
 		top := -1
-		for i := range d.machines {
+		for i := 0; i <= len(d.machines); i++ {
 			if d.flying && i == d.flyTo {
 				continue
 			}
-			if top < 0 || d.machines[i].mag > d.machines[top].mag {
+			if top < 0 || mag(i) > mag(top) {
 				if top >= 0 {
 					order = append(order, top)
 				}
@@ -887,6 +942,10 @@ func (d *machineDeck) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 			order = append(order, top)
 		}
 		for _, i := range order {
+			if i == len(d.machines) {
+				d.drawAddTile(r, grown(l.tiles[i], d.addMagnify()), d.sel == i, theme)
+				continue
+			}
 			m := d.machines[i]
 			at := grown(l.tiles[i], m.mag)
 			d.drawPicture(m, at, pictureRadius(at))
@@ -921,16 +980,16 @@ func (d *machineDeck) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 			d.edit.Draw(r, theme, area, l.text)
 		}
 
-		// The "+" tile.
+		// The New button's name.
 		p := l.tiles[len(d.machines)]
-		edge, thick := theme.DimText, 1
-		if d.sel == len(d.machines) {
-			edge, thick = theme.SelFill, 2
+		label, ink := "New", theme.DimText
+		switch d.addState() {
+		case addHover, addPressed:
+			ink = theme.Text
+		case addOff:
+			ink = theme.Disabled
 		}
-		d.roundFrame(p, pictureRadius(p), edge, thick)
-		drawAddIcon(r, p)
-		label := "New"
-		r.DrawText(label, int(p.X+(p.Width-float32(r.TextWidth(label, l.text)))/2), int(p.Y+p.Height+4), l.text, theme.DimText)
+		r.DrawText(label, int(p.X+(p.Width-float32(r.TextWidth(label, l.text)))/2), int(p.Y+p.Height+4), l.text, ink)
 	}
 
 	// A machine being dragged: its picture under the pointer, and a frame

@@ -942,7 +942,14 @@ func (m *SpectrumMemory) SetPaging(value uint8) {
 
 	m.port7FFD = value
 
-	// In special mode, only screen select works
+	// Bit 5: Lock paging. The lock is this port's own latch, set in every paging mode (T-78);
+	// it only stops the writes that come after this one.
+	if value&0x20 != 0 {
+		m.pagingLocked = true
+	}
+
+	// In special mode, only screen select works; the latch keeps the rest for when special
+	// paging is turned off (SetPlus3Paging)
 	if m.isPlus3 && m.specialPaging {
 		// Bit 3: Screen select still works in special modes
 		newScreenBank := uint8(5)
@@ -975,11 +982,6 @@ func (m *SpectrumMemory) SetPaging(value uint8) {
 		} else {
 			m.romBank = 0
 		}
-	}
-
-	// Bit 5: Lock paging
-	if value&0x20 != 0 {
-		m.pagingLocked = true
 	}
 }
 
@@ -1015,11 +1017,13 @@ func (m *SpectrumMemory) SetPlus3Paging(value uint8) {
 		m.specialMode = 0
 		m.ramBankLow = 5
 		m.ramBankHigh = 2
-		// ramBankTop is controlled by port 0x7FFD.
+		// The 0x7FFD latch is back in force: the RAM at the top and the ROM's low bit are what it
+		// holds, written before special paging was turned on or while it was on (T-78).
+		m.ramBankTop = m.port7FFD & 0x07
 
 		// Bit 2 of 0x1FFD is the high bit of ROM selection (combined with
 		// bit 4 of 0x7FFD). Only meaningful in normal paging mode.
-		m.romBank = ((value >> 1) & 0x02) | (m.romBank & 0x01)
+		m.romBank = ((value >> 1) & 0x02) | ((m.port7FFD >> 4) & 0x01)
 	}
 
 	// Bit 3: Disk motor control (not implemented)

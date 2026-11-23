@@ -95,14 +95,24 @@ func (ay *AYChip) ReadRegister(reg uint8) uint8 {
 	return ay.registers[reg]
 }
 
-// GenerateSamples generates audio samples for the given number of CPU cycles
+// GenerateSamples generates the audio samples that the given number of CPU cycles
+// span. It is GenerateN for as many samples as those cycles come to, rounded down.
 func (ay *AYChip) GenerateSamples(cycles int, sampleRate int, cpuFreq int) []float32 {
-	// Calculate samples to generate
-	samplesNeeded := int(float64(cycles) * float64(sampleRate) / float64(cpuFreq))
+	return ay.GenerateN(int(float64(cycles)*float64(sampleRate)/float64(cpuFreq)), sampleRate)
+}
+
+// GenerateN generates exactly n samples at sampleRate. The chip runs at its own clock
+// (clockFreq, 1.7734 MHz on a 128K) against the samples it is asked for, so its pitch
+// is its own and does not depend on how many CPU cycles a caller says a chunk of
+// samples took, or on a chunk of a few samples being cut short by rounding.
+func (ay *AYChip) GenerateN(n int, sampleRate int) []float32 {
+	samplesNeeded := n
+	if samplesNeeded < 0 {
+		samplesNeeded = 0
+	}
 	samples := make([]float32, samplesNeeded)
 
-	// AY clock is CPU clock / 2
-	ayClockPerSample := float64(cpuFreq) / 2.0 / float64(sampleRate)
+	ayClockPerSample := float64(ay.clockFreq) / float64(sampleRate)
 
 	for i := 0; i < samplesNeeded; i++ {
 		// Accumulate AY clocks
@@ -128,7 +138,11 @@ func (ay *AYChip) GenerateSamples(cycles int, sampleRate int, cpuFreq int) []flo
 				if period == 0 {
 					period = 1
 				}
-				period *= 16 // AY internally divides by 16
+				// The chip divides its clock by 8 and flips the output each time the
+				// counter has run TP of those, so a whole wave is 16*TP clocks:
+				// f = fclk / (16*TP), the datasheet's figure. (This was 16*TP per
+				// flip, a whole wave of 32*TP: an octave low.)
+				period *= 8
 
 				ay.toneCounters[ch]++
 				if ay.toneCounters[ch] >= period {

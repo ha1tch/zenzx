@@ -13,19 +13,26 @@ import (
 
 // The SD Card menu.
 //
-// A Next that boots NextZXOS has no use for the Floppy Disk menu: what it reads and writes
-// is on its SD cards. While such a machine is running, that place in the bar is the SD Card
-// menu, which shows what is in the two slots and changes the second: any card image,
-// ZenZX's own card with the example programs (nextadd.go), or a new empty one. The first slot holds the card
-// NextZXOS boots from and is not changed here.
+// A Next that boots NextZXOS reads and writes mainly on its SD cards, so while such a machine
+// is running, that place in the bar is the SD Card menu rather than the Floppy Disk menu --
+// the two are never both on the bar at once. It shows what is in the two slots and changes the
+// second: any card image, ZenZX's own card with the example programs (nextadd.go), or a new
+// empty one. The first slot holds the card NextZXOS boots from and is not changed here.
+//
+// A Next is not drive-less, though: NextZXOS can mount a .dsk as one of its own drives (A:/B:).
+// ZenZX does not emulate that yet (T-72), so the menu ends with a disabled "Virtual Floppy"
+// section that marks where those actions will live -- the capability is signposted, not hidden,
+// which is why a Next no longer simply loses the Floppy Disk menu whole.
 //
 // NextZXOS looks at the slots when it starts and when its Browser is told to remount (M,
 // then Y to confirm), so after a change one of those is needed; what the menu prints says so.
 
-const (
-	storageLabelFloppy = "Floppy Disk"
-	storageLabelSD     = "SD Card"
-)
+// storageLabel is the one bar label for the storage menu, the same on every
+// machine -- the menu's contents change with the machine (the +3's floppy drive,
+// or a Next's SD cards and virtual floppy), but the label does not swap under the
+// user. The old per-machine labels ("Floppy Disk", "SD Card") are now Title
+// headings inside the menu instead (see refreshStorageMenu and diskItems).
+const storageLabel = "Storage"
 
 // usesSDCards reports whether the machine is one the SD Card menu is for.
 func usesSDCards(zx *ZenZX) bool {
@@ -38,7 +45,7 @@ func (b *appMenuBar) refreshStorageMenu(zx *ZenZX) {
 	if !usesSDCards(zx) {
 		if b.storageIsSD {
 			b.storageIsSD = false
-			b.widget.SetLabel(barFloppyDisk, storageLabelFloppy)
+			b.widget.SetLabel(barFloppyDisk, storageLabel)
 			b.widget.SetItems(barFloppyDisk, b.diskItems)
 		}
 		return
@@ -48,40 +55,40 @@ func (b *appMenuBar) refreshStorageMenu(zx *ZenZX) {
 	if second != "" {
 		slot2 = "Slot 2: " + filepath.Base(second)
 	}
-	items := []zenui.Item{
-		{Label: "Slot 1: " + filepath.Base(zx.next.files.Card), Disabled: true},
-		{Label: slot2, Disabled: true},
-		{Separator: true},
-		{Label: "Insert Card in Slot 2..."},
-		{Label: "Insert ZenZX's Card (Examples)"},
-		{Label: "Remove Card from Slot 2", Disabled: second == ""},
-		{Label: "New Empty Card", SubItems: newCardSizeItems()},
-		{Separator: true},
-		{Label: "Card Info"},
-		{Label: "Manage Cards..."},
-	}
-	b.sdActions = []func(zx *ZenZX){
-		nil, nil, nil,
-		func(zx *ZenZX) { b.openCardDialog(zx) },
-		func(zx *ZenZX) { b.insertOwnCard(zx) },
-		func(zx *ZenZX) {
+	// The rows, items and actions together (menuspec_gui.go). Virtual Floppy: a Next reaches
+	// storage through its SD cards, but NextZXOS can also mount a .dsk as one of its own
+	// drives (A:/B:). ZenZX does not emulate that yet (T-72), so that section stands as
+	// disabled signposts -- the capability is shown where it will live, not hidden, and
+	// lights up when T-72 lands. It replaces the old swap that hid the Floppy Disk menu whole.
+	spec := menuSpec{
+		menuTitle("SD Card"),
+		{label: "Slot 1: " + filepath.Base(zx.next.files.Card), disabled: true},
+		{label: slot2, disabled: true},
+		menuSep(),
+		menuRow("Insert Card in Slot 2...", func(zx *ZenZX) { b.openCardDialog(zx) }),
+		menuRow("Insert ZenZX's Card (Examples)", func(zx *ZenZX) { b.insertOwnCard(zx) }),
+		{label: "Remove Card from Slot 2", disabled: second == "", run: func(zx *ZenZX) {
 			zx.RemoveSecondCard()
 			fmt.Println("SD card: slot 2 is empty. " + remountHint)
-		},
-		nil, // New Empty Card: a submenu, see storageSelected
-		nil,
-		func(zx *ZenZX) { b.showInfo("CARD INFO", cardInfoText(zx)) }, // info_gui.go
-		func(zx *ZenZX) { b.openCards(zx) },
+		}},
+		{label: "New Empty Card", sub: b.newCardSizeSpec()},
+		menuSep(),
+		menuRow("Card Info", func(zx *ZenZX) { b.showInfo("CARD INFO", cardInfoText(zx)) }), // info_gui.go
+		menuRow("Manage Cards...", func(zx *ZenZX) { b.openCards(zx) }),
+		menuSep(),
+		menuTitle("Virtual Floppy"),
+		{label: "    (NextZXOS disc images -- not emulated yet, T-72)", disabled: true},
+		{label: "    Mount DSK as Drive A...", disabled: true},
+		{label: "    Mount DSK as Drive B...", disabled: true},
+		{label: "    Unmount Drive", disabled: true},
 	}
+	b.storageSpec = spec
 	if !b.storageIsSD {
 		b.storageIsSD = true
-		b.widget.SetLabel(barFloppyDisk, storageLabelSD)
+		b.widget.SetLabel(barFloppyDisk, storageLabel)
 	}
-	b.widget.SetItems(barFloppyDisk, items)
+	b.widget.SetItems(barFloppyDisk, spec.items())
 }
-
-// sdItemNewCard is New Empty Card's place in the SD Card menu.
-const sdItemNewCard = 6
 
 // newCardSizes are the sizes New Empty Card offers. The first is the smallest a FAT32 card
 // can be; the second is the size of the card the Next boots from. Either takes little
@@ -94,25 +101,20 @@ var newCardSizes = []struct {
 	{"1 GB", 1 << 30},
 }
 
-func newCardSizeItems() []zenui.Item {
-	items := make([]zenui.Item, len(newCardSizes))
+// newCardSizeSpec is the submenu of New Empty Card: one row per size, each opening the
+// dialog that names the new card.
+func (b *appMenuBar) newCardSizeSpec() menuSpec {
+	spec := make(menuSpec, len(newCardSizes))
 	for i, s := range newCardSizes {
-		items[i] = zenui.Item{Label: s.label}
+		bytes := s.bytes
+		spec[i] = menuRow(s.label, func(zx *ZenZX) { b.openNewCardDialog(zx, bytes) })
 	}
-	return items
+	return spec
 }
 
 // storageSelected carries out a choice from the SD Card menu.
 func (b *appMenuBar) storageSelected(zx *ZenZX, item, sub int) {
-	if item == sdItemNewCard {
-		if sub >= 0 && sub < len(newCardSizes) {
-			b.openNewCardDialog(zx, newCardSizes[sub].bytes)
-		}
-		return
-	}
-	if item >= 0 && item < len(b.sdActions) && b.sdActions[item] != nil {
-		b.sdActions[item](zx)
-	}
+	b.storageSpec.pick(zx, item, sub)
 }
 
 // openNewCardDialog asks where the new card is to go, in the folder of the Next's files.
@@ -125,7 +127,7 @@ func (b *appMenuBar) openNewCardDialog(zx *ZenZX, size int64) {
 		DefaultExt: "img",
 		FS:         zenui.OSFS{},
 	})
-	b.dialogIsCard, b.newCardSize = true, size
+	b.dialogKind, b.newCardSize = dialogNewCard, size
 }
 
 // newCard makes an empty card at path and puts it in the second slot.
@@ -150,7 +152,7 @@ func (b *appMenuBar) openCardDialog(zx *ZenZX) {
 		Filters:  []string{"img"},
 		FS:       zenui.OSFS{},
 	})
-	b.dialogIsCard, b.newCardSize = true, 0
+	b.dialogKind, b.newCardSize = dialogInsertCard, 0
 }
 
 // insertCard puts a card image in the second slot and says what happened.

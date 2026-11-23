@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	rl "github.com/gen2brain/raylib-go/raylib"
-
 	"github.com/ha1tch/zendis/pkg/disasm"
 	"github.com/ha1tch/zenui"
 	"github.com/ha1tch/zenui/zenuiraylib"
@@ -234,23 +232,24 @@ func (h *debugHUD) panelTopY(screenH int) int {
 // UpdateResize handles the top-edge resize gripper: it fades the gripper in
 // while the pointer is near the top edge, starts a drag on a press there, and
 // while dragging sets the panel height from the pointer, clamped to the min and
-// max. Called by the host each frame while the HUD owns input. It returns true
+// max. Called by the host each frame while the HUD owns input, with that frame's pointer in
+// in. It returns true
 // when it is consuming the pointer (hovering the gripper or dragging), so the
 // host can keep that click from reaching anything behind the HUD.
-func (h *debugHUD) UpdateResize(screenW, screenH int) (usingPointer bool) {
+func (h *debugHUD) UpdateResize(in zenui.Input, screenW, screenH int) (usingPointer bool) {
 	if h == nil || !h.active || h.anim < 1 {
 		// Only resizable once fully open and settled.
 		h.fadeGrip(false)
 		return false
 	}
-	my := int(rl.GetMouseY())
+	my := in.MouseY
 	topY := h.panelTopY(screenH)
 	near := my >= topY-hudGripZone && my <= topY+hudGripZone
 
 	if h.resizing {
 		// Drag in progress: the top edge follows the pointer; height is the
 		// distance from there to the screen bottom, clamped.
-		frac := float32(screenH-int(rl.GetMouseY())) / float32(screenH)
+		frac := float32(screenH-in.MouseY) / float32(screenH)
 		if frac < hudMinFrac {
 			frac = hudMinFrac
 		}
@@ -258,14 +257,14 @@ func (h *debugHUD) UpdateResize(screenW, screenH int) (usingPointer bool) {
 			frac = hudMaxFrac
 		}
 		h.heightFrac = frac
-		if rl.IsMouseButtonReleased(rl.MouseLeftButton) {
+		if !in.MouseDown { // the button has come up
 			h.resizing = false
 		}
 		h.fadeGrip(true)
 		return true
 	}
 
-	if near && rl.IsMouseButtonPressed(rl.MouseLeftButton) {
+	if near && in.MousePressed {
 		h.resizing = true
 		h.fadeGrip(true)
 		return true
@@ -329,87 +328,32 @@ func (h *debugHUD) println(s string) {
 // engine is the attached machine's engine.
 func (h *debugHUD) engine() *debug.Engine { return h.cur.e }
 
-// HandleInput consumes keystrokes while the HUD is active: typed characters go
-// to the input line, Enter runs the command, Backspace edits, backtick closes.
-// Called by the host only when Active().
-func (h *debugHUD) HandleInput() {
+// HandleInput takes the frame's keystrokes while the HUD is active: typed characters go
+// to the input line, Enter runs the command, Backspace edits. in is the frame's zenui.Input,
+// which the host makes with hudInput (hudinput_gui.go): the HUD itself asks the windowing
+// layer for nothing. A frame in which Alt is held arrives with no characters and no keys
+// (Alt+D opened the HUD, and other Alt combos are system controls, so the "d" of the
+// opening Alt+D never lands in the input line).
+func (h *debugHUD) HandleInput(in zenui.Input) {
 	if !h.active {
 		return
 	}
-	// Primary: raylib's character queue (honours layout, shift, dead keys).
-	got := 0
-	for {
-		r := rl.GetCharPressed()
-		if r == 0 {
-			break
-		}
+	for _, r := range in.Chars {
 		if r >= 0x20 && r != 0x7F { // printable only
 			h.input = append(h.input, r)
-			got++
 		}
 	}
-	// Fallback: on some platforms/builds the character queue is not populated
-	// (the HUD only ever saw an empty queue). When nothing came through it this
-	// frame, map the freshly-pressed keys to characters ourselves, honouring
-	// Shift. This guarantees typing works regardless of the char-queue path.
-	if got == 0 {
-		shift := rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift)
-		for _, ch := range pressedChars(shift) {
-			h.input = append(h.input, ch)
-		}
+	backspace, enter := false, false
+	for _, k := range in.Keys {
+		backspace = backspace || k == zenui.KeyBackspace
+		enter = enter || k == zenui.KeyEnter
 	}
-	if rl.IsKeyPressed(rl.KeyBackspace) && len(h.input) > 0 {
+	if backspace && len(h.input) > 0 {
 		h.input = h.input[:len(h.input)-1]
 	}
-	if rl.IsKeyPressed(rl.KeyEnter) || rl.IsKeyPressed(rl.KeyKpEnter) {
+	if enter {
 		h.submit()
 	}
-}
-
-// pressedChars maps the raylib keys pressed this frame to characters, for the
-// fallback input path. It covers what the debugger grammar needs: letters,
-// digits, space, and the few symbols addresses and commands use ($ # . - ( )
-// .. etc.). Shift selects the upper symbol where there is one.
-func pressedChars(shift bool) []rune {
-	var out []rune
-	// Letters: always lower-case for commands (the grammar is case-insensitive
-	// on verbs and hex is accepted either case).
-	for k := int32(rl.KeyA); k <= int32(rl.KeyZ); k++ {
-		if rl.IsKeyPressed(k) {
-			out = append(out, rune('a'+(k-int32(rl.KeyA))))
-		}
-	}
-	// Digits and their shifted symbols.
-	digitShift := map[int32]rune{
-		rl.KeyOne: '!', rl.KeyThree: '#', rl.KeyFour: '$', rl.KeyFive: '%',
-		rl.KeyNine: '(', rl.KeyZero: ')',
-	}
-	for k := int32(rl.KeyZero); k <= int32(rl.KeyNine); k++ {
-		if rl.IsKeyPressed(k) {
-			if shift {
-				if sym, ok := digitShift[k]; ok {
-					out = append(out, sym)
-					continue
-				}
-			}
-			out = append(out, rune('0'+(k-int32(rl.KeyZero))))
-		}
-	}
-	// Space and a few punctuation keys the grammar uses.
-	if rl.IsKeyPressed(rl.KeySpace) {
-		out = append(out, ' ')
-	}
-	if rl.IsKeyPressed(rl.KeyPeriod) {
-		out = append(out, '.')
-	}
-	if rl.IsKeyPressed(rl.KeyMinus) {
-		if shift {
-			out = append(out, '_')
-		} else {
-			out = append(out, '-')
-		}
-	}
-	return out
 }
 
 // submit runs the current input line through the shared command layer.

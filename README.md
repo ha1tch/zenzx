@@ -78,6 +78,35 @@ the dock that adds machines and flips between them.
 A gamepad is the joystick, and on a Next the mouse is the Next's mouse; see the manual for the
 choices.
 
+## Drag and drop
+
+Dropping a file on the window loads it into the machine by its extension. The same drop is routed
+differently per machine and, for a Next, by whether it is sitting at its NextZXOS menu or Browser
+(an *idle prompt*):
+
+| File | 48K / 128K / +2 | +3 (with drive) | Next (running) | Next (at menu / Browser) |
+|------|-----------------|-----------------|----------------|--------------------------|
+| `.tap` / `.tzx` | load tape | load tape | load tape | **ask**: copy to SD, or load & run |
+| `.scr` | paint screen | paint screen | paint screen | **ask**: copy to SD, or load & run |
+| `.sna` / `.z80` / `.szx` / `.zxs` | restore snapshot | restore snapshot | restore snapshot | **ask**: copy to SD, or load & run |
+| `.dsk` | needs a +3 | mount & boot | needs a +3 | **copy to SD** (ZenZX doesn't mount Next disc images yet — T-72) |
+| `.nex` | not applicable | not applicable | **run**, after asking to reset the busy Next | **ask**: copy to SD, or run it |
+| **Shift held** | — | — | — | by default skip the prompt and **run** (same as *Load & Run*); a preference |
+
+A `.nex` is a Next executable, so it does not apply to the classic models. On a Next it is run by
+NextZXOS's own `.nexload`, started for you: from the menu or the Browser without a reset (the
+file goes on the second SD card, and the keys to the command line are pressed), after a reset when
+the Next is in the middle of something (you are asked first), and from a scratch boot card when
+neither works. On a Next the **ask**
+cases open a copy-or-run dialog; holding **Shift** at the drop is, by default, the same as pressing
+*Load & Run* and skips it. What a plain drop does there (ask, copy to the card, or run) and what a
+Shift drop does are both choices in **File > Preferences...**. *File > Open...* takes the same files
+through the same routing, as a plain drop. "Run" for a disc means mount and boot it: on a +3 that is Drive A, and real NextZXOS
+mounts disc images as its own drives, but ZenZX does not emulate that yet (T-72) — so for now a
+`.dsk` dropped on a Next is copied to the card regardless of Shift. Dropping onto a
+storage slot always copies the file there, whatever its type. [`docs/gui.md`](docs/gui.md) has the
+full account.
+
 ## Documents
 
 | Document | What is in it |
@@ -101,6 +130,11 @@ choices.
 Email: h@ual.li
 
 https://oldbytes.space/@haitchfive
+
+## Acknowledgements
+
+With thanks to the friends who have supported our Spectrum projects from the
+sidelines; see [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md).
 
 ## Licence
 

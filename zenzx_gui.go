@@ -10,6 +10,7 @@ import (
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 
+	"github.com/ha1tch/zenui/zenuiraylib"
 	"github.com/ha1tch/zenzx/pkg/settingsconfig"
 )
 
@@ -73,6 +74,7 @@ func RunGUI(args []string) {
 	rom1 := fs.String("rom1", "", "Override just ROM bank 1, leaving the rest of -model's standard set intact")
 	rom2 := fs.String("rom2", "", "Override just ROM bank 2, leaving the rest of -model's standard set intact")
 	rom3 := fs.String("rom3", "", "Override just ROM bank 3 (e.g. +3DOS on a +3), leaving the rest of -model's standard set intact")
+	romBin := addROMBinFlags(fs)
 	customROMsMenu := fs.Bool("custom-roms-menu", false, "Interactively pick a ROM from -custom-roms-dir and a bank to apply it to")
 	customROMsDir := fs.String("custom-roms-dir", CustomROMDir, "Directory scanned by -custom-roms-menu")
 	themeFlag := fs.String("theme", "Dark", "Menu bar UI theme: Dark, Light, or Spectrum (case-insensitive)")
@@ -95,6 +97,11 @@ func RunGUI(args []string) {
 	sdCard2 := fs.String("sdcard2", "", sdCard2Help)
 	nextNewCard := fs.String("next-new-card", "", nextNewCardHelp)
 	nextBootable := fs.String("next-bootable", "", nextBootableHelp)
+	nextFirmwareFlag := fs.String("next-firmware", "", nextFirmwareHelp)
+	nextSetupFlag := fs.Bool("next-setup", false, nextSetupHelp)
+	nextDistURL := fs.String("next-distribution", "", nextDistributionHelp)
+	nextBootURL := fs.String("next-bootrom-url", "", nextBootROMURLHelp)
+	nextBootCacheFlag := fs.String("next-boot-cache", "auto", nextBootCacheHelp)
 	nextIssue := fs.Int("next-issue", 5, nextIssueHelp)
 	debugFdc := fs.Bool("debugfdc", false, "Enable FDC debug output")
 	snapshot := fs.String("snapshot", "", "Load snapshot on startup")
@@ -121,6 +128,10 @@ func RunGUI(args []string) {
 	focusFollow := fs.Bool("focus-follow", false, focusFollowHelp)
 	showVersion := fs.Bool("version", false, "Print version and exit")
 	fs.Parse(args)
+	if err := romBin.check(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Several machines (multi.go). The primary one is set up below as a
 	// single machine always was, with -model standing for its model; the
@@ -161,6 +172,21 @@ func RunGUI(args []string) {
 		os.Exit(2)
 	}
 
+	if err := applyNextBootCacheFlag(*nextBootCacheFlag); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	firmware, firmwareErr := nextFirmwareAction(*nextFirmwareFlag, *nextSetupFlag)
+	if firmwareErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", firmwareErr)
+		os.Exit(2)
+	}
+	if firmware != "" {
+		if code := runNextFirmware(firmware, *nextFilesFlag, *nextDistURL, *nextBootURL, os.Stdout, os.Stderr); code != 0 {
+			os.Exit(code)
+		}
+		return
+	}
 	if *nextNewCard != "" {
 		path, err := newEmptyCard(*nextNewCard, smallestCard)
 		if err != nil {
@@ -315,11 +341,16 @@ func RunGUI(args []string) {
 	// while a drag gesture is over the window.
 	drawer := newMountDrawer(zx)
 	defer drawer.Unload()
+	dropC := &dropChoice{}
 	if overlay != nil {
 		defer overlay.Unload()
 	}
 
 	bar, err := newAppMenuBar(zx, *customROMsDir, parseThemeFlag(effectiveTheme), *model, settingsRes.Settings, *settingsPathFlag)
+	if bar != nil {
+		uiText = func() *zenuiraylib.BDFText { return bar.text } // the FPS counter is drawn in the chosen font
+		snapshotStartsPlaying = func() bool { return bar.snapshotPlay }
+	}
 	if err != nil {
 		fmt.Printf("Warning: menu bar unavailable: %v\n", err)
 	}
@@ -331,6 +362,24 @@ func RunGUI(args []string) {
 	// (machinedeck_gui.go). It starts with the one machine; the dock adds
 	// more, set up as this one was.
 	var deck *machineDeck
+
+	// openHUD opens the debugger on the front machine, for Alt+D and for the Help menu's
+	// Developer > Debugger alike. In -multi it binds to the front machine and hides the
+	// dock: the HUD and the dock are mutually exclusive, so one never paints over or steals
+	// focus from the other.
+	openHUD := func() {
+		if hud == nil || hud.Active() {
+			return
+		}
+		if deck != nil {
+			hud.AttachMachine(deck.Front(), deck.frontCaption())
+			deck.hide()
+		}
+		hud.Toggle()
+	}
+	if bar != nil && hud != nil {
+		bar.openDebugger = openHUD
+	}
 	if bar != nil {
 		deck = newMachineDeck(zx, *model, zx.window(), audioDev, func(m string) *ZenZX {
 			nz := NewZenZX(backend)
@@ -345,6 +394,8 @@ func RunGUI(args []string) {
 			return nz
 		})
 		defer deck.Unload()
+		deck.dockOn = func() bool { return bar.dockOn }
+		deck.multiOn = func() bool { return bar.multiOn }
 		bar.cardUse = deck.cardUse
 		bar.machineNumber = deck.numberOf
 		bar.diskUse = deck.diskUse
@@ -387,6 +438,13 @@ func RunGUI(args []string) {
 		os.Exit(1)
 	}
 
+	// What a paused machine shows in the middle of its picture, in place of the word PAUSED
+	// (playbutton_gui.go). playShown and playArea are set once a frame, before the machine is
+	// drawn, and read by the draw hook below.
+	playBtn := newPlayButton()
+	playShown := false
+	var playArea rl.Rectangle
+
 	// Draws inside Render's own BeginDrawing/EndDrawing bracket -- see
 	// preEndDrawHook's doc comment for why this can't just be a plain
 	// call after zx.Render() returns. The bar draws after the demo
@@ -394,6 +452,9 @@ func RunGUI(args []string) {
 	// never ends up hidden behind it.
 	zx.window().SetPreEndDrawHook(func() {
 		screenW, screenH := int(rl.GetScreenWidth()), int(rl.GetScreenHeight())
+		if playShown {
+			playBtn.Draw(playArea, bar.theme)
+		}
 		if overlay != nil && overlay.Active() {
 			overlay.Draw(screenW, screenH)
 		}
@@ -414,6 +475,10 @@ func RunGUI(args []string) {
 		}
 		if bar != nil {
 			bar.Draw(screenW, screenH)
+		}
+		// The drop-choice dialog is modal: draw it last so it sits over everything.
+		if dropC.Active() {
+			dropC.Draw(bar.renderer, screenW, screenH, bar.theme)
 		}
 	})
 
@@ -649,33 +714,21 @@ func RunGUI(args []string) {
 		return
 	}
 
-	// --- ROM bank overrides --------------------------------------------
-	// Layered on top of the standard -model set just loaded, not instead
-	// of it -- -rom's positions fill in from bank 0 first, then any
-	// -romN individually overrides that specific bank regardless of what
-	// -rom already did.
-	if *romPath != "" {
-		for i, p := range strings.Split(*romPath, ",") {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			if err := zx.OverrideROMBank(i, p); err != nil {
-				fmt.Printf("Warning: -rom bank %d: %v\n", i, err)
-				continue
-			}
-			fmt.Printf("ROM bank %d overridden: %s\n", i, p)
-		}
-	}
-	for bank, p := range map[int]*string{0: rom0, 1: rom1, 2: rom2, 3: rom3} {
-		if *p == "" {
-			continue
-		}
-		if err := zx.OverrideROMBank(bank, *p); err != nil {
-			fmt.Printf("Warning: -rom%d: %v\n", bank, err)
-			continue
-		}
-		fmt.Printf("ROM bank %d overridden: %s\n", bank, *p)
+	// --- ROM switches: -rom, -rom0 .. -rom3, -rom-bin -------------------
+	// Layered on top of the standard -model set just loaded, not instead of it: -rom's
+	// positions fill in from bank 0 first, then any -romN individually overrides that
+	// specific bank, so -rom=a.rom,b.rom -rom3=c.rom composes exactly as it reads: banks 0
+	// and 1 from -rom, bank 3 from -rom3, bank 2 left as -model's own standard ROM. Then
+	// -rom-bin, so that -rom-fill rom overlays what they left in the bank; before the custom ROM
+	// menu, which keeps the last word. On a Next that boots from its card they wait for the
+	// firmware, which loads its own ROMs (rom_patches.go).
+	firmwareRoms := nextChainWillBoot(zx, *nextFilesFlag, *model, *nextClassic, *bootROM, *divMMCROM, *sdCard, *snapshot, *binFile, *tapeFile, *scrFile)
+	if err := zx.applyROMSwitches(romSwitches{list: *romPath, bank: [4]string{*rom0, *rom1, *rom2, *rom3}, bin: romBin}, firmwareRoms, romSink{
+		say:  func(s string) { fmt.Println(s) },
+		warn: func(s string) { fmt.Fprintf(os.Stderr, "Warning: %s\n", s) },
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
 	// --- Interactive custom ROM menu ------------------------------------
@@ -939,6 +992,57 @@ func RunGUI(args []string) {
 		}
 	}
 
+	// routeFiles is where files go that the person gives the program, whether by dropping
+	// them on the window or choosing them in File > Open: one path, so that the same file
+	// does the same thing either way. On a Next sitting at its menu or Browser, a tape,
+	// .scr or snapshot could be meant for the SD card or to be run -- the person is asked,
+	// unless Shift was held, which means run. Other cases keep their routing: the drawer
+	// copies non-loadable files to a card, and loadDroppedFile loads the rest into the
+	// machine.
+	//
+	// planDrop decides where each file goes (dropchoice_gui.go); this carries the plan
+	// out. x is where on the window the files were let go, which picks the slot a copy
+	// goes to; -1 for files chosen in a dialog, which leaves that to the first writable one.
+	// What a plain drop and a drop with Shift do on a Next at its menu are File >
+	// Preferences' choices.
+	// A .nex is run from the menus by keys pressed a frame at a time (nexrun.go); how it ends
+	// is said as the drawer says everything else, and a busy Next is asked about first.
+	zx.OnNEXRun = func(msg string) { drawer.say(msg) }
+	zx.NEXAskReset = func(path string) { dropC.openReset(path) }
+	routeFiles := func(files []string, shift bool, x int32) {
+		plain, withShift := dropAsk, dropRun
+		if bar != nil {
+			plain, withShift = bar.dropPlain, bar.dropShift
+		}
+		plan := planDrop(files, dropContext{
+			atPrompt:  zx.nextAtIdlePrompt(),
+			hasSlots:  drawer != nil && drawer.hasMountableSlots(),
+			shiftDown: shift,
+			plain:     plain,
+			shift:     withShift,
+		})
+		if len(plan.copyToCard) > 0 {
+			drawer.copyToCard(plan.copyToCard, x)
+		}
+		if len(plan.ask) > 0 {
+			dropC.open(plan.ask, x)
+		}
+		if len(plan.load) > 0 && (drawer == nil || !drawer.TryDrop(plan.load, x)) {
+			for _, f := range plan.load {
+				if res := zx.loadDroppedFile(f); res != "" && drawer != nil {
+					drawer.say(res)
+				}
+			}
+		}
+	}
+	// File > Quit asks for the same end as the window's close button, at the top of the
+	// next frame.
+	quitRequested := false
+	if bar != nil {
+		bar.openFiles = func(files []string) { routeFiles(files, false, -1) }
+		bar.quit = func() { quitRequested = true }
+	}
+
 	for {
 		// The window's close button always ends the program. Escape's own
 		// behaviour is the -escape mode. In every mode, an Escape that a menu
@@ -951,7 +1055,7 @@ func RunGUI(args []string) {
 		barActive := bar.Active() || (deck != nil && deck.Active())
 		zx.uiOwnsEscape = barActive || barWasActive
 		barWasActive = barActive
-		if rl.WindowShouldClose() {
+		if rl.WindowShouldClose() || quitRequested {
 			break
 		}
 		if rl.IsKeyPressed(rl.KeyEscape) && !zx.uiOwnsEscape {
@@ -981,6 +1085,28 @@ func RunGUI(args []string) {
 			}
 		}
 
+		// The Next drop-choice dialog, while open, owns input: copy the dropped
+		// files to the SD card, or load and run them, by the button pressed.
+		if dropC.Active() {
+			switch dropC.Update(zenuiraylib.Input()) {
+			case dropChoiceCopy:
+				drawer.copyToCard(dropC.takeFiles(), dropC.x)
+			case dropChoiceRun:
+				reset := dropC.reset
+				for _, f := range dropC.takeFiles() {
+					if reset {
+						// The person has said the busy Next may be reset to run it.
+						msg, _ := zx.RunNEX(f, true)
+						drawer.say(msg)
+					} else if res := zx.loadDroppedFile(f); res != "" {
+						drawer.say(res)
+					}
+				}
+			case dropChoiceCancel:
+				dropC.takeFiles()
+			}
+		}
+
 		// Demo overlay trigger keys -- only checked when nothing is
 		// already active, so Shift+F1 while the menu is open doesn't
 		// stomp it with a fresh one. Also gated on the bar not being
@@ -1004,14 +1130,7 @@ func RunGUI(args []string) {
 			altHeld := rl.IsKeyDown(rl.KeyLeftAlt) || rl.IsKeyDown(rl.KeyRightAlt)
 			if altHeld && rl.IsKeyPressed(rl.KeyD) {
 				if !hud.Active() {
-					// Opening: in -multi, bind to the front machine and hide the
-					// dock -- the HUD and the dock are mutually exclusive, so one
-					// never paints over or steals focus from the other.
-					if deck != nil {
-						hud.AttachMachine(deck.Front(), deck.frontCaption())
-						deck.hide()
-					}
-					hud.Toggle()
+					openHUD()
 				} else {
 					hud.Close()
 				}
@@ -1019,8 +1138,9 @@ func RunGUI(args []string) {
 		}
 		hudPointer := false
 		if hud != nil && hud.Active() {
-			hud.HandleInput()
-			hudPointer = hud.UpdateResize(int(rl.GetScreenWidth()), int(rl.GetScreenHeight()))
+			hin := hudInput()
+			hud.HandleInput(hin)
+			hudPointer = hud.UpdateResize(hin, int(rl.GetScreenWidth()), int(rl.GetScreenHeight()))
 		}
 		if hud != nil {
 			hud.UpdateAnim() // advances the open/close slide, no-op when settled
@@ -1043,20 +1163,14 @@ func RunGUI(args []string) {
 		// the list on the first LoadDroppedFiles call.
 		if rl.IsFileDropped() {
 			files := rl.LoadDroppedFiles()
-			if drawer == nil || !drawer.TryDrop(files) {
-				for _, f := range files {
-					if res := zx.loadDroppedFile(f); res != "" && drawer != nil {
-						drawer.say(res)
-					}
-				}
-			}
+			routeFiles(files, rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift), rl.GetMouseX())
 			rl.UnloadDroppedFiles()
 		}
 
 		// The emulated machine receives no input while a demo widget, the
 		// menu bar or the HUD owns the frame -- HandleInput is skipped
 		// outright rather than filtered, so nothing leaks through by accident.
-		guiHasInput := (overlay != nil && overlay.Active()) || (bar != nil && bar.Active()) || (deck != nil && deck.Active()) || (hud != nil && hud.Active())
+		guiHasInput := (overlay != nil && overlay.Active()) || (bar != nil && bar.Active()) || (deck != nil && deck.Active()) || (hud != nil && hud.Active()) || dropC.Active()
 		if !guiHasInput {
 			zx.HandleInput()
 		}
@@ -1077,6 +1191,17 @@ func RunGUI(args []string) {
 		if hud == nil || !hud.Active() {
 			blockedOnRealMemory := sched != nil && sched.BlockingOnRealMemory()
 			zx.RunTurboAwareFrame(blockedOnRealMemory)
+		}
+		// A paused machine shows the Play button in the middle of its picture; clicking it
+		// resumes the machine, as F2 does. Not while something else has the pointer.
+		playShown = zx.paused && (hud == nil || !hud.Active())
+		if playShown {
+			playArea = playButtonArea(zx, deck)
+		}
+		playOwned := (bar != nil && bar.Active()) || (deck != nil && deck.Active()) || (overlay != nil && overlay.Active()) ||
+			(hud != nil && hud.Visible()) || (drawer != nil && drawer.Visible()) || dropC.Active()
+		if playBtn.Update(playArea, playShown, playOwned) {
+			zx.TogglePause()
 		}
 		zx.Render()
 
@@ -1120,6 +1245,12 @@ func RunGUI(args []string) {
 			} else if m := bar.currentModel(); m != "" {
 				deck.setFrontModel(m)
 			}
+		} else if hud == nil || !hud.Active() {
+			// Single machine: the window is resizable so a tiled layout can be
+			// dragged, but one machine keeps its own zoom-step size -- a user
+			// drag is snapped back to it. Not while the HUD is open, which does
+			// its own resizing.
+			zx.window().HandleSingleResize()
 		}
 	}
 

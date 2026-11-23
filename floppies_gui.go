@@ -575,7 +575,7 @@ func (w *disksWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 	}
 	w.theme = theme
 	w.layout(r, screenW, screenH)
-	r.FillRect(zenui.Rect{W: screenW, H: screenH}, theme.Backdrop)
+	r.FillRect(zenui.Rect{W: screenW, H: screenH}, zenui.ScaleAlpha(theme.Backdrop, zenui.ModalBackdropDarkening))
 	r.FillRect(w.panel, theme.Panel)
 	r.StrokeRect(w.panel, theme.Border, theme.BorderThickness)
 

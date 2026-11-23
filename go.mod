@@ -12,7 +12,7 @@ require (
 	github.com/ha1tch/zen80 v0.5.7
 	github.com/ha1tch/zendis v0.8.2
 	github.com/ha1tch/zentools v0.16.1
-	github.com/ha1tch/zenui v0.2.0
+	github.com/ha1tch/zenui v0.2.1
 )
 
 require (

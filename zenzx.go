@@ -115,6 +115,15 @@ type ZenZX struct {
 	// auto is a pending autorun, nil once it has typed its keys: autorun.go.
 	auto *autorun
 
+	// nexRun is a .nex being run from the menu or the Browser, one frame at a time (nexrun.go);
+	// nexScratch is the card made for it. OnNEXRun is where the host hears how it ended.
+	nexRun     *nexRun
+	nexScratch string
+	OnNEXRun   func(msg string)
+	// NEXAskReset, when set, is how the host asks the person whether a Next that is busy may
+	// be reset to run a file (RunNEX); without it the file is not run.
+	NEXAskReset func(path string)
+
 	// Turbo mode's page-based physical memory model (turbo_pages.go,
 	// turbo.go's turboSnapshotIn/turboRemap/turboSyncToReal). Mirrors
 	// SpectrumMemory's own real rom[4]/ram[8] layout exactly: pages 0-3
@@ -161,6 +170,15 @@ type ZenZX struct {
 	next *nextChain
 	// card2 is the card in the DivMMC's second slot, nil when it is empty (sdcard2.go).
 	card2 *secondCard
+	// onNextHandOver is called once, by serviceNextReset, when a Next's firmware has loaded
+	// its ROMs, left config mode and reset the machine into them (nextstate.go). It clears
+	// itself before it is called.
+	onNextHandOver func()
+	// romPatches are the ROM switches given on a Next, kept to be applied again when the
+	// firmware has loaded its ROMs (rom_patches.go).
+	romPatches romPatchSet
+	// nextSettle is the watch for a Next that has settled, when one is wanted (nextsettle.go).
+	nextSettle *nextSettleWatch
 
 	// Non-standard features (see nonstandard.go). Set once at startup from
 	// the validated -non-standard/-ns-* flags; not yet consumed by any
@@ -443,6 +461,16 @@ func (zx *ZenZX) OverrideROMBank(bank int, path string) error {
 	if err != nil {
 		return fmt.Errorf("error reading ROM bank %d override %s: %v", bank, path, err)
 	}
+	return zx.OverrideROMBankBytes(bank, data)
+}
+
+// OverrideROMBankBytes is OverrideROMBank for bytes already in hand: the ROM
+// -rom-bin builds on the fly (rom_overlay.go) goes in this way, with no file
+// between.
+func (zx *ZenZX) OverrideROMBankBytes(bank int, data []byte) error {
+	if bank < 0 || bank > zx.maxROMBank() {
+		return fmt.Errorf("rom bank %d not valid for this model (valid range: 0-%d)", bank, zx.maxROMBank())
+	}
 
 	if zx.memory.isTS2068 {
 		switch bank {
@@ -486,6 +514,9 @@ func (zx *ZenZX) Reset() {
 	if zx.io != nil && zx.io.link != nil {
 		zx.io.link.Reset()
 	}
+
+	// What a reset line puts back besides the CPU: reset.go.
+	zx.resetHardware()
 }
 
 func (zx *ZenZX) RunFrame() {
@@ -494,6 +525,9 @@ func (zx *ZenZX) RunFrame() {
 	}
 	if zx.auto != nil {
 		zx.autorunStep() // autorun.go
+	}
+	if zx.nexRun != nil {
+		zx.nexRunStep() // nexrun.go
 	}
 
 	// Start new frame for border tracking

@@ -36,7 +36,52 @@ type Settings struct {
 	// FixedMenuBar mirrors appMenuBar.fixed -- whether the bar is
 	// pinned permanently shown.
 	FixedMenuBar bool `json:"fixedMenuBar"`
+	// Dock is whether the machine dock (the tiles that slide up from the bottom edge)
+	// may be shown, and Multi whether it may add machines. Both are optional in the file
+	// -- a settings.json from before they existed is still valid -- and both default to
+	// on, so a missing key behaves as the program always did.
+	Dock  *bool `json:"dock,omitempty"`
+	Multi *bool `json:"multi,omitempty"`
+	// Drop and DropShift are what a tape, a .scr or a snapshot given to a Next at its menu
+	// is done with -- "ask", "copy" (to the SD card) or "run" -- by a plain drop and by a
+	// drop with Shift held. Optional like Dock, and "ask" and "run" by default.
+	Drop      string `json:"drop,omitempty"`
+	DropShift string `json:"dropShift,omitempty"`
+	// SnapshotStart is what a snapshot that has been loaded does next -- "paused" (the
+	// machine waits for Play or F2) or "play" (it runs at once). Optional like Drop, and
+	// "paused" by default.
+	SnapshotStart string `json:"snapshotStart,omitempty"`
 }
+
+// SnapshotStartAction is SnapshotStart with its default, "paused".
+func (s *Settings) SnapshotStartAction() string {
+	if s == nil || s.SnapshotStart == "" {
+		return "paused"
+	}
+	return s.SnapshotStart
+}
+
+// DropAction is Drop with its default, "ask".
+func (s *Settings) DropAction() string {
+	if s == nil || s.Drop == "" {
+		return "ask"
+	}
+	return s.Drop
+}
+
+// DropShiftAction is DropShift with its default, "run".
+func (s *Settings) DropShiftAction() string {
+	if s == nil || s.DropShift == "" {
+		return "run"
+	}
+	return s.DropShift
+}
+
+// DockOn is Dock with its default: on unless the file says off.
+func (s *Settings) DockOn() bool { return s == nil || s.Dock == nil || *s.Dock }
+
+// MultiOn is Multi with its default: on unless the file says off.
+func (s *Settings) MultiOn() bool { return s == nil || s.Multi == nil || *s.Multi }
 
 // Result is what Load returns: the resolved settings, which source
 // they actually came from, and (if a disk file was present but

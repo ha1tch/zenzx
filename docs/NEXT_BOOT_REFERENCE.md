@@ -10,36 +10,8 @@ material for T-32 (NEX loading) and any future NextZXOS-boot work.
 Three stages, each handing off to the next via a NextREG-triggered soft
 reset:
 
-```
-Stage 1 -- Boot ROM phase (the FPGA's own 8K boot ROM, "nextboot.rom"):
-  CMD12 -> CMD0 -> CMD8 -> ACMD41 -> CMD58   (SD card init)
-  -> reads TBBLUE.FW from the SD card (~55 sectors)
-  -> NR 0x07 = 0x03   (CPU clock -> 28 MHz for the fast load)
-  -> NR 0x03 = 0xB0   (disable boot ROM, commit machine-type bits)
-  -> JP 0x6000        (hand off to tbblue.fw)
+![The Next's three-stage boot sequence: the FPGA boot ROM loads TBBLUE.FW, which sets up the machine and soft-resets into NextZXOS; each stage hands off via a NextREG write.](img/next-boot-sequence.svg)
 
-Stage 2 -- TBBLUE.FW (loaded at 0x6000, SP=0xFFFF):
-  CMD12 -> CMD0 -> CMD8 -> ACMD41 -> CMD58   (SD re-init, own driver)
-  -> mounts the SD card's FAT32 volume, reads config.ini, menu.def
-  -> checks core version
-  -> draws its own boot screen
-  -> loads the keymap
-  -> loads ROMs -- writes DivMMC/Multiface/+3 ROM banks 0..3
-                   into RAM via NextREG config-mode pages
-  -> initialises NR 0x05, 0x06, 0x08, 0x09, 0x0A, 0x82-0x85
-  -> NR 0x03 = 0xB3         (machine-type = +3, config mode OFF)
-  -> NR 0x02 = 0x01         (soft reset -- hands off to NextZXOS)
-
-Stage 3 -- post-soft-reset (NextZXOS's own ROM now mapped at 0x0000):
-  entry: DI ; JP 0x00EF
-  -> NR 0x07=3 (back to 3.5 MHz), NR 0x03=0xB0, NR 0xC0=0x08 (stackless NMI)
-  -> NR 0x82-0x85=0xFF; NR 0x80/0x81/0x8A/0x8F=0
-  -> LDIR clears the attribute area 0x5800-0x5AFF
-  -> 112-bank RAM test (NR 0x56 swept 0x00..0xDE)
-  -> peripheral init (NR 0x05/0x06/0x08/0x0A/0xD8/0x8E/0xB8-0xBB/0xC0)
-  -> LD SP,0x5BFF ; RST 0x20 ; IM 1
-  -> control passes to NextZXOS proper (welcome screen + main menu)
-```
 
 **The one fact most relevant to zenzx's own memory-model work:** the
 machine presents itself as NextREG machine-type **`0xB3` -- "+3" -- not a

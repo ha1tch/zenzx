@@ -77,6 +77,10 @@ type SpectrumIO struct {
 	// nextResetRequest is a reset asked for through NextREG 0x02 and not yet carried out
 	// (nextconfig.go): 0 none, nextResetSoft or nextResetHard.
 	nextResetRequest int
+	// nextConfigLeft is set when the firmware leaves config mode by choosing the machine
+	// (NextREG 0x03) and cleared by the soft reset that starts it, where the ROM patches are
+	// written over the ROMs it loaded (rom_patches.go).
+	nextConfigLeft bool
 	// nextVideoLineFn gives the line the display is drawing, for NextREG 0x1E and 0x1F
 	// (nextvideoline.go); nil outside a full machine, where both read 0.
 	nextVideoLineFn func() int

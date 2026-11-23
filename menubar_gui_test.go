@@ -50,7 +50,7 @@ func TestEaseInOutCubicSlowAtEnds(t *testing.T) {
 func TestBarIndexConstants(t *testing.T) {
 	// appMenuBar.actions and the two-step Custom ROM handling in Update
 	// both key off these exact values matching the widget's own Items
-	// slice order (Machine, Custom ROM, Tape, Floppy Disk, Snapshot,
+	// slice order (Machine, Custom ROM, Tape, Storage, Snapshot,
 	// View) -- a reordering of either side without updating the other
 	// would silently misdirect every selection.
 	cases := []struct {
@@ -58,12 +58,13 @@ func TestBarIndexConstants(t *testing.T) {
 		got  int
 		want int
 	}{
-		{"barMachine", barMachine, 0},
-		{"barCustomROM", barCustomROM, 1},
-		{"barTape", barTape, 2},
-		{"barFloppyDisk", barFloppyDisk, 3},
-		{"barSnapshot", barSnapshot, 4},
-		{"barView", barView, 5},
+		{"barFile", barFile, 0},
+		{"barMachine", barMachine, 1},
+		{"barCustomROM", barCustomROM, 2},
+		{"barTape", barTape, 3},
+		{"barFloppyDisk", barFloppyDisk, 4},
+		{"barSnapshot", barSnapshot, 5},
+		{"barView", barView, 6},
 	}
 	for _, c := range cases {
 		if c.got != c.want {
@@ -193,14 +194,15 @@ func TestUpdateSkipsWidgetInteractionWhileAnimating(t *testing.T) {
 	// mid-slide, which is the state the reported bug ("menu floating
 	// mid-air, bar not yet unrolled") depended on reaching at all.
 	for _, state := range []barState{barHidden, barSlidingIn, barSlidingOut} {
-		b, err := newAppMenuBar(testZX(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
+		zx := testZX()
+		b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 		if err != nil {
 			t.Fatalf("newAppMenuBar: %v", err)
 		}
 		b.state = state
 		b.stateChangedAt = time.Now()
 
-		b.Update(nil) // zx unused on every path Update can reach in this state
+		b.Update(zx) // Update reconciles the fixed bar with the window first, so it needs the machine
 
 		if b.widget.Active() {
 			t.Errorf("state=%v: widget became Active() during Update, want interaction skipped entirely", state)
@@ -335,15 +337,18 @@ func TestFloppyDiskMenuHasOpenDSKImage(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	// 7 real actions (Open, Insert Blank, Save, Save As, Eject, Info,
-	// Manage Disks) plus 2 separator placeholders, grouped as [mount] |
-	// [save] | [current-disk operations].
-	if got := len(b.actions[barFloppyDisk]); got != 9 {
-		t.Errorf("len(actions[barFloppyDisk]) = %d, want 9 (7 real actions + 2 separator placeholders)", got)
+	// A "Floppy Disk" title, then 7 real actions (Open, Insert Blank, Save, Save As,
+	// Eject, Info, Manage Disks) plus 2 separator placeholders, grouped as [mount] |
+	// [save] | [current-disk operations] -- 10 entries in all.
+	if got := len(b.actions[barFloppyDisk]); got != 10 {
+		t.Errorf("len(actions[barFloppyDisk]) = %d, want 10 (title + 7 real actions + 2 separator placeholders)", got)
 	}
 	items := b.widget.ItemsFor(barFloppyDisk)
-	if items[0].Label != "Open DSK Image..." {
-		t.Errorf("items[0].Label = %q, want \"Open DSK Image...\"", items[0].Label)
+	if items[0].Label != "Floppy Disk" || !items[0].Title {
+		t.Errorf("items[0] = %q (title %v), want the \"Floppy Disk\" title", items[0].Label, items[0].Title)
+	}
+	if items[1].Label != "Open DSK Image..." {
+		t.Errorf("items[1].Label = %q, want \"Open DSK Image...\"", items[1].Label)
 	}
 }
 
@@ -393,8 +398,8 @@ func TestLastBarLabelIsThemeNotFontAfterFontBecameASubmenu(t *testing.T) {
 	// anchored to whatever MenuBar.LabelsEndX() reports as the last
 	// label, not to "Font" by name -- automatically still work
 	// correctly now that Font folded into Theme as a submenu: this
-	// bar has exactly 7 top-level labels (Machine, Custom ROM, Tape,
-	// Floppy Disk, Snapshot, View, Theme), and index 6 (barTheme)
+	// bar has exactly 8 top-level labels (File, Machine, Custom ROM, Tape,
+	// Storage, Snapshot, View, Theme), and index 7 (barTheme)
 	// really is the last one, with LabelsEndX reflecting that without
 	// any code change being needed in the decorations themselves.
 	b, err := newAppMenuBar(testZX(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
@@ -403,11 +408,11 @@ func TestLastBarLabelIsThemeNotFontAfterFontBecameASubmenu(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	if got := b.widget.LabelCount(); got != 7 {
-		t.Fatalf("LabelCount() = %d, want 7 (Font folded into Theme, no longer its own label)", got)
+	if got := b.widget.LabelCount(); got != 8 {
+		t.Fatalf("LabelCount() = %d, want 8 (File first; Font folded into Theme, no longer its own label)", got)
 	}
-	if barTheme != 6 {
-		t.Fatalf("barTheme = %d, want 6 (the last index, 0-based, of 7 labels)", barTheme)
+	if barTheme != 7 {
+		t.Fatalf("barTheme = %d, want 7 (the last index, 0-based, of 8 labels)", barTheme)
 	}
 }
 
@@ -518,6 +523,7 @@ func TestFloppyDiskMenuGrouping(t *testing.T) {
 
 	items := b.widget.ItemsFor(barFloppyDisk)
 	wantLabels := []string{
+		"Floppy Disk",
 		"Open DSK Image...", "Insert Blank Disk", "",
 		"Save Disk", "Save Disk As...", "",
 		"Eject Disk", "Disk Info", "Manage Disks...",
@@ -554,10 +560,10 @@ func TestFloppyDiskActionsMatchReorderedItems(t *testing.T) {
 	}
 	zx.io.EnableFDC() // properly initializes zx.io.fdc (not just hasFDC), needed since this test actually dereferences it via HasDisk()
 
-	// index 1 = "Insert Blank Disk"
-	b.actions[barFloppyDisk][1](zx)
+	// index 2 = "Insert Blank Disk" (index 0 is the Floppy Disk title, 1 is Open DSK).
+	b.actions[barFloppyDisk][2](zx)
 	if !zx.io.fdc.HasDisk() {
-		t.Error("actions[barFloppyDisk][1] should insert a blank disk, but none is loaded")
+		t.Error("actions[barFloppyDisk][2] should insert a blank disk, but none is loaded")
 	}
 }
 

@@ -121,7 +121,26 @@ func TestNextZXOSSavesToCard(t *testing.T) {
 	run(50)
 	text(`save "zztest.bas"`)
 	chord("enter")
-	run(400)
+	// SAVE makes the directory entry at once, with a length of 0, and fills in the clusters and
+	// the length when it has found free ones: 600 to 700 frames on a card that has been in use,
+	// where the free space is far into the FAT. So wait for the length, not for a fixed time; if
+	// it never comes, the checks below say what is missing.
+	savedLength := func() uint32 {
+		var n uint32
+		for _, b := range card.blocks {
+			if i := bytes.Index(b, []byte("ZZTEST  BAS")); i >= 0 && i%32 == 0 {
+				n = binary.LittleEndian.Uint32(b[i+28 : i+32])
+			}
+		}
+		return n
+	}
+	saveFrames := 0
+	for ; savedLength() < 128 && saveFrames <= 2000; saveFrames += 50 {
+		run(50)
+	}
+	t.Logf("the save was complete after %d frames", saveFrames)
+	expectFrames(t, "the save", saveFrames, 0, 1500)
+	run(50)
 
 	if n := card.blocksWritten() - before; n == 0 {
 		t.Fatal("SAVE wrote nothing to the card")
@@ -169,6 +188,12 @@ func TestNextZXOSSavesToCard(t *testing.T) {
 	if !bytes.Contains(data, []byte("saved by the test")) {
 		t.Fatal("ZZTEST.BAS does not hold the program line that was typed")
 	}
+	whole := make([]byte, 0, int(size)+512)
+	for i := int64(0); i*512 < int64(size); i++ {
+		whole = append(whole, sector(clusterLBA(cluster)+i)...)
+	}
+	checkSavedProgram(t, whole[:size], size, "saved by the test")
+	checkCardChangedOnlyWhereASaveChanges(t, card, "zztest.bas", size, boot, start)
 	t.Logf("ZZTEST.BAS: %d bytes at cluster %d, %d blocks written", size, cluster, card.blocksWritten()-before)
 }
 

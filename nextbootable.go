@@ -24,7 +24,7 @@ func runNextBootable(filesFlag, name string, w io.Writer) error {
 		if note == "" {
 			note = "none were found"
 		}
-		return fmt.Errorf("the Next's boot files are not in place (%s); start a Next on its own once, or run with -next-setup, and they are fetched", note)
+		return fmt.Errorf("the Next's boot files are not in place (%s); start a Next on its own once, or run with -next-firmware setup, and they are fetched", note)
 	}
 	card, err := findCardFile(name, f.Dir)
 	if err != nil {

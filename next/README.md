@@ -5,7 +5,7 @@ None of it is in the repository: the files are other people's, or large, or your
 
 | File | What it is | Where it comes from |
 |---|---|---|
-| `nextboot.rom` | The Next's boot ROM, 8K | Downloaded by ZenZX the first time the Next is chosen (or `zenzx-headless -next-setup`) |
+| `nextboot.rom` | The Next's boot ROM, 8K | Downloaded by ZenZX the first time the Next is chosen (or `zenzx-headless -next-firmware setup`) |
 | `enNxtmmc.rom` | The DivMMC ROM of the distribution, 8K | The same download |
 | `next-card.img` | The SD card NextZXOS boots from, 1 GB | Made by ZenZX from the same download |
 | `zenzx-card.img` | ZenZX's own card for the second slot: the example programs and anything added with `-next-add` | `zenzx -next-examples`, or the SD Card menu |

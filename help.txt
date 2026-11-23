@@ -12,26 +12,33 @@ appear.
 
 ## Top menu bar
 
+  File           open any file the program loads, preferences
+                 (every saved setting in one window), quit
   Machine        reset, pause/resume, pick a model (grouped by
                  manufacturer -- Sinclair, Amstrad, Investronica,
                  Timex)
   Custom ROM     load a ROM file live from -custom-roms-dir
   Tape           play/stop, rewind, accurate/fast mode, tape info
                  (a window with its file, state and blocks)
-  Floppy Disk    open a .dsk image, save, insert blank, eject,
-                 save as, disk info (+3 and Spanish +3 only)
+  Storage        a +3's floppy drive: open a .dsk image, save,
+                 insert blank, eject, save as, disk info. A Next's
+                 SD cards (slot 2) and, greyed for now, its
+                 virtual floppy
   Snapshot       quick save/load, save timestamped, snapshot
                  info, run diagnostics
-  View           FPS and border are checkboxes now, not one-shot
-                 actions; status display
+  View           FPS and border checkboxes (the border is greyed
+                 where the picture decides it: tiled layouts, full-
+                 frame Layer 2 modes), status, zoom X1-X3, and the
+                 layouts for several machines
   Theme          Dark, Light, or Spectrum (the real 128K/+2/
                  +3 boot menu's own palette, rainbow and all)
   Font           six bundled bitmap faces, plus zoom X1/X2/X3
 
 The rainbow (Spectrum theme) or logo (Dark/Light themes) on
-the right of the bar has its own menu: click it for this help
-screen, an About box, pinning the bar so it stops auto-hiding,
-and a link to the project's own page.
+the right of the bar has its own menu, the Help menu, in
+sections: Help (this screen, an About box, the Acknowledgements
+and a link to the project's own page) and Tools (Developer >
+Debugger). The bar's settings are in File > Preferences.
 
 
 ## Keyboard shortcuts
@@ -99,8 +106,13 @@ and a link to the project's own page.
                       (2 MB): how much memory DMA+ reaches
   -sdcard2=PATH       Next: the card image for the second SD slot (default:
                       zenzx-card.img when it is there; none for an empty slot)
-  -next-setup         headless: download the Next boot files, build and verify
-                      the card, and exit (-next-distribution=URL, -next-bootrom-url=URL)
+  -next-firmware=ACTION
+                      Next: setup downloads the boot files, builds and verifies
+                      the card; check says where they are and whether a Next
+                      can start from them; cleanup deletes what a download that
+                      did not finish left. Then exit (-next-distribution=URL,
+                      -next-bootrom-url=URL change the addresses)
+  -next-setup         the older spelling of -next-firmware setup
   -next-dump          (headless) print the Next's registers,
                       mapping and palettes at the end of the run
   -theme=NAME         Dark, Light, or Spectrum

@@ -101,11 +101,22 @@ const (
 	barSlidingOut
 )
 
+// dialogKind is what the bar's file browser is open for.
+type dialogKind int
+
+const (
+	dialogDisk       dialogKind = iota // Floppy Disk > Open DSK Image...
+	dialogOpenFile                     // File > Open...
+	dialogInsertCard                   // SD Card > Insert Card Image...
+	dialogNewCard                      // SD Card > New Empty Card: names the new image
+)
+
 // bar index constants -- Custom ROM (barCustomROM) gets dedicated handling
 // in Update since picking a ROM is a two-step flow (file, then maybe bank);
 // every other menu dispatches through the uniform actions table.
 const (
-	barMachine = iota
+	barFile = iota
+	barMachine
 	barCustomROM
 	barTape
 	barFloppyDisk
@@ -146,29 +157,55 @@ type appMenuBar struct {
 	// browser, not a flat item list -- drawn and updated independently
 	// of b.widget.
 	diskDialog *zenui.Dialog
-	// dialogIsCard is set while diskDialog is the SD Card menu's browser for a card image
-	// and not the Floppy Disk menu's for a disk (sdcardmenu_gui.go).
-	dialogIsCard bool
-	// newCardSize, when not 0, makes that browser the one that names a new empty card of
-	// this many bytes.
+	// dialogKind says what diskDialog is for while it is open: the Floppy Disk menu's
+	// disk, File > Open's file of any kind, or the SD Card menu's card image to put in the
+	// second slot or to name a new one (sdcardmenu_gui.go). newCardSize is, for dialogNewCard,
+	// the size in bytes of the card to be made.
+	dialogKind  dialogKind
 	newCardSize int64
-	// The bar's fourth menu is Floppy Disk, or SD Card while a Next that boots NextZXOS is
-	// running: diskItems is the first's items, sdActions the second's actions, storageIsSD
-	// which it is now, nextCard2 the -sdcard2 option.
+	// openFiles, set by the host, carries out File > Open: the files chosen go the way
+	// files dropped on the window go. quit, also the host's, ends the program the way
+	// closing its window does. Either is nil in a bar with no host (the tests), and the
+	// File menu rows that need one are disabled.
+	openFiles func(files []string)
+	quit      func()
+	// prefs is the Preferences window while it is open (preferences_gui.go). dockOn and
+	// multiOn are two of its settings, kept here with the others: whether the machine dock
+	// may be shown, and whether it may add machines. Both default to on.
+	prefs   *prefsWindow
+	dockOn  bool
+	multiOn bool
+	// dropPlain and dropShift are what a tape, .scr or snapshot dropped on a Next at its
+	// menu is done with, without Shift and with it (planDrop, dropchoice_gui.go).
+	dropPlain, dropShift dropAction
+	// snapshotPlay is whether a snapshot, once loaded, runs at once rather than waiting
+	// paused (the default). It is read through snapshotStartsPlaying (input.go).
+	snapshotPlay bool
+	// The bar's fourth menu is Storage: the +3's floppy drive, or the SD cards of a Next
+	// that boots NextZXOS. diskItems is the first's items, storageSpec the second's rows
+	// (items and actions both, see menuspec_gui.go), storageIsSD which it is now, nextCard2
+	// the -sdcard2 option.
 	diskItems   []zenui.Item
-	sdActions   []func(zx *ZenZX)
+	storageSpec menuSpec
 	storageIsSD bool
 	nextCard2   string
 
-	// logoMenu is the small dropdown associated with the rainbow
-	// (Spectrum theme) / ZSP logo (Dark/Light) decoration on the
-	// right of the bar -- Fix/Hide bar, Help, About, View ZenZX
-	// homepage. Hardcoded rather than built through the same
-	// zenui.MenuBarItem/actions machinery every other menu uses: the
-	// decoration isn't really a menu bar label, it doesn't need a
-	// checkmark/submenu/toggle, and there are only ever these four
-	// fixed choices. Non-nil only while open.
+	// logoMenu is the dropdown of the rainbow (Spectrum theme) / ZSP logo (Dark/Light)
+	// decoration on the right of the bar: the Help menu, in titled sections -- the bar's
+	// own preferences, help and about, and the developer tools. The decoration is not a
+	// bar label, so the menu is opened by hand (openLogoMenu), but it is made from a
+	// menuSpec like every other. logoSpec is that spec while the menu is open.
 	logoMenu *zenui.Menu
+
+	// logoHand is true while the pointer is a hand because it is over the logo button.
+	logoHand bool
+	logoSpec menuSpec
+	// openDebugger, set by the host, opens the debugger HUD (hud_gui.go) on the front
+	// machine; nil while there is no debugger, which leaves the Developer item disabled.
+	openDebugger func()
+	// savedFixed is the fixed-bar choice the settings file holds, so that the file is
+	// written when the choice changes however it changed, and not otherwise.
+	savedFixed bool
 	// activeModal is whichever of Help/About is currently open (nil
 	// otherwise) -- a single field, not two, since only one can ever
 	// be open at a time (both are only reachable through logoMenu,
@@ -319,6 +356,10 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		initialFontZoom = initialSettings.FontZoom
 		initialFixed = initialSettings.FixedMenuBar
 	}
+	// A nil *Settings, or a file with no dock/multi key, is on: the way it always was.
+	initialDock, initialMulti := initialSettings.DockOn(), initialSettings.MultiOn()
+	initialDrop := parseDropAction(initialSettings.DropAction(), dropAsk)
+	initialDropShift := parseDropAction(initialSettings.DropShiftAction(), dropRun)
 
 	face, err := fonts.Load(initialFontName)
 	if err != nil {
@@ -335,6 +376,12 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		fontName:            initialFontName,
 		scale:               initialFontZoom, // matches dlgScale's own default (2) when initialSettings is nil -- unchanged visual size until the user picks a different zoom
 		fixed:               initialFixed,
+		savedFixed:          initialFixed,
+		dockOn:              initialDock,
+		multiOn:             initialMulti,
+		dropPlain:           initialDrop,
+		dropShift:           initialDropShift,
+		snapshotPlay:        initialSettings.SnapshotStartAction() == "play",
 		settingsPath:        settingsPath,
 		romDir:              romDir,
 		actions:             make(map[int][]func(zx *ZenZX)),
@@ -344,6 +391,13 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		modelChecked:        make(map[string]*bool),
 		displayScaleChecked: make(map[int]*bool),
 	}
+
+	// The File menu, first on the bar: what a person coming from another program looks for
+	// there. Open takes any file the program loads, the way a drop does; Quit is for a
+	// system with no application menu to quit from.
+	fileSpec := b.fileSpec()
+	fileItems := fileSpec.items()
+	b.actions[barFile] = fileSpec.actions()
 
 	machineActions := []func(zx *ZenZX){
 		func(zx *ZenZX) { zx.Reset(); fmt.Println("Reset") },
@@ -376,100 +430,56 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		b.machineSubmenuFlags[i+2] = flags
 	}
 
-	tapeItems := []zenui.Item{
-		{Label: "Play / Stop"}, {Label: "Rewind"},
-		{Separator: true},
-		{Label: "Accurate/Fast Mode"}, {Label: "Show Info"},
+	tapeSpec := menuSpec{
+		menuRow("Play / Stop", func(zx *ZenZX) { zx.PlayStopTape() }),
+		menuRow("Rewind", func(zx *ZenZX) { zx.RewindTape() }),
+		menuSep(),
+		menuRow("Accurate/Fast Mode", func(zx *ZenZX) { zx.ToggleTapeMode() }),
+		menuRow("Show Info", func(zx *ZenZX) { b.showInfo("TAPE INFO", tapeInfoText(zx)) }), // info_gui.go
 	}
-	b.actions[barTape] = []func(zx *ZenZX){
-		func(zx *ZenZX) { zx.PlayStopTape() },
-		func(zx *ZenZX) { zx.RewindTape() },
-		func(zx *ZenZX) {}, // separator placeholder
-		func(zx *ZenZX) { zx.ToggleTapeMode() },
-		func(zx *ZenZX) { b.showInfo("TAPE INFO", tapeInfoText(zx)) }, // info_gui.go
-	}
+	tapeItems := tapeSpec.items()
+	b.actions[barTape] = tapeSpec.actions()
 
-	diskItems := []zenui.Item{
-		{Label: "Open DSK Image..."}, {Label: "Insert Blank Disk"},
-		{Separator: true},
-		{Label: "Save Disk"}, {Label: "Save Disk As..."},
-		{Separator: true},
-		{Label: "Eject Disk"}, {Label: "Disk Info"}, {Label: "Manage Disks..."},
+	// The storage menu on a non-Next machine: the +3's floppy drive. It opens under
+	// the same "Storage" bar label as a Next's SD-card menu, so a "Floppy Disk" Title
+	// heading names the group inside, matching the "SD Card"/"Virtual Floppy" headings
+	// the Next menu uses (refreshStorageMenu).
+	floppySpec := menuSpec{
+		menuTitle("Floppy Disk"),
+		menuRow("Open DSK Image...", func(zx *ZenZX) { b.openDiskDialog(zx) }),
+		menuRow("Insert Blank Disk", func(zx *ZenZX) { zx.handleInsertBlankDisk() }),
+		menuSep(),
+		menuRow("Save Disk", func(zx *ZenZX) { zx.handleSaveDisk() }),
+		menuRow("Save Disk As...", func(zx *ZenZX) { zx.handleSaveDiskAs() }),
+		menuSep(),
+		menuRow("Eject Disk", func(zx *ZenZX) { zx.handleEjectDisk() }),
+		menuRow("Disk Info", func(zx *ZenZX) { b.showInfo("DISK INFO", diskInfoText(zx)) }),
+		menuRow("Manage Disks...", func(zx *ZenZX) { b.openDisks(zx) }),
 	}
+	diskItems := floppySpec.items()
 	b.diskItems = diskItems
-	b.actions[barFloppyDisk] = []func(zx *ZenZX){
-		func(zx *ZenZX) { b.openDiskDialog(zx) },
-		func(zx *ZenZX) { zx.handleInsertBlankDisk() },
-		func(zx *ZenZX) {}, // separator placeholder
-		func(zx *ZenZX) { zx.handleSaveDisk() },
-		func(zx *ZenZX) { zx.handleSaveDiskAs() },
-		func(zx *ZenZX) {}, // separator placeholder
-		func(zx *ZenZX) { zx.handleEjectDisk() },
-		func(zx *ZenZX) { b.showInfo("DISK INFO", diskInfoText(zx)) },
-		func(zx *ZenZX) { b.openDisks(zx) },
-	}
+	b.actions[barFloppyDisk] = floppySpec.actions()
 
-	snapItems := []zenui.Item{
-		{Label: "Quick Save"}, {Label: "Quick Load"}, {Label: "Save Timestamped"},
-		{Separator: true},
-		{Label: "Snapshot Info"}, {Label: "Run Diagnostics"},
-	}
-	b.actions[barSnapshot] = []func(zx *ZenZX){
-		func(zx *ZenZX) { zx.handleQuickSave() },
-		func(zx *ZenZX) { zx.handleQuickLoad() },
-		func(zx *ZenZX) { zx.handleAutoSave() },
-		func(zx *ZenZX) {}, // separator placeholder
-		func(zx *ZenZX) { b.showInfo("SNAPSHOT INFO", snapshotInfoText()) },
-		func(zx *ZenZX) {
+	snapSpec := menuSpec{
+		menuRow("Quick Save", func(zx *ZenZX) { zx.handleQuickSave() }),
+		menuRow("Quick Load", func(zx *ZenZX) { zx.handleQuickLoad() }),
+		menuRow("Save Timestamped", func(zx *ZenZX) { zx.handleAutoSave() }),
+		menuSep(),
+		menuRow("Snapshot Info", func(zx *ZenZX) { b.showInfo("SNAPSHOT INFO", snapshotInfoText()) }),
+		menuRow("Run Diagnostics", func(zx *ZenZX) {
 			fmt.Println("\nRunning snapshot diagnostics...")
 			NewDebugSnapshot(zx).RunFullDiagnostics()
-		},
+		}),
 	}
+	snapItems := snapSpec.items()
+	b.actions[barSnapshot] = snapSpec.actions()
 
-	// FPS/Border are checkboxes pointing directly at zx.display's own
-	// fields, not a separate synced copy -- the same bool the Alt+F/
-	// Alt+B keyboard shortcuts already flip via ToggleFPS/ToggleBorder,
-	// so the checkmark is always correct regardless of which path
-	// changed it, with no refresh step needed. This does mean
-	// ToggleBorder's own console print doesn't fire when toggled from
-	// here (Toggle flips *Checked directly, bypassing that method) --
-	// an accepted, minor trade-off given the checkbox itself now makes
-	// the state visible without needing the console at all.
-	viewItems := []zenui.Item{
-		{Label: "FPS Counter", Checked: &zx.window().showFPS, Toggle: true},
-		{Label: "Border Display", Checked: &zx.window().showBorder, Toggle: true},
-		{Label: "Show Status"},
-		{Separator: true},
-		{Label: "X 1"}, {Label: "X 2"}, {Label: "X 3"}, // real Checked/Disabled values are set by refreshViewItems each frame the bar is shown
-		{Separator: true},
-	}
-	for _, name := range deckLayoutNames { // the layouts; refreshViewItems sets their state too
-		viewItems = append(viewItems, zenui.Item{Label: name})
-	}
-	viewItems = append(viewItems, zenui.Item{Label: viewRotateLabel})
-	b.actions[barView] = []func(zx *ZenZX){
-		func(zx *ZenZX) {}, // FPS is a pure checkbox: Item.Toggle flips the bool directly and ToggleFPS has no other side effect, so this generic-dispatch entry is a genuine no-op
-		func(zx *ZenZX) { zx.window().updateTargetSize() }, // Border's own ToggleBorder does more than flip a bool: it also triggers a window-resize animation via updateTargetSize (isAnimating=true, animated in UpdateWindowSize). Item.Toggle already flipped showBorder directly; this closure -- which the generic dispatch already calls for every Toggled event, not just Accepted -- supplies the second half so Alt+B and this checkbox behave identically, not just agree on the bool.
-		func(zx *ZenZX) { zx.showStatus() },
-		func(zx *ZenZX) {}, // the separator's own index -- never actually called, Menu.itemEnabled excludes separators from selection entirely, but the generic dispatch is a flat index into this slice, so a placeholder keeps X1/X2/X3 below aligned
-		func(zx *ZenZX) { zx.window().SetScale(1); b.saveSettings(zx) },
-		func(zx *ZenZX) { zx.window().SetScale(2); b.saveSettings(zx) },
-		func(zx *ZenZX) { zx.window().SetScale(3); b.saveSettings(zx) },
-		func(zx *ZenZX) {}, // the separator before the layouts
-	}
-	for i := range deckLayoutNames {
-		l := deckLayout(i)
-		b.actions[barView] = append(b.actions[barView], func(zx *ZenZX) {
-			if b.setLayout != nil {
-				b.setLayout(l)
-			}
-		})
-	}
-	b.actions[barView] = append(b.actions[barView], func(zx *ZenZX) {
-		if b.rotateMachines != nil {
-			b.rotateMachines()
-		}
-	})
+	// The View menu is made by viewSpec, and made again by refreshViewItems every frame
+	// the bar is shown, so what its checkboxes and zoom items show is never older than the
+	// machine. This is its first build.
+	viewSpec := b.viewSpec(zx)
+	viewItems := viewSpec.items()
+	b.actions[barView] = viewSpec.actions()
 
 	themeItems := make([]zenui.Item, len(zenui.Themes))
 	themeActions := make([]func(zx *ZenZX), len(zenui.Themes))
@@ -522,10 +532,11 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 	// known up front the way every other menu's fixed item list can.
 	b.widget = zenui.NewMenuBar(zenui.MenuBarConfig{
 		Items: []zenui.MenuBarItem{
+			{Label: "File", Items: fileItems},
 			{Label: "Machine", Items: machineItems},
 			{Label: "Custom ROM", Items: nil},
 			{Label: "Tape", Items: tapeItems},
-			{Label: "Floppy Disk", Items: diskItems},
+			{Label: storageLabel, Items: diskItems},
 			{Label: "Snapshot", Items: snapItems},
 			{Label: "View", Items: viewItems},
 			{Label: "Theme", Items: themeItems},
@@ -595,7 +606,36 @@ func (b *appMenuBar) ApplyZoom(scale int) {
 // drifted near the top edge, whether or not anything was actually
 // open, and permanently while the bar was fixed.
 func (b *appMenuBar) Active() bool {
-	return b.widget.Active() || b.diskDialog != nil || b.logoMenu != nil || b.activeModal != nil || b.nextSetup != nil || b.cards != nil || b.disks != nil
+	return b.widget.Active() || b.logoMenu != nil || b.modalOpen()
+}
+
+// modalOpen reports that a window or dialog has the whole frame: the file browser, the
+// Help/About/info readers, the Next's first-start dialog, the SD Cards and Floppy Disks
+// windows.
+func (b *appMenuBar) modalOpen() bool {
+	return b.diskDialog != nil || b.activeModal != nil || b.nextSetup != nil || b.cards != nil || b.disks != nil || b.prefs != nil
+}
+
+// closeMenus closes every dropdown of the bar, the Help menu included, and abandons a
+// Custom ROM pick that was waiting for its bank.
+func (b *appMenuBar) closeMenus() {
+	b.widget.Close()
+	b.logoMenu = nil
+	b.bankMode, b.pendingROM = false, ""
+}
+
+// enforceSingleSurface is the rule that the bar shows one thing at a time: a window or
+// dialog has the frame to itself, so no dropdown stays open under it, and the Help menu
+// and a bar dropdown are never both open. Update runs it first thing each frame, whichever
+// path opened what -- the opening paths do not each have to remember to close the others.
+func (b *appMenuBar) enforceSingleSurface() {
+	switch {
+	case b.modalOpen():
+		b.closeMenus()
+	case b.logoMenu != nil && b.widget.Active():
+		b.widget.Close()
+		b.bankMode, b.pendingROM = false, ""
+	}
 }
 
 func (b *appMenuBar) show() {
@@ -667,57 +707,109 @@ const zenZXHomepageURL = "https://ha1tch.github.io/zsp/projects/zenzx"
 // real browser, which then kept the test run from ending.
 var openURL = rl.OpenURL
 
-// logoHotZone returns the clickable area associated with the rainbow
-// (Spectrum theme) / ZSP logo (Dark/Light) decoration -- everything
-// to the right of the bar's own labels, up to the screen's own right
-// edge. Covers the decoration's own drawing area regardless of theme
-// without needing to duplicate pkg/zenui's own (unexported)
-// rainbowGeometry/zspLogoGeometry sizing logic here; a generously wide
-// hot zone costs nothing since nothing else occupies that space.
+// logoHotZone returns the area that opens the Help menu when it is clicked: the logo
+// button (logobutton_gui.go) when the theme has drawn a logo, run out to the window's edge and
+// the bar's full height so that the corner is easy to hit; otherwise, when there is no logo or it did not fit, everything
+// to the right of the bar's own labels, so that the menu can still be reached.
 func (b *appMenuBar) logoHotZone(screenW int) zenui.Rect {
+	if r, ok := b.logoButton(screenW); ok {
+		return zenui.Rect{X: r.X, Y: 0, W: screenW - r.X, H: menuStripHeight}
+	}
 	x := b.widget.LabelsEndX()
 	return zenui.Rect{X: x, Y: 0, W: screenW - x, H: menuStripHeight}
 }
 
-// openLogoMenu opens the logo decoration's own small dropdown --
-// hardcoded rather than built through the same zenui.MenuBarItem/
-// actions machinery every other menu uses, since the decoration isn't
-// really a menu bar label and there are only ever these four fixed
-// choices.
+// helpSpec is the Help menu, in sections: help and about, and the developer tools. (The
+// bar's preferences are File > Preferences.) Each section opens with a title. The Developer item is a submenu so
+// that more tools can join the debugger there.
+func (b *appMenuBar) helpSpec() menuSpec {
+	return menuSpec{
+		menuTitle("Help"),
+		menuRow("Help", func(*ZenZX) { b.activeModal = newHelpModal() }),
+		menuRow("About...", func(*ZenZX) {
+			b.activeModal = newAboutModal(strings.ReplaceAll(aboutTextTemplate, "__VERSION__", version))
+		}),
+		menuRow("Acknowledgements...", func(*ZenZX) { b.activeModal = newAcknowledgementsModal() }),
+		menuRow("ZenZX website", func(*ZenZX) { openURL(zenZXHomepageURL) }),
+		menuSep(),
+		menuTitle("Tools"),
+		{label: "Developer", sub: menuSpec{
+			{label: "Debugger", disabled: b.openDebugger == nil, run: func(*ZenZX) { b.openDebugger() }},
+		}},
+	}
+}
+
+// fileOpenExts are the extensions File > Open offers: everything a drop loads.
+var fileOpenExts = []string{"tap", "tzx", "sna", "z80", "szx", "zxs", "scr", "dsk", "nex"}
+
+// fileSpec is the File menu.
+func (b *appMenuBar) fileSpec() menuSpec {
+	return menuSpec{
+		menuRow("Open...", func(zx *ZenZX) { b.openFileDialog() }),
+		menuSep(),
+		menuRow("Preferences...", func(zx *ZenZX) { b.openPrefs(zx) }),
+		menuSep(),
+		{label: "Quit", run: func(*ZenZX) {
+			if b.quit != nil {
+				b.quit()
+			}
+		}},
+	}
+}
+
+// openFileDialog opens the file browser for File > Open. What is chosen goes where the
+// same file dropped on the window would (openFiles).
+func (b *appMenuBar) openFileDialog() {
+	b.diskDialog = zenui.NewDialog(zenui.DialogConfig{
+		Mode:     zenui.ModeOpen,
+		Title:    "Open",
+		StartDir: ".",
+		Filters:  fileOpenExts,
+		FS:       zenui.OSFS{},
+	})
+	b.dialogKind = dialogOpenFile
+}
+
+// openLogoMenu opens the Help menu, anchored at the logo decoration. Whatever else of the
+// bar is open is closed first: one menu at a time (closeMenus).
 func (b *appMenuBar) openLogoMenu(screenW int) {
-	// A zero-width anchor at the desired right edge forces Menu's own
-	// layout to right-align regardless of the menu's own width --
-	// the same trick openSubmenu already uses for its own positioning.
-	// b.logoHotZone's own rightMargin (8px) is reused here so the
-	// menu's right edge lines up with wherever the rainbow/logo
-	// decoration's own right edge falls.
+	b.closeMenus()
+	// A zero-width anchor at the desired right edge forces Menu's own layout to
+	// right-align regardless of the menu's own width -- the same trick openSubmenu already
+	// uses for its own positioning. rightMargin is the logo hot zone's own, so the menu's
+	// right edge lines up with the decoration's.
 	const rightMargin = 8
+	b.logoSpec = b.helpSpec()
+	// The Help menu sits at the right edge, so a submenu has no room on its right: zenui
+	// opens it to the left of the row, beside the menu rather than over it.
 	b.logoMenu = zenui.NewMenu(zenui.MenuConfig{
-		Items: []zenui.Item{
-			{Label: "Fixed menu bar", Checked: &b.fixed, Toggle: true},
-			{Label: "ZenZX website"},
-			{Label: "Help"},
-			{Label: "About..."},
-		},
+		Items:  b.logoSpec.items(),
 		Anchor: zenui.Rect{X: screenW - rightMargin, Y: 0, W: 0, H: menuStripHeight},
 		Scale:  b.scale,
 	})
 }
 
-// applyFixedState syncs the window's reserved top height with the
-// bar's own b.fixed -- called after Item.Toggle has already flipped
-// b.fixed directly via its own pointer, the same "Toggle flips the
-// bool, a separate step supplies the side effect" pattern the View
-// menu's Border checkbox already established.
-func (b *appMenuBar) applyFixedState(zx *ZenZX) {
+// reconcileFixed makes the window agree with the bar's fixed choice, whichever way that
+// choice was made or restored: the space the fixed bar occupies is reserved at the top
+// of the window exactly while the bar is fixed, a fixed bar is on show, and the settings
+// file holds the choice. It is idempotent and runs every frame (Update), so the choice and
+// the window cannot be left disagreeing -- as they were when settings.json said fixed and
+// nothing had yet asked the window to make room.
+func (b *appMenuBar) reconcileFixed(zx *ZenZX) {
+	want := 0
 	if b.fixed {
+		want = menuStripHeight
 		b.show()
-		zx.window().SetReservedTopHeight(menuStripHeight)
-	} else {
-		zx.window().SetReservedTopHeight(0)
 	}
-	b.saveSettings(zx)
+	zx.window().SetReservedTopHeight(want) // a no-op when it is already so
+	if b.fixed != b.savedFixed {
+		b.savedFixed = b.fixed
+		b.saveSettings(zx)
+	}
 }
+
+// applyFixedState is reconcileFixed, for the callers that have just changed b.fixed.
+func (b *appMenuBar) applyFixedState(zx *ZenZX) { b.reconcileFixed(zx) }
 
 // saveSettings persists the current theme/font/zoom/scale/fixed state
 // to b.settingsPath -- called after every menu action that changes
@@ -733,33 +825,29 @@ func (b *appMenuBar) saveSettings(zx *ZenZX) {
 		return
 	}
 	s := &settingsconfig.Settings{
-		Version:      1,
-		Theme:        string(b.themeName),
-		Font:         string(b.fontName),
-		FontZoom:     b.scale,
-		DisplayScale: zx.window().screen.multiplier,
-		FixedMenuBar: b.fixed,
+		Version:       1,
+		Theme:         string(b.themeName),
+		Font:          string(b.fontName),
+		FontZoom:      b.scale,
+		DisplayScale:  zx.window().screen.multiplier,
+		FixedMenuBar:  b.fixed,
+		Dock:          &b.dockOn,
+		Multi:         &b.multiOn,
+		Drop:          b.dropPlain.String(),
+		DropShift:     b.dropShift.String(),
+		SnapshotStart: snapshotStartWord(b.snapshotPlay),
 	}
+	b.savedFixed = b.fixed // the file now holds this choice
 	if err := settingsconfig.Save(b.settingsPath, s); err != nil {
 		fmt.Printf("Warning: could not save %s: %v\n", b.settingsPath, err)
 	}
 }
 
-// handleLogoMenuResult dispatches the logo menu's three select-and-
-// close choices (Fixed menu bar is a checkbox now, handled via
-// Toggled in Update, not here) -- there being only three, and them
-// never changing, a switch on the index is simpler than reusing the
-// actions-table machinery every other menu goes through.
-func (b *appMenuBar) handleLogoMenuResult(zx *ZenZX, result int) {
-	switch result {
-	case 1: // ZenZX website
-		openURL(zenZXHomepageURL)
-	case 2: // Help
-		b.activeModal = newHelpModal()
-	case 3: // About...
-		aboutText := strings.ReplaceAll(aboutTextTemplate, "__VERSION__", version)
-		b.activeModal = newAboutModal(aboutText)
-	}
+// handleLogoMenuResult carries out a choice from the Help menu: the row at index, or at
+// sub within the row's submenu. A title, a divider and a disabled row are never carried
+// out, whatever the index.
+func (b *appMenuBar) handleLogoMenuResult(zx *ZenZX, index, sub int) {
+	b.logoSpec.pick(zx, index, sub)
 }
 
 // switchModel is the Machine menu's choice of a model: the live switch, and for a Next its
@@ -853,57 +941,90 @@ func (b *appMenuBar) openDiskDialog(zx *ZenZX) {
 		Filters:  []string{"dsk"},
 		FS:       zenui.OSFS{},
 	})
+	b.dialogKind = dialogDisk
 }
 
-// refreshViewItems rebuilds the View menu's zoom items (X1/X2/X3) each
-// frame the bar is shown -- Item.Disabled (which of these fit the
-// current monitor, via maxMultiplierThatFits) has no pointer-based
-// live-update mechanism the way Checked does, and the current scale
-// itself can change outside the menu entirely (PgUp/PgDn), so
-// rebuilding via SetItems is what keeps both correct. The FPS/Border/
-// Show Status items ahead of these are untouched -- FPS/Border already
-// stay correct via their own direct-pointer Checked wiring, needing no
-// refresh at all.
-//
-// This is where a real MenuBar.SetItems bug was actually discovered:
-// an earlier version recreated the open dropdown's Menu from scratch
-// on every SetItems call, so calling this every frame made the whole
-// View menu feel unresponsive (empty itemRects until the next Draw)
-// the entire time it was open. Fixed in pkg/zenui/menubar.go itself.
-func (b *appMenuBar) refreshViewItems(zx *ZenZX) {
-	items := []zenui.Item{
-		{Label: "FPS Counter", Checked: &zx.window().showFPS, Toggle: true},
-		{Label: "Border Display", Checked: &zx.window().showBorder, Toggle: true},
-		{Label: "Show Status"},
-		{Separator: true},
+// viewSpec is the View menu as the machine and the window stand now. The rows that
+// depend on state take it from here, on every build, rather than being patched in place:
+//   - Border Display asks borderView. When the border is the user's to choose it is a
+//     checkbox on showBorder itself; when it is fixed (a tiled layout, a Layer 2 mode that
+//     fills the frame, a mode with no border) it is a disabled row showing what is true.
+//   - X 1..X 3 are disabled when they do not fit the monitor or the mode, or when more
+//     than one machine is on the screen (the zoom is for one machine filling the window).
+//   - The layouts are disabled when the number of machines gives them no meaning.
+func (b *appMenuBar) viewSpec(zx *ZenZX) menuSpec {
+	dm := zx.window()
+	spec := menuSpec{menuCheckbox("FPS Counter", &dm.showFPS, nil)}
+	if v := dm.borderView(); v.Choosable {
+		// Toggle flips showBorder; UpdateWindowSize re-sizes the window to match.
+		spec = append(spec, menuCheckbox("Border Display", &dm.showBorder, nil))
+	} else {
+		shown := v.Shown
+		spec = append(spec, menuEntry{label: "Border Display", checked: &shown, disabled: true})
 	}
+	spec = append(spec,
+		menuRow("Show Status", func(zx *ZenZX) { zx.showStatus() }),
+		menuSep(),
+	)
 	layout, machines := layoutSingle, 1
 	if b.layoutState != nil {
 		layout, machines = b.layoutState()
 	}
-	limit := zx.window().maxMultiplierThatFits()
-	// min (2026-09-15, T-29 GUI-wiring pass): Layer 2's 640x256x4bpp mode
-	// gates out 1x (see DisplayManager.minMultiplierForMode's own
-	// comment) -- the X1 item is disabled the same way an X-item above
-	// the monitor-fit limit already is, rather than silently doing
-	// nothing when clicked.
-	min := zx.window().MinMultiplierForMode()
+	limit := dm.maxMultiplierThatFits()
+	// Layer 2's 640x256x4bpp mode gates out 1x (see DisplayManager.minMultiplierForMode),
+	// so X 1 is disabled the way an X above the monitor-fit limit is, rather than silently
+	// doing nothing when clicked.
+	min := dm.MinMultiplierForMode()
 	for n := 1; n <= 3; n++ {
-		checked := zx.window().screen.multiplier == n
+		n := n
+		checked := dm.screen.multiplier == n
 		b.displayScaleChecked[n] = &checked
-		items = append(items, zenui.Item{
-			Label:    fmt.Sprintf("X %d", n),
-			Checked:  b.displayScaleChecked[n],
-			Disabled: n > limit || n < min || layout != layoutSingle, // the zoom is for one machine filling the window
+		spec = append(spec, menuEntry{
+			label:    fmt.Sprintf("X %d", n),
+			checked:  b.displayScaleChecked[n],
+			disabled: n > limit || n < min || layout != layoutSingle,
+			run:      func(zx *ZenZX) { zx.window().SetScale(n); b.saveSettings(zx) },
 		})
 	}
-	items = append(items, zenui.Item{Separator: true})
+	spec = append(spec, menuSep())
 	for i, name := range deckLayoutNames {
-		checked := deckLayout(i) == layout
-		items = append(items, zenui.Item{Label: name, Checked: &checked, Disabled: !layoutAllowed(deckLayout(i), machines)})
+		l := deckLayout(i)
+		checked := l == layout
+		spec = append(spec, menuEntry{
+			label:    name,
+			checked:  &checked,
+			disabled: !layoutAllowed(l, machines),
+			run: func(zx *ZenZX) {
+				if b.setLayout != nil {
+					b.setLayout(l)
+				}
+			},
+		})
 	}
-	items = append(items, zenui.Item{Label: viewRotateLabel, Disabled: machines < 2})
-	b.widget.SetItems(barView, items)
+	return append(spec, menuEntry{
+		label:    viewRotateLabel,
+		disabled: machines < 2,
+		run: func(zx *ZenZX) {
+			if b.rotateMachines != nil {
+				b.rotateMachines()
+			}
+		},
+	})
+}
+
+// refreshViewItems rebuilds the View menu each frame the bar is shown, items and actions
+// together from viewSpec. Item.Disabled has no pointer-based live-update mechanism the way
+// Checked does, and the scale can change outside the menu entirely (PgUp/PgDn), so
+// rebuilding via SetItems is what keeps both correct.
+//
+// This is where a real MenuBar.SetItems bug was actually discovered: an earlier version
+// recreated the open dropdown's Menu from scratch on every SetItems call, so calling this
+// every frame made the whole View menu feel unresponsive (empty itemRects until the next
+// Draw) the entire time it was open. Fixed in pkg/zenui/menubar.go itself.
+func (b *appMenuBar) refreshViewItems(zx *ZenZX) {
+	spec := b.viewSpec(zx)
+	b.actions[barView] = spec.actions()
+	b.widget.SetItems(barView, spec.items())
 }
 
 // refreshCustomROMItems rebuilds the Custom ROM dropdown's contents --
@@ -944,6 +1065,15 @@ func (b *appMenuBar) refreshCustomROMItems(zx *ZenZX) {
 // itself, dispatching any accepted selection to the right action (or, for
 // Custom ROM, advancing the two-step flow).
 func (b *appMenuBar) Update(zx *ZenZX) {
+	b.updateLogoCursor()
+	b.reconcileFixed(zx)
+	b.enforceSingleSurface()
+	if b.prefs != nil {
+		if b.prefs.Update(zenuiraylib.Input(), b.renderer, int(rl.GetScreenWidth()), int(rl.GetScreenHeight())) == prefsClosed {
+			b.prefs = nil
+		}
+		return
+	}
 	if b.cards != nil {
 		b.updateCards(zx)
 		return
@@ -974,27 +1104,9 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	if b.diskDialog != nil {
 		switch b.diskDialog.Update(zenuiraylib.Input()) {
 		case zenui.Accepted:
-			path := b.diskDialog.Result()
-			b.diskDialog = nil
-			if b.dialogIsCard {
-				size := b.newCardSize
-				b.dialogIsCard, b.newCardSize = false, 0
-				if size != 0 {
-					b.newCard(zx, path, size)
-				} else {
-					b.insertCard(zx, path)
-				}
-				return
-			}
-			if n, taken := b.diskTakenElsewhere(zx, path); taken {
-				fmt.Printf("Open DSK Image: %s is in the drive of machine %d; a disc file is in one machine at a time\n", path, n)
-			} else if err := zx.io.LoadDisk(path); err != nil {
-				fmt.Printf("Open DSK Image: could not load %s: %v\n", path, err)
-			} else {
-				fmt.Printf("Loaded disk: %s\n", path)
-			}
+			b.acceptDialog(zx, b.diskDialog.Result())
 		case zenui.Cancelled:
-			b.diskDialog, b.dialogIsCard, b.newCardSize = nil, false, 0
+			b.diskDialog, b.dialogKind, b.newCardSize = nil, dialogDisk, 0
 		}
 		return
 	}
@@ -1002,17 +1114,14 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	if b.logoMenu != nil {
 		switch b.logoMenu.Update(zenuiraylib.Input()) {
 		case zenui.Accepted:
-			result := b.logoMenu.Result()
+			result, sub := b.logoMenu.Result(), b.logoMenu.SubResult()
 			b.logoMenu = nil
-			b.handleLogoMenuResult(zx, result)
+			b.handleLogoMenuResult(zx, result, sub)
 		case zenui.Toggled:
-			// "Fixed menu bar" is the only toggle item in this menu --
-			// Item.Toggle already flipped b.fixed directly via its
-			// own pointer; this supplies the window-resize side
-			// effect, matching how the View menu's Border checkbox
-			// works. The menu stays open (that's the point of a
-			// checkbox), so no b.logoMenu = nil here.
-			b.applyFixedState(zx)
+			// A checkbox (Fixed menu bar): Item.Toggle has already flipped its bool
+			// through the pointer, and the row's own action does the rest. The menu stays
+			// open, as a checkbox's does.
+			b.handleLogoMenuResult(zx, b.logoMenu.Result(), b.logoMenu.SubResult())
 		case zenui.Cancelled:
 			b.logoMenu = nil
 		}
@@ -1169,9 +1278,33 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	}
 }
 
-// setCurrentModel updates modelChecked so the Machine menu's submenus
-// show a checkmark on whichever model is now running, clearing every
-// other model's checkmark first.
+// acceptDialog carries out the file browser's answer: path is the file chosen, and what
+// the browser was open for (dialogKind) says what is done with it.
+func (b *appMenuBar) acceptDialog(zx *ZenZX, path string) {
+	kind, size := b.dialogKind, b.newCardSize
+	b.diskDialog, b.dialogKind, b.newCardSize = nil, dialogDisk, 0
+	switch kind {
+	case dialogNewCard:
+		b.newCard(zx, path, size)
+		return
+	case dialogInsertCard:
+		b.insertCard(zx, path)
+		return
+	case dialogOpenFile:
+		if b.openFiles != nil {
+			b.openFiles([]string{path})
+		}
+		return
+	}
+	if n, taken := b.diskTakenElsewhere(zx, path); taken {
+		fmt.Printf("Open DSK Image: %s is in the drive of machine %d; a disc file is in one machine at a time\n", path, n)
+	} else if err := zx.io.LoadDisk(path); err != nil {
+		fmt.Printf("Open DSK Image: could not load %s: %v\n", path, err)
+	} else {
+		fmt.Printf("Loaded disk: %s\n", path)
+	}
+}
+
 // currentModel is the model the Machine menu has ticked, "" when it is none
 // of the menu's.
 func (b *appMenuBar) currentModel() string {
@@ -1183,6 +1316,9 @@ func (b *appMenuBar) currentModel() string {
 	return ""
 }
 
+// setCurrentModel updates modelChecked so the Machine menu's submenus
+// show a checkmark on whichever model is now running, clearing every
+// other model's checkmark first.
 func (b *appMenuBar) setCurrentModel(model string) {
 	for k, checked := range b.modelChecked {
 		*checked = k == model
@@ -1197,6 +1333,10 @@ func (b *appMenuBar) setCurrentModel(model string) {
 // Renderer interface -- this file has no raylib calls of its own left for
 // either.
 func (b *appMenuBar) Draw(screenW, screenH int) {
+	if b.prefs != nil {
+		b.prefs.Draw(b.renderer, screenW, screenH, b.theme)
+		return
+	}
 	if b.cards != nil {
 		b.cards.Draw(b.renderer, screenW, screenH, b.theme)
 		return
@@ -1224,6 +1364,7 @@ func (b *appMenuBar) Draw(screenW, screenH int) {
 		// backdrop.
 		barY := int(float32(-menuStripHeight) * (1 - b.progress))
 		b.widget.Draw(b.renderer, screenW, screenH, barY, menuStripHeight, b.theme)
+		b.paintLogoButton(screenW, barY)
 		b.logoMenu.Draw(b.renderer, screenW, screenH, b.theme)
 		return
 	}
@@ -1232,4 +1373,5 @@ func (b *appMenuBar) Draw(screenW, screenH int) {
 	}
 	barY := int(float32(-menuStripHeight) * (1 - b.progress))
 	b.widget.Draw(b.renderer, screenW, screenH, barY, menuStripHeight, b.theme)
+	b.paintLogoButton(screenW, barY)
 }

@@ -58,6 +58,9 @@ type DisplayManager struct {
 	currentHeight  int
 	targetWidth    int
 	targetHeight   int
+	// fit is what puts the picture in the middle of a window that is not the size asked for
+	// (display_fit_gui.go).
+	fit            pictureFit
 	isAnimating    bool
 	borderChanges  []BorderChange
 	frameOrigin    uint64
@@ -101,6 +104,12 @@ type DisplayManager struct {
 	// of the window.
 	tiles          func()
 	tilesW, tilesH int
+
+	// borderApplied is whether the border was shown the last time the window was sized
+	// (updateTargetSize). borderView is the one derivation of that; UpdateWindowSize
+	// re-sizes the window when the derivation and this disagree, so the window cannot be
+	// left shaped for a border that is no longer there, or the reverse.
+	borderApplied bool
 
 	// GPU fast-path texture caches (videorender_gpu.go), baked once in
 	// InitializeAfterWindow and freed in CleanupTextures. bitPatternGPU
@@ -211,8 +220,9 @@ func NewDisplayManager(screen *SpectrumScreen) *DisplayManager {
 
 	dm := &DisplayManager{
 		screen:               screen,
-		showFPS:              true,
+		showFPS:              false, // a diagnostic: the View menu or Alt+F shows it
 		showBorder:           true,
+		borderApplied:        true,
 		showDebugOverlay:     false,
 		borderColor:          0,
 		screenW:              w,
@@ -283,6 +293,31 @@ func (dm *DisplayManager) totalSize() (int, int) {
 // below is skipped for it.
 func (dm *DisplayManager) hasBorder() bool {
 	return dm.borderLeft+dm.borderRight+dm.borderTop+dm.borderBottom > 0
+}
+
+// borderView is how the border stands for the window as it is now: the one place that
+// says whether it is on the screen and whether the Border Display choice has any say in
+// that. The window's size, the drawing, the tiles, the View menu's checkbox and Alt+B all
+// ask it, so they cannot disagree; a new reason for the border to be fixed one way or the
+// other is added here and nowhere else.
+type borderView struct {
+	Shown     bool   // the border is on the screen
+	Choosable bool   // the Border Display choice (showBorder) decides Shown
+	Why       string // when not Choosable, why, in a line
+}
+
+func (dm *DisplayManager) borderView() borderView {
+	switch {
+	case dm.tiles != nil:
+		// A tile is a cell of a machine's whole frame with its border round the picture.
+		return borderView{Shown: true, Why: "a tiled layout shows every machine with its border"}
+	case !dm.hasBorder():
+		return borderView{Shown: false, Why: "this display mode has no border"}
+	case dm.io != nil && dm.io.layer2Enabled() && dm.io.layer2CurrentMode() != layer2Mode256x192x8bpp:
+		// The wider Layer 2 modes fill the whole frame; without the border they would be cut.
+		return borderView{Shown: true, Why: "the Layer 2 mode in use fills the whole frame"}
+	}
+	return borderView{Shown: dm.showBorder, Choosable: true}
 }
 
 func (dm *DisplayManager) SetBorderColor(color uint8) {
@@ -361,6 +396,10 @@ func (dm *DisplayManager) ToggleFPS() {
 }
 
 func (dm *DisplayManager) ToggleBorder() {
+	if v := dm.borderView(); !v.Choosable {
+		fmt.Printf("Border: %s\n", v.Why)
+		return
+	}
 	dm.showBorder = !dm.showBorder
 	dm.updateTargetSize()
 	fmt.Printf("Border: %v\n", dm.showBorder)
@@ -395,7 +434,7 @@ func (dm *DisplayManager) maxMultiplierThatFits() int {
 	}
 	totalW, totalH := dm.totalSize()
 	for m := MaxMultiplier; m >= min; m-- {
-		if totalW*m <= monW && totalH*m <= monH {
+		if totalW*m <= monW && totalH*m+dm.reservedTopHeight <= monH {
 			return m
 		}
 	}
@@ -478,6 +517,26 @@ func (dm *DisplayManager) syncCurrentToWindow(w, h int) {
 	dm.currentWidth, dm.currentHeight = w, h
 }
 
+// HandleSingleResize re-asserts the single-machine window size after the user
+// drags the window edge. The window is resizable so a tiled layout can be
+// dragged, but a single machine keeps its own zoom-step size; a drag would
+// otherwise leave the window a size the picture does not fill. When the OS
+// window no longer matches the zoom-step size (targetWidth/Height), this snaps
+// it back from where the drag left it, animating the change like a zoom step.
+// It is for the single-machine path only (the deck has its own
+// HandleWindowResize for tiled layouts).
+func (dm *DisplayManager) HandleSingleResize() {
+	if !rl.IsWindowResized() {
+		return
+	}
+	w, h := int(rl.GetScreenWidth()), int(rl.GetScreenHeight())
+	if w == dm.targetWidth && h == dm.targetHeight {
+		return // already the right size (e.g. our own SetWindowSize)
+	}
+	dm.syncCurrentToWindow(w, h)
+	dm.isAnimating = true // animateResize snaps current -> target and calls SetWindowSize
+}
+
 // renderTiles is Render while the window is tiled: the tiles, then what
 // Render draws over any picture.
 func (dm *DisplayManager) renderTiles(paused bool) {
@@ -485,11 +544,7 @@ func (dm *DisplayManager) renderTiles(paused bool) {
 	rl.ClearBackground(rl.Black)
 	dm.tiles()
 	if dm.showFPS {
-		dm.fps = rl.GetFPS()
-		rl.DrawText(fmt.Sprintf("FPS: %d", dm.fps), int32(rl.GetScreenWidth()-100), int32(rl.GetScreenHeight()-30), 20, rl.Red)
-	}
-	if paused {
-		rl.DrawText("PAUSED", 10, 10, 20, rl.Yellow)
+		dm.drawFPS()
 	}
 	if dm.preEndDrawHook != nil {
 		dm.preEndDrawHook()
@@ -498,20 +553,17 @@ func (dm *DisplayManager) renderTiles(paused bool) {
 }
 
 func (dm *DisplayManager) updateTargetSize() {
+	showBorder := dm.borderView().Shown
+	dm.borderApplied = showBorder
 	if dm.tiles != nil {
 		dm.targetWidth = dm.tilesW
 		dm.targetHeight = dm.tilesH + dm.reservedTopHeight
 		dm.isAnimating = true
 		return
 	}
-	if dm.showBorder && dm.hasBorder() {
-		totalW, totalH := dm.totalSize()
-		dm.targetWidth = totalW * dm.screen.multiplier
-		dm.targetHeight = totalH*dm.screen.multiplier + dm.reservedTopHeight
-	} else {
-		dm.targetWidth = dm.screenW * dm.screen.multiplier
-		dm.targetHeight = dm.screenH*dm.screen.multiplier + dm.reservedTopHeight
-	}
+	nativeW, nativeH := dm.pictureNativeSize(showBorder)
+	dm.targetWidth = nativeW * dm.screen.multiplier
+	dm.targetHeight = nativeH*dm.screen.multiplier + dm.reservedTopHeight
 	dm.isAnimating = true
 }
 
@@ -601,7 +653,17 @@ func (dm *DisplayManager) SetReservedTopHeight(h int) {
 	dm.updateTargetSize()
 }
 
+// followBorder sets the window's target size anew if the border is not as it was when the
+// window was last sized, whatever changed it: the View menu, Alt+B, a layout, or the
+// machine going into a mode that needs it.
+func (dm *DisplayManager) followBorder() {
+	if dm.borderView().Shown != dm.borderApplied {
+		dm.updateTargetSize()
+	}
+}
+
 func (dm *DisplayManager) UpdateWindowSize() {
+	dm.followBorder()
 	if !dm.isAnimating {
 		return
 	}
@@ -634,66 +696,12 @@ func (dm *DisplayManager) UpdateWindowSize() {
 }
 
 func (dm *DisplayManager) renderDebugOverlay() {
-	screenWidth := int32(rl.GetScreenWidth())
-	screenHeight := int32(rl.GetScreenHeight())
-
-	// Get audio buffer status
 	bufferLevel, generated, requested := dm.audio.GetBufferStatus()
-
-	// Draw histogram bar at top of screen
-	barHeight := int32(20)
-	barY := int32(40) // Position below any "PAUSED" text
-
-	// Background for the bar
-	rl.DrawRectangle(0, barY, screenWidth, barHeight, rl.NewColor(0, 0, 0, 128))
-
-	// Calculate bar width based on buffer level
-	barWidth := int32(float32(screenWidth) * bufferLevel / 100.0)
-
-	// Choose color based on level
-	var barColor rl.Color
-	if bufferLevel < 30 {
-		barColor = rl.Red // Critical - underrun likely
-	} else if bufferLevel < 60 {
-		barColor = rl.Yellow // Warning - getting low
-	} else {
-		barColor = rl.Green // Good level
-	}
-
-	// Draw the level bar
-	rl.DrawRectangle(0, barY, barWidth, barHeight, barColor)
-
-	// Draw text overlay
-	text := fmt.Sprintf("Audio Buffer: %.1f%% (%d/%d samples)", bufferLevel, generated, requested)
-	rl.DrawText(text, 5, barY+2, 16, rl.White)
-
-	// Draw additional debug info
-	debugY := barY + barHeight + 5
-
-	// Get additional debug info
 	speakerChanges, cpuCycle := dm.audio.GetDebugInfo()
-
-	// Speaker history size
-	historyText := fmt.Sprintf("Speaker changes: %d", speakerChanges)
-	rl.DrawText(historyText, 5, debugY, 14, rl.SkyBlue)
-
-	// CPU cycle info
-	cycleText := fmt.Sprintf("CPU Cycle: %d", cpuCycle)
-	rl.DrawText(cycleText, 5, debugY+16, 14, rl.SkyBlue)
-
-	// Buffer health indicator
-	healthY := screenHeight - 40
-	healthText := "Buffer Health: "
-	if bufferLevel < 30 {
-		healthText += "UNDERRUN WARNING"
-		rl.DrawText(healthText, 5, healthY, 16, rl.Red)
-	} else if bufferLevel < 60 {
-		healthText += "LOW"
-		rl.DrawText(healthText, 5, healthY, 16, rl.Yellow)
-	} else {
-		healthText += "GOOD"
-		rl.DrawText(healthText, 5, healthY, 16, rl.Green)
-	}
+	drawAudioDebug(rl.GetScreenWidth(), rl.GetScreenHeight(), bufferLevel,
+		fmt.Sprintf("Audio Buffer: %.1f%% (%d/%d samples)", bufferLevel, generated, requested),
+		fmt.Sprintf("Speaker changes: %d", speakerChanges),
+		fmt.Sprintf("CPU Cycle: %d", cpuCycle))
 }
 
 func (dm *DisplayManager) GetCurrentSize() (int, int) {
@@ -852,13 +860,21 @@ func (dm *DisplayManager) Render(paused bool, mem *SpectrumMemory, screen *Spect
 		dm.showInScreenTexture(img)
 	}
 
-	drawBorder := dm.showBorder && dm.hasBorder()
+	drawBorder := dm.borderView().Shown
+
+	// The border's stripes go in their own render texture, which cannot be drawn into from inside
+	// another: so before the canvas, when there is one (display_fit_gui.go).
+	if frame == nil && drawBorder {
+		dm.renderBorderStripes(dm.borderChanges, dm.frameOrigin, dm.borderColor)
+	}
+	canvas := dm.pictureCanvasWanted()
+	if canvas {
+		dm.beginPictureCanvas()
+	}
 
 	if frame != nil {
 		dm.drawNextFrame(drawBorder)
 	} else if drawBorder {
-		dm.renderBorderStripes(dm.borderChanges, dm.frameOrigin, dm.borderColor)
-
 		rl.ClearBackground(rl.Black)
 
 		totalW, totalH := dm.totalSize()
@@ -914,24 +930,19 @@ func (dm *DisplayManager) Render(paused bool, mem *SpectrumMemory, screen *Spect
 		}
 	}
 
+	if canvas {
+		dm.endPictureCanvas()
+	}
+
 	// Draw status
 	if dm.showFPS {
-		dm.fps = rl.GetFPS()
-		fpsText := fmt.Sprintf("FPS: %d", dm.fps)
-		rl.DrawText(fpsText, int32(rl.GetScreenWidth()-100), int32(rl.GetScreenHeight()-30), 20, rl.Red)
-
-		if paused {
-			rl.DrawText("PAUSED", 10, 10, 20, rl.Yellow)
-		}
+		dm.drawFPS()
 
 		// Show border stripes status
 		if drawBorder && dm.borderStripesEnabled && len(dm.borderChanges) > 1 {
 			stripesText := fmt.Sprintf("Border changes: %d", len(dm.borderChanges))
-			rl.DrawText(stripesText, 10, int32(rl.GetScreenHeight()-30), 16, rl.Green)
+			drawUIText(stripesText, 10, rl.GetScreenHeight()-30, uiTextScale, rl.Green)
 		}
-	} else if paused {
-		// Show PAUSED even if FPS is off
-		rl.DrawText("PAUSED", 10, 10, 20, rl.Yellow)
 	}
 
 	// Draw debug overlay if enabled (after status text)
@@ -967,6 +978,7 @@ func (dm *DisplayManager) InitializeAfterWindow() {
 
 // CleanupTextures should be called before closing the window.
 func (dm *DisplayManager) CleanupTextures() {
+	dm.unloadPictureCanvas()
 	if dm.screenTextureReady {
 		rl.UnloadTexture(dm.screenTexture)
 	}

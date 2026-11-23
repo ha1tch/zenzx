@@ -1,7 +1,7 @@
 # ZenZX — live register
 
 Version: 0.50.0
-Last reviewed: 2026-11-21
+Last reviewed: 2026-11-23
 
 Open, actionable items only. Closed items move verbatim to
 `RESOLVED.md` (see `repoman register close`); a closed item still
@@ -55,6 +55,11 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 | T-67 | The machine dock: what the first cut leaves out | embedding | P3 | ☐ | — |
 | T-68 | Escape does not close an open dropdown of the menu bar | input | P3 | ☐ | — |
 | T-69 | The link, -multi and -autorun: what the first cut leaves out | embedding | P3 | ☐ | — |
+| T-72 | NextZXOS .dsk disk-image mounting on the Next (A:/B:), not only copy-to-card | next-support | P3 | ☐ | — |
+| T-73 | Root clean-up: scripts to scripts/, leaf subsystems out of the root package into pkg/ and internal/ | hygiene | P2 | ☐ | v1.0.0 |
+| T-75 | On macOS, resizing the window crops the emulated screen or leaves a black area, and does not re-centre it: fixed in the sandbox, not yet seen on a Mac | graphics | P3 | ◐ | the public release |
+| T-79 | The GUI has never been launched with the Next boot cache on auto | next-support | P3 | ☐ | — |
+| T-80 | The Next boot cache over a changed card: memory fields not analysed one by one | next-support | P3 | ☐ | — |
 
 ## timing
 
@@ -117,6 +122,24 @@ Scope: raise both upstream in gorepoman (a `provenance retire FILE --reason` or 
 
 Done when: a tracked file can be retired with a recorded reason, and the archive's manifest passes `manifest.sh check` in a checkout without a manual step.
 
+### T-73. Root clean-up: scripts to scripts/, leaf subsystems out of the root package into pkg/ and internal/
+
+Theme: hygiene · Priority: P2 · Status: ☐ · Blocks/after: v1.0.0
+
+Trigger: a study of the project root, 2026-11-22. To be done before v1.0.0, not before.
+
+The root holds 218 tracked entries: 190 Go files (about 123 production, 37k lines, and the tests, 23k lines) and 28 others. The Go files are one package, `zenzx`, with 395 exported identifiers, and everything hangs off `ZenZX`, `SpectrumMemory` and `SpectrumIO`. A package cannot be split across directories, so moving a file means extracting a subsystem behind a new API: every unexported name that crosses the cut is exported, and the tests that read private fields go with it. Where a moved type is exported from the root today, a type alias in the root keeps the public API as it is.
+
+Work, in order:
+
+1. Scripts: `build*.sh`, `check_*.sh`, `manifest.sh`, `run_next_divmmc.sh` and `smoke_headless.sh` to `scripts/`, with the `Makefile`, the `.repoman.json` release steps, `ci.yml`, `nextchain.go` and the manual following them. They assume the repo root as their working directory. The embedded files (`help.txt`, `about.txt`, `machines.json`, `settings.json`, the ROMs, the examples) stay while the code that embeds them does, since `go:embed` reaches only below its own package.
+2. A way to move journal-tracked files in gorepoman (a move or rehome verb), or a recorded journal reset. Without one a move shows as a provenance failure for each of the 63 tracked files.
+3. Leaf extraction, each with its tests and both build tags: the AY chip and the sinc filter, then the SD card (3 files, 6 names needed from the rest), then the floppy controller and disk images (3 files, 7), then tape (2 files, 10, through a small machine interface). Standalone pieces go in `pkg/`, machine glue in `internal/`.
+4. The snapshot codecs, after the machine state structs are separate (41 names needed from `snapshot.go` today).
+5. Left alone: the Next hardware (26 files, woven into memory and I/O), video, and the GUI split (about 100 core members would have to be exported or reached through a host interface), unless a design for the core and the GUI comes first.
+
+Each step is held to both builds, `go vet`, the full suite, G-04 and a fresh relcore. The cluster sizes were measured by name matching over the files, which over-counts a little where names collide (`Open`, `Read`).
+
 ## ci
 
 ### T-07. Dockerfile and build_bsd.sh are broken (unresolved template variables)
@@ -148,6 +171,18 @@ Theme: graphics · Priority: P2 · Status: ☐
   - `mode-zenzx-02`: 512x384, double resolution -- needs a renderer producing 4x the standard pixel count and a decision on how source data maps to the higher resolution (upscale vs a native double-res source format). `Dimensions()` = (512, 384); `BorderMargins()` needs the same decision, doubled if proportional. `DisplayManager.maxMultiplierThatFits()` already clamps the window to the monitor, but verify it in practice once this exists -- untested against a real high-res mode so far.
   - Neither mode supports FLASH (no other mode does -- see video-architecture.md); do not read `screen.flashEnabled`/`flashTickTock` from either renderer.
   - Each mode needs a headless zenscript regression (boot, engage the mode, screenshot, assert) before being considered done.
+
+### T-75. On macOS, resizing the window crops the emulated screen or leaves a black area, and does not re-centre it
+
+Theme: graphics · Priority: P3 · Status: ◐ · Blocks/after: the public release
+
+Trigger: the same feedback, on macOS, 2026-11-22: resizing the window is unpredictable. It either crops the emulated screen or leaves a black area outside it, and it does not re-centre the screen area.
+
+Scope: reproduce on a Mac -- the cloud sandbox cannot -- and read how the picture is scaled and placed when the window changes size (the destination rectangle, the menu bar and dock heights, and the HiDPI factor, which differs between the window's size and the render size on a retina display; to check, not yet known to be the cause). Make the picture fit and sit centred at every window size, as it does on the other systems.
+
+Done when: after a resize on macOS, retina or not, the picture is the whole screen area, centred, with the same border on every side, and a test of the placement arithmetic at HiDPI factors 1 and 2 holds it.
+
+Progress, 0.50.0 (2026-11-23). Shipped: the display compares the window's real size (the framebuffer's, in drawing units: `GetRenderWidth/Height` over `GetWindowScaleDPI`; `GetScreenWidth` is not used because `SetWindowSize` sets it to the size asked for whether the system gave it or not) with the size it asked for; when the window has kept another size for three frames it fits the zoom to it, and where the window stays a size the zoom cannot fill it draws the picture into a canvas and puts that in the middle, scaled down in proportion when the window is smaller than it (`picturefit.go`, `display_fit_gui.go`). While the window is the size asked for, nothing changes. Tests: `picturefit_test.go` (arithmetic at HiDPI factors 1 and 2: equal margins, nothing cropped, proportions kept) and `TestGLPictureFitsAWindowOfAnotherSize` (G-14: the window held at four sizes, the picture's border found, checked to fail with the fit taken out). Outstanding: nothing here has run on a Mac, and the cause (the system's own clamping of the window to the usable screen, retina) is read from the platform's known behaviour, not seen. Closure needs a run on macOS, retina and not, with the window dragged and the zoom changed; what ran, where and when is recorded here.
 
 ## storage
 
@@ -454,6 +489,50 @@ Theme: next-support · Priority: P3 · Status: ☐
 - **Not there:** the board ID in NextREG 0x0F is 0 (issue 2) whatever `-next-issue` says: the card's registers.txt lists issues 2 to 4 and gives no number for an issue 5; an interrupt holding the DMA off while a transfer runs (NextREG 0xCC to 0xCE); an issue 2 board with 1 MB (`-next-issue=2` is the one with the 2 MB expansion); banks 5 and 7's other SRAM is kept, but nothing models what the machine's ULA shows of a physical write there beyond "nothing".
 - **Not tried:** the same nine examples in CSpect 4.5.1.0 (`-issue=5`), which does not start under the Mono installed here, or on a machine; a DMA+ transfer with a prescaler; a 2D transfer to or from a port; burst mode in 2D.
 - **Done when:** the board ID follows the issue with a documented value, and `zxnddma_examples` and `zxnddma_compare` have been seen side by side with CSpect 4.5 or a KS3.
+
+### T-72. NextZXOS .dsk disk-image mounting on the Next (A:/B:), not only copy-to-card
+
+Theme: next-support · Priority: P3 · Status: ☐ · Blocks/after: —
+
+ZenZX does not mount `.dsk` disk images on the Next. The `next` model is
+built without a floppy controller (`machine_model.go` does not call
+`EnableFDC()` for it, unlike `plus3`), and there is no NextZXOS/+3e
+disk-image mount path in the code. So a `.dsk` dropped on a Next is copied
+to the SD card as a file (the only reachable outcome), while on a +3 it is
+mounted in Drive A and booted.
+
+- **Trigger:** 2026-11-21, while documenting the drag-and-drop matrix. Real
+  NextZXOS does support disk images through its +3e/+3DOS layer: C: is the
+  default system drive (the SD card; paths are `C:/NEXTZXOS/...`), and drive
+  letters A:-P: can be mapped, with A:/B:/M: present by default. Whether the
+  Browser mounts a selected `.dsk`, and whether a Next boots from a disk
+  image, was not confirmed from the +3e command reference or the dot-command
+  reference (their Browser/`.RUN` extension lists show tap/snapshot/nex, not
+  `.dsk`) -- it needs checking against a real Next or NextZXOS source before
+  anything is implemented.
+- **Fix:** decide the scope. Minimum: let a `.dsk` dropped on a Next be
+  mounted as a NextZXOS drive (A:/B:) rather than only copied, matching how a
+  real Next treats it. This likely means a DivMMC/NextZXOS-side disk layer,
+  not the +3 FDC path, since the Next reaches storage through the SD card and
+  its own OS, not a physical drive. Confirm the real NextZXOS behaviour first
+  (which drive letters a mounted image takes; whether the Browser does the
+  mounting; whether it is bootable).
+
+### T-79. The GUI has never been launched with the Next boot cache on auto
+
+Theme: next-support · Priority: P3 · Status: ☐
+
+Trigger: found 2026-11-23 while finishing T-76. The GUI build has only been run with the boot cache off or never asked for; `-next-boot-cache auto` has been exercised by the headless guards (G-13) and not by the program that opens a window.
+
+Scope: start the GUI under Xvfb on a Next with the boot files and the cache on `auto`: first run writes the cache, second run is put back from it, and the picture and the menu are as from a cold boot. Done when: that run is recorded here.
+
+### T-80. The Next boot cache over a changed card: memory fields not analysed one by one
+
+Theme: next-support · Priority: P3 · Status: ☐
+
+Trigger: found 2026-11-23, T-76 review. G-13 compares a machine put back from the cache with a cold boot field by field, but the memory-related fields of a cache made over a changed card have not been gone through one by one for what the card's change could reach.
+
+Scope: list the memory and DivMMC fields the cache holds, and for each say whether a changed card can make it stale; add to G-13's changed-card tests whatever is not covered. Done when: the list is in docs/proposals/NEXT_BOOT_CACHE.md and the tests cover each field it names.
 
 ## embedding
 

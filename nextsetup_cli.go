@@ -8,9 +8,10 @@ import (
 	"github.com/ha1tch/zenzx/pkg/nextcard"
 )
 
-// runNextSetup is -next-setup: the download, the card and the verification that the GUI's
-// first-start dialog does, with its progress written as lines to w. Asking for it on the
-// command line is the confirmation, so nothing is asked here.
+// runNextSetup is -next-firmware setup (and its older spelling -next-setup): the download,
+// the card and the verification that the GUI's first-start dialog does, through the same
+// firmwareJob, with its progress written as lines to w. Asking for it on the command line is
+// the confirmation, so nothing is asked here.
 func runNextSetup(dir, distributionURL, bootROMURL string, w io.Writer) error {
 	opts := nextcard.Options{Dir: dir, DistributionURL: distributionURL, BootROMURL: bootROMURL}
 	if opts.DistributionURL == "" {
@@ -23,7 +24,7 @@ func runNextSetup(dir, distributionURL, bootROMURL string, w io.Writer) error {
 	fmt.Fprintf(w, "  distribution (about 70 MB): %s\n  boot ROM: %s\n", opts.DistributionURL, opts.BootROMURL)
 	fmt.Fprintf(w, "  what is already there is kept; about 2.2 GB of disk is used while the card is built, 1.1 GB afterwards\n")
 	stage, tenth := nextcard.Stage(-1), int64(-1)
-	err := nextcard.Setup(context.Background(), opts, func(s nextcard.Stage, done, total int64) {
+	err := newFirmwareJob(dir, opts.DistributionURL, opts.BootROMURL, nextSetupRun).Run(context.Background(), func(s nextcard.Stage, done, total int64) {
 		if s != stage {
 			stage, tenth = s, -1
 			fmt.Fprintf(w, "%s...\n", s)

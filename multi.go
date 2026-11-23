@@ -271,7 +271,7 @@ func nextCardsOf(models, cards []string, filesFlag string) ([]string, nextcard.F
 		if note == "" {
 			note = "none were found"
 		}
-		return nil, f, fmt.Errorf("-multi names SD cards, but the Next's boot files are not in place (%s); start a Next on its own once, or run with -next-setup, and they are fetched", note)
+		return nil, f, fmt.Errorf("-multi names SD cards, but the Next's boot files are not in place (%s); start a Next on its own once, or run with -next-firmware setup, and they are fetched", note)
 	}
 	standard := ""
 	for i, m := range models {

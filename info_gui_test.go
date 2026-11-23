@@ -141,7 +141,7 @@ func TestInfoItemsOpenAWindow(t *testing.T) {
 		says       string
 	}{
 		{barTape, 4, "TAPE INFO", "No tape is loaded"},
-		{barFloppyDisk, 7, "DISK INFO", "no floppy drive"},
+		{barFloppyDisk, 8, "DISK INFO", "no floppy drive"}, // index 8: a Floppy Disk title now precedes the items
 		{barSnapshot, 4, "SNAPSHOT INFO", "Quick Save"},
 	}
 	for _, c := range cases {

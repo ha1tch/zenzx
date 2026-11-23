@@ -99,18 +99,25 @@ func TestNextZXOSBoots(t *testing.T) {
 	waitFor("firmware chose the machine and left config mode", 4000, func() bool {
 		return zx.memory.nextCfg.machineType == 3 && !zx.memory.nextCfg.active
 	})
+	expectFrames(t, "the firmware leaving config mode", zx.frameCount, 150, 1500)
 	if zx.memory.bootROMEnabled {
 		t.Fatal("the boot ROM is still mapped after the hand-over")
 	}
 	waitFor("NextZXOS loaded its welcome guide from the card", 3000, ramHas("NextZXOS is an evolution of the system software"))
+	expectFrames(t, "NextZXOS loading its welcome guide", zx.frameCount, 150, 1700)
 	run(200)
 	if n := cyanCells(); n != 0 {
 		t.Fatalf("%d cyan cells on what should be the welcome screen", n)
 	}
+	checkScreenLooksLikeAMenu(t, zx.DecodeDisplay(), "the welcome screen")
 
 	// SPACE leaves the welcome screen for the main menu.
 	zx.io.PressKey(7, 0)
 	run(10)
 	zx.io.ReleaseKey(7, 0)
 	waitFor("NextZXOS main menu", 2000, func() bool { return cyanCells() >= 8 })
+	expectFrames(t, "the NextZXOS main menu", zx.frameCount, 300, 2500)
+	run(50)
+	checkScreenLooksLikeAMenu(t, zx.DecodeDisplay(), "the main menu")
+	checkScreenIsSteady(t, zx, "the main menu")
 }

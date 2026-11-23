@@ -65,12 +65,18 @@ func MakeBootable(ctx context.Context, source, cardPath string, progress func(do
 		return 0, err
 	}
 	defer src.Close()
-	if err := VerifyCard(src); err != nil {
-		return 0, fmt.Errorf("the card to copy the system from, %s, is not usable: %w", source, err)
-	}
+	// The source is asked for what a Next is asked for at every start (Usable), not for what a
+	// download leaves (VerifyCard): the card to copy from is usually one that has been in use,
+	// with a free space record that is no longer exact. The card that is made is verified.
 	vol, err := Open(src)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("the card to copy the system from, %s, is not usable: the card: %w", source, err)
+	}
+	if vol.geo.clusterCount < MinFAT32Clusters {
+		return 0, fmt.Errorf("the card to copy the system from, %s, is not usable: the card has %d clusters; the firmware wants at least %d", source, vol.geo.clusterCount, MinFAT32Clusters)
+	}
+	if fw := vol.Root.Find("TBBLUE.FW"); fw == nil || fw.Size == 0 {
+		return 0, fmt.Errorf("the card to copy the system from, %s, is not usable: the card has no TBBLUE.FW, the firmware", source)
 	}
 	var files []File
 	var total int64

@@ -524,6 +524,9 @@ func (zx *ZenZX) handleFunctionKeys() {
 
 // showStatus displays current emulator status
 func (zx *ZenZX) showStatus() {
+	if zx.memory.isNext {
+		fmt.Println(zx.NextROMLive())
+	}
 	if zx.isPlus3 {
 		fmt.Printf("+3 Mode - ROM: %d, RAM@C000: %d, Screen: %d, ",
 			zx.memory.romBank, zx.memory.ramBankTop, zx.memory.screenBank)
@@ -619,6 +622,26 @@ func (zx *ZenZX) handleSaveDiskAs() {
 	}
 }
 
+// snapshotStartsPlaying says whether a snapshot that has just been loaded runs at once
+// (the Preferences setting) rather than waiting paused. The GUI sets it; it is nil, and a
+// loaded snapshot waits, everywhere else.
+var snapshotStartsPlaying func() bool
+
+// snapshotStartWord is the settings file's word for the choice.
+func snapshotStartWord(plays bool) string {
+	if plays {
+		return "play"
+	}
+	return "paused"
+}
+
+// afterSnapshotLoad applies the Preferences choice to a snapshot that loaded: it waits
+// paused unless the person has asked for it to play. (A snapshot is always saved with the
+// machine paused, so this is the one place the choice is made.)
+func (zx *ZenZX) afterSnapshotLoad() {
+	zx.paused = snapshotStartsPlaying == nil || !snapshotStartsPlaying()
+}
+
 // loadDroppedFile loads one dropped file by its extension into the machine
 // directly -- a snapshot replaces state, a tape/disc is inserted, a .scr paints
 // the screen. This is the "load into the machine" path; the mount drawer's
@@ -651,6 +674,7 @@ func (zx *ZenZX) loadDroppedFile(file string) string {
 			return base + " could not be loaded as a snapshot"
 		}
 		fmt.Printf("Loaded snapshot: %s\n", file)
+		zx.afterSnapshotLoad()
 		return "The snapshot " + base + " has been restored"
 
 	case ".sna", ".z80", ".szx":
@@ -662,6 +686,7 @@ func (zx *ZenZX) loadDroppedFile(file string) string {
 			return base + " could not be loaded as a snapshot"
 		}
 		fmt.Printf("Loaded %s snapshot: %s\n", strings.ToUpper(format), file)
+		zx.afterSnapshotLoad()
 		return "The " + strings.ToUpper(format) + " snapshot " + base + " has been restored"
 
 	case ".dsk":
@@ -695,10 +720,20 @@ func (zx *ZenZX) loadDroppedFile(file string) string {
 		return fmt.Sprintf("The tape %s is loaded and rewound (%d %s)", base, n, block)
 
 	case ".nex":
-		// NEX loading (direct page/Layer2/palette injection) is tracked as T-32
-		// and not implemented yet; report rather than silently ignoring the drop.
-		fmt.Printf("NEX loading not implemented yet: %s\n", file)
-		return "NEX loading isn't implemented yet"
+		// A NEX is a Next executable, so on a classic model there is nothing to
+		// load -- it is not applicable. On a Next that boots NextZXOS it is run by
+		// NextZXOS's own .nexload, started from the menus for the person (nexrun.go).
+		// When the Next is busy the person is asked before it is reset; a host that
+		// cannot ask leaves the file alone.
+		msg, needsReset := zx.RunNEX(file, false)
+		if needsReset {
+			if zx.NEXAskReset != nil {
+				zx.NEXAskReset(file)
+				return ""
+			}
+			fmt.Printf("NEX not run, the Next is busy: %s\n", file)
+		}
+		return msg
 	}
 	return ""
 }
