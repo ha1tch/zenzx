@@ -115,6 +115,14 @@ type ZenZX struct {
 	// auto is a pending autorun, nil once it has typed its keys: autorun.go.
 	auto *autorun
 
+	// rzx is an .rzx recording being played, nil when none is: rzx.go. OnRZX is where the host
+	// hears of how it ended.
+	rzx   *rzxReplay
+	OnRZX func(msg string)
+
+	// OnNotice is where the host hears what notice says (input.go).
+	OnNotice func(msg string)
+
 	// nexRun is a .nex being run from the menu or the Browser, one frame at a time (nexrun.go);
 	// nexScratch is the card made for it. OnNEXRun is where the host hears how it ended.
 	nexRun     *nexRun
@@ -153,6 +161,11 @@ type ZenZX struct {
 	frameCount int
 	running    bool
 	paused     bool
+	// stopped is a machine that has been stopped (Machine > Stop) when it was the last: it
+	// stays as the window's front, with nothing running and nothing drawn but the background,
+	// until a machine is started in its place (machinedeck_gui.go). stopping is the few frames
+	// of the stop animation before it, with the machine held where it was.
+	stopped, stopping bool
 
 	// System
 	is128K  bool
@@ -492,6 +505,7 @@ func (zx *ZenZX) OverrideROMBankBytes(bank int, data []byte) error {
 }
 
 func (zx *ZenZX) Reset() {
+	zx.rzxStop("") // a reset gives up a recording that is playing
 	zx.cpu.Reset()
 	zx.cycleCount = 0
 	zx.frameCount = 0
@@ -538,6 +552,11 @@ func (zx *ZenZX) RunFrame() {
 	// New frame origin: all frame-relative ULA timing (contention,
 	// border striping, later the floating bus) measures from here.
 	zx.frameOrigin = zx.cpu.Cycles
+
+	// A recording that is playing gives the frame its own length and its own interrupt: rzx.go.
+	if zx.rzx != nil && zx.rzxFrame() {
+		return
+	}
 
 	frameCycles := 0
 	cycleUpdateCounter := 0
@@ -672,6 +691,10 @@ func (zx *ZenZX) checkAMXInterrupt() {
 
 func (zx *ZenZX) Render() {
 	zx.display.UpdateWindowSize()
+	if b, ok := zx.display.(interface{ RenderBlank() }); ok && zx.stopped {
+		b.RenderBlank() // a stopped machine shows the background and what is drawn over it, not a picture
+		return
+	}
 	zx.display.Render(zx.paused, zx.memory, zx.screen, zx.io)
 }
 

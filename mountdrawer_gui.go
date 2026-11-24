@@ -265,7 +265,7 @@ func (m *mountDrawer) Update(pointerTaken bool) bool {
 // machineLoadExts are the dropped-file types that load into the running
 // machine (handled by loadDroppedFile) rather than being copied onto a card.
 var machineLoadExts = map[string]bool{
-	".scr": true, ".zxs": true, ".sna": true, ".z80": true, ".szx": true,
+	".scr": true, ".zxs": true, ".sna": true, ".z80": true, ".szx": true, ".rzx": true,
 	".dsk": true, ".tap": true, ".tzx": true, ".nex": true,
 }
 

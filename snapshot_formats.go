@@ -125,6 +125,8 @@ func DetectSnapshotFormat(filename string) string {
 		return "zxs"
 	} else if strings.HasSuffix(lower, ".szx") {
 		return "szx"
+	} else if strings.HasSuffix(lower, ".rzx") {
+		return "rzx"
 	}
 
 	// Try to detect by content
@@ -143,6 +145,11 @@ func DetectSnapshotFormat(filename string) string {
 	// Check for SZX magic: a .szx always starts with "ZXST"
 	if string(header[:4]) == "ZXST" {
 		return "szx"
+	}
+
+	// An .rzx recording always starts with "RZX!"
+	if string(header[:4]) == rzxMagic {
+		return "rzx"
 	}
 
 	// Check for ZXS magic
@@ -182,6 +189,8 @@ func (zx *ZenZX) SaveSnapshotFormat(filename string, format string) error {
 		// Without this case the default branch below would detect "szx" from the
 		// extension and call this function again, for ever.
 		return fmt.Errorf("saving .szx is not supported: use .z80, .sna or .zxs")
+	case "rzx":
+		return fmt.Errorf("saving .rzx is not supported: ZenZX plays recordings and does not make them")
 	default:
 		// Auto-detect by extension
 		detected := DetectSnapshotFormat(filename)
@@ -208,9 +217,20 @@ func (zx *ZenZX) LoadSnapshotFormat(filename string, format string) error {
 	case "z80":
 		return zx.LoadZ80(filename)
 	case "zxs":
+		if filename == embeddedSnapshot && startupProgram != nil {
+			// A standalone program's own machine, which runs at once: the program is the game, and
+			// there is nobody to press Play before it (a snapshot someone opens waits, by preference).
+			if err := zx.LoadSnapshotData(startupProgram.Snapshot); err != nil {
+				return err
+			}
+			zx.paused = false
+			return nil
+		}
 		return zx.LoadSnapshot(filename) // Original ZXS format
 	case "szx":
 		return zx.LoadSZX(filename)
+	case "rzx":
+		return zx.LoadRZX(filename) // a recording to play, not a snapshot: rzx.go
 	default:
 		return fmt.Errorf("unknown snapshot format: %s", format)
 	}

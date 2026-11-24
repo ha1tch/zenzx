@@ -35,12 +35,12 @@ func fileRows(b *appMenuBar) []string {
 	return got
 }
 
-func TestFileMenuIsFirstOnTheBarWithOpenPreferencesAndQuit(t *testing.T) {
+func TestFileMenuIsFirstOnTheBarWithOpenExportPreferencesAndQuit(t *testing.T) {
 	b, _ := newTestBar(t, nil, "")
 	if barFile != 0 {
 		t.Errorf("barFile = %d: File is the first menu of the bar", barFile)
 	}
-	want := []string{"Open...", "-", "Preferences...", "-", "Quit"}
+	want := []string{"Open...", "Export...", "-", "Preferences...", "-", "Quit"}
 	if got := fileRows(b); !reflect.DeepEqual(got, want) {
 		t.Errorf("the File menu is %v, want %v", got, want)
 	}
@@ -53,12 +53,12 @@ func TestFileQuitAsksTheHostToEndTheProgram(t *testing.T) {
 	b, zx := newTestBar(t, nil, "")
 	quit := 0
 	b.quit = func() { quit++ }
-	b.actions[barFile][4](zx)
+	b.actions[barFile][5](zx)
 	if quit != 1 {
 		t.Errorf("Quit called the host's quit %d times, want once", quit)
 	}
 	b.quit = nil
-	b.actions[barFile][4](zx) // a bar with no host must not panic
+	b.actions[barFile][5](zx) // a bar with no host must not panic
 }
 
 func TestFileOpenBrowsesForAnyLoadableFileAndRoutesItLikeADrop(t *testing.T) {
@@ -291,7 +291,7 @@ func TestPreferencesWindowFitsALittleScreen(t *testing.T) {
 		}
 	}
 	// Opening it through the menu makes it the one surface.
-	b.actions[barFile][2](zx)
+	b.actions[barFile][3](zx)
 	if b.prefs == nil || !b.modalOpen() {
 		t.Error("File > Preferences... did not open the window")
 	}

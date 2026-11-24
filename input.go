@@ -560,20 +560,33 @@ func (zx *ZenZX) showStatus() {
 
 }
 
+// notice says what happened because of something the person did. The GUI has OnNotice, which
+// shows it as a toast: many people use only the window and never see the console, so with a
+// toast to show it the console is left alone. Without one (the headless build, a machine nobody
+// has given a window) it goes to the console.
+func (zx *ZenZX) notice(format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	if zx.OnNotice != nil {
+		zx.OnNotice(msg)
+		return
+	}
+	fmt.Println(msg)
+}
+
 // Disk operation handlers
 func (zx *ZenZX) handleSaveDisk() {
 	if zx.io.hasFDC && zx.io.fdc != nil && zx.io.fdc.IsModified() {
 		if zx.io.fdc.diskFilename != "" {
 			if err := zx.io.SaveDisk(); err != nil {
-				fmt.Printf("Error saving disk: %v\n", err)
+				zx.notice("The disk could not be saved: %v", err)
 			} else {
-				fmt.Println("Disk saved successfully")
+				zx.notice("The disk is saved")
 			}
 		} else {
-			fmt.Println("Blank disk - use F8 to save as new file")
+			zx.notice("This is a blank disk: use Save Disk As to put it in a file")
 		}
 	} else {
-		fmt.Println("No disk to save or disk not modified")
+		zx.notice("There is nothing to save: the disk has not changed")
 	}
 }
 
@@ -585,12 +598,12 @@ func (zx *ZenZX) handleInsertBlankDisk() {
 		}
 
 		zx.io.fdc.CreateBlankDisk()
-		fmt.Println("Inserted blank formatted disk")
+		zx.notice("A blank formatted disk is in the drive")
 		fmt.Println("Tip: Use SAVE \"filename\" to save BASIC programs")
 		fmt.Println("     Use CAT to list disk contents")
 		fmt.Println("     Press F8 to save disk image to file")
 	} else {
-		fmt.Println("FDC not available")
+		zx.notice("This model has no disk drive")
 	}
 }
 
@@ -598,12 +611,12 @@ func (zx *ZenZX) handleEjectDisk() {
 	if zx.io.hasFDC && zx.io.fdc != nil {
 		if zx.io.fdc.HasDisk() {
 			zx.io.fdc.EjectDisk()
-			fmt.Println("Disk ejected")
+			zx.notice("The disk is ejected")
 		} else {
-			fmt.Println("No disk to eject")
+			zx.notice("There is no disk in the drive")
 		}
 	} else {
-		fmt.Println("FDC not available")
+		zx.notice("This model has no disk drive")
 	}
 }
 
@@ -613,12 +626,12 @@ func (zx *ZenZX) handleSaveDiskAs() {
 		filename := fmt.Sprintf("disk_%s.dsk", timestamp)
 
 		if err := zx.io.SaveDiskAs(filename); err != nil {
-			fmt.Printf("Error saving disk: %v\n", err)
+			zx.notice("The disk could not be saved: %v", err)
 		} else {
-			fmt.Printf("Disk saved as: %s\n", filename)
+			zx.notice("The disk is saved as %s", filename)
 		}
 	} else {
-		fmt.Println("No disk to save")
+		zx.notice("There is no disk in the drive")
 	}
 }
 
@@ -688,6 +701,16 @@ func (zx *ZenZX) loadDroppedFile(file string) string {
 		fmt.Printf("Loaded %s snapshot: %s\n", strings.ToUpper(format), file)
 		zx.afterSnapshotLoad()
 		return "The " + strings.ToUpper(format) + " snapshot " + base + " has been restored"
+
+	case ".rzx":
+		if err := zx.LoadRZX(file); err != nil {
+			fmt.Printf("Error loading recording %s: %v\n", file, err)
+			return base + " could not be played: " + err.Error()
+		}
+		fmt.Printf("Loaded RZX recording: %s\n", file)
+		zx.afterSnapshotLoad()
+		_, _, total := zx.RZXPlaying()
+		return fmt.Sprintf("The recording %s is ready: %d frames, about %d seconds", base, total, total/50)
 
 	case ".dsk":
 		if zx.io.hasFDC && zx.io.fdc != nil {
@@ -804,9 +827,9 @@ func (zx *ZenZX) handleQuickSave() {
 	filename := "quicksave" + extension
 
 	if err := zx.SaveSnapshotFormat(filename, format); err != nil {
-		fmt.Printf("Quick save failed: %v\n", err)
+		zx.notice("Quick save failed: %v", err)
 	} else {
-		fmt.Printf("Quick saved to %s (%s format)\n", filename, strings.ToUpper(format))
+		zx.notice("Quick saved to %s (%s format)", filename, strings.ToUpper(format))
 	}
 
 	zx.paused = wasPaused
@@ -828,7 +851,7 @@ func (zx *ZenZX) handleQuickLoad() {
 		filename := "quicksave." + format
 		if _, err := os.Stat(filename); err == nil {
 			if err := zx.LoadSnapshotFormat(filename, format); err == nil {
-				fmt.Printf("Quick loaded from %s (%s format)\n", filename, strings.ToUpper(format))
+				zx.notice("Quick loaded from %s (%s format)", filename, strings.ToUpper(format))
 				loaded = true
 				break
 			}
@@ -836,7 +859,7 @@ func (zx *ZenZX) handleQuickLoad() {
 	}
 
 	if !loaded {
-		fmt.Println("No quick save found (tried .zxs, .sna, .z80)")
+		zx.notice("No quick save found (tried .zxs, .sna, .z80)")
 		zx.paused = false // Unpause on error
 	}
 	// Note: Don't unpause here - the snapshot load will handle it
@@ -859,9 +882,9 @@ func (zx *ZenZX) handleAutoSave() {
 	filename := fmt.Sprintf("snapshot_%s%s", timestamp, extension)
 
 	if err := zx.SaveSnapshotFormat(filename, format); err != nil {
-		fmt.Printf("Save snapshot failed: %v\n", err)
+		zx.notice("Save snapshot failed: %v", err)
 	} else {
-		fmt.Printf("Saved snapshot: %s (%s format)\n", filename, strings.ToUpper(format))
+		zx.notice("Saved snapshot: %s (%s format)", filename, strings.ToUpper(format))
 	}
 
 	zx.paused = wasPaused

@@ -528,6 +528,7 @@ func (zx *ZenZX) SaveSnapshot(filename string) error {
 
 // LoadSnapshot loads emulator state from a file with optional metadata validation
 func (zx *ZenZX) LoadSnapshot(filename string) error {
+	zx.rzxStop("") // a snapshot loaded gives up a recording that is playing
 	sayf("Loading snapshot from %s\n", filename)
 
 	// Check for metadata file
@@ -553,7 +554,20 @@ func (zx *ZenZX) LoadSnapshot(filename string) error {
 	if err != nil {
 		return fmt.Errorf("reading snapshot file: %w", err)
 	}
+	return zx.loadSnapshotData(data, metadata)
+}
 
+// LoadSnapshotData loads emulator state from the bytes of a .zxs snapshot, as LoadSnapshot does
+// from its file. A program exported from ZenZX (standalone.go) carries its machine this way.
+func (zx *ZenZX) LoadSnapshotData(data []byte) error {
+	zx.rzxStop("")
+	zx.paused = true
+	return zx.loadSnapshotData(data, nil)
+}
+
+// loadSnapshotData is what LoadSnapshot does once it has the bytes of the file, and the
+// metadata of its sidecar file when there is one.
+func (zx *ZenZX) loadSnapshotData(data []byte, metadata *SnapshotMetadata) error {
 	reader := bytes.NewReader(data)
 
 	// Read and validate header

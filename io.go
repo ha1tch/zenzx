@@ -50,6 +50,10 @@ func (bh *BorderHistory) GetChanges() []BorderChange {
 }
 
 type SpectrumIO struct {
+	// replayIn, while an .rzx recording plays, gives the byte an IN reads (rzx.go); false means
+	// the frame has no more recorded and the hardware answers.
+	replayIn func() (uint8, bool)
+
 	keyboard    [8]uint8
 	borderColor uint8
 	speaker     bool
@@ -275,6 +279,11 @@ func (io *SpectrumIO) SetCPU(cpu Z80CPU) {
 // ============================================================================
 
 func (io *SpectrumIO) In(port uint16) uint8 {
+	if io.replayIn != nil {
+		if v, ok := io.replayIn(); ok {
+			return v
+		}
+	}
 	return io.ReadPort(port)
 }
 

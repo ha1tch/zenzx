@@ -5,6 +5,15 @@ text verbatim as at closure, stamped with the closing version and date.
 The changelog says what shipped; this record says what was wrong and
 how it was resolved. Append-only.
 
+## [0.50.0] T-82 — RZX files cannot be opened: the embedded snapshot is not read and the input recording is not replayed (v0.50.0, 2026-11-23)
+
+Theme: formats · closed 0.50.0 · 2026-11-23
+Trigger: found 2026-11-23, while taking the README screenshots. Of three RoboCop files (a +3 .dsk, a .tzx and an .rzx), only the .rzx gave a running game, and only because its embedded 128K snapshot was extracted by hand; the .dsk ends at BASIC and the .tzx resets after the Speedlock loader starts (both T-22).
+
+Scope: ZenZX has no RZX support at all. Two parts: (1) open an .rzx as its embedded snapshot (block 0x30; zlib when flag bit 1 is set; the four-character extension names the snapshot format), which needs no replay and would have made this file usable at once; (2) replay of the input recording (block 0x80), which needs frame-exact input and the interrupt-count rules and is a larger piece. Done when: part (1) loads the RoboCop .rzx from File > Open and from -snapshot with a test, and part (2) is either built or recorded in docs/KNOWN_ISSUES.md as an intentional limit.
+
+Cross-ref: CHANGELOG 0.50.0.
+
 ## [0.50.0] T-81 — TestBatchThreeModeCompare passes without its corpus instead of skipping (v0.50.0, 2026-11-23)
 
 Theme: testing · closed 0.50.0 · 2026-11-23

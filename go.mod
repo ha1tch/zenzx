@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/ebitengine/oto/v3 v3.4.0
-	github.com/gen2brain/raylib-go/raylib v0.60.0
+	github.com/gen2brain/raylib-go/raylib v0.60.1
 	github.com/ha1tch/blipper v0.9.25
 	github.com/ha1tch/plus3 v0.10.0
 	github.com/ha1tch/queryfy v0.3.2
@@ -12,7 +12,7 @@ require (
 	github.com/ha1tch/zen80 v0.5.7
 	github.com/ha1tch/zendis v0.8.2
 	github.com/ha1tch/zentools v0.16.1
-	github.com/ha1tch/zenui v0.2.1
+	github.com/ha1tch/zenui v0.3.4
 )
 
 require (

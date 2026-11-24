@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ha1tch/zenui"
 	"github.com/ha1tch/zenzx/pkg/nextcard"
@@ -42,25 +43,85 @@ func usesSDCards(zx *ZenZX) bool {
 // refreshStorageMenu makes the bar's fourth menu the one the machine has a use for. Called
 // each frame the bar is shown, as the other menus whose contents change are.
 func (b *appMenuBar) refreshStorageMenu(zx *ZenZX) {
-	if !usesSDCards(zx) {
-		if b.storageIsSD {
-			b.storageIsSD = false
-			b.widget.SetLabel(barFloppyDisk, storageLabel)
-			b.widget.SetItems(barFloppyDisk, b.diskItems)
+	spec := b.storageMenuSpec(zx)
+	b.storageSpec = spec
+	b.storageIsSD = usesSDCards(zx)
+	b.actions[barFloppyDisk] = spec.actions()
+	items := spec.items()
+	b.widget.SetLabel(barFloppyDisk, storageLabel)
+	if sig := storageSignature(items); sig != b.storageSig {
+		b.storageSig = sig
+		b.widget.SetItems(barFloppyDisk, items)
+	}
+}
+
+// storageSignature is what the user can see of the menu, to tell whether it changed.
+func storageSignature(items []zenui.Item) string {
+	var sb strings.Builder
+	for _, it := range items {
+		fmt.Fprintf(&sb, "%s|%v|%v|%d\n", it.Label, it.Disabled, it.Title, len(it.SubItems))
+	}
+	return sb.String()
+}
+
+// storageMenuSpec is the Storage menu of the machine as it is now. Every machine has the
+// same two sections in the same order, Floppy Disk and then SD Card: a section is live where
+// the machine has that hardware, and where it has not it stays, disabled, with a line that
+// says why -- the +3 has the drive, a Next the cards, a 48K, 128K, +2 or +2A neither. The
+// menu does not change shape under the user, and a drive-less model has no live row that can
+// only say "FDC not available".
+func (b *appMenuBar) storageMenuSpec(zx *ZenZX) menuSpec {
+	spec := b.floppySection(zx)
+	spec = append(spec, menuSep())
+	return append(spec, b.sdSection(zx)...)
+}
+
+// floppySection is the +3's drive: live when the machine has a floppy controller.
+func (b *appMenuBar) floppySection(zx *ZenZX) menuSpec {
+	if zx.io.hasFDC && zx.io.fdc != nil {
+		return menuSpec{
+			menuTitle("Floppy Disk"),
+			menuRow("Open DSK Image...", func(zx *ZenZX) { b.openDiskDialog(zx) }),
+			menuRow("Insert Blank Disk", func(zx *ZenZX) { zx.handleInsertBlankDisk() }),
+			menuSep(),
+			menuRow("Save Disk", func(zx *ZenZX) { zx.handleSaveDisk() }),
+			menuRow("Save Disk As...", func(zx *ZenZX) { zx.handleSaveDiskAs() }),
+			menuSep(),
+			menuRow("Eject Disk", func(zx *ZenZX) { zx.handleEjectDisk() }),
+			menuRow("Disk Info", func(zx *ZenZX) { b.showInfo("DISK INFO", diskInfoText(zx)) }),
+			menuRow("Manage Disks...", func(zx *ZenZX) { b.openDisks(zx) }),
 		}
-		return
+	}
+	if usesSDCards(zx) {
+		// A Next reaches storage through its SD cards, but NextZXOS can also mount a .dsk as
+		// one of its own drives (A:/B:). ZenZX does not emulate that yet (T-72), so the section
+		// stands as disabled signposts -- the capability is shown where it will live, and lights
+		// up when T-72 lands.
+		return menuSpec{
+			menuTitle("Floppy Disk"),
+			{label: "    Mount DSK as Drive A...", disabled: true},
+			{label: "    Mount DSK as Drive B...", disabled: true},
+			{label: "    Unmount Drive", disabled: true},
+		}
+	}
+	return menuSpec{menuTitle("Floppy Disk"), {label: sectionAbsent, disabled: true}}
+}
+
+// sectionAbsent is the one line a Storage section shows where the machine has none of that
+// hardware, or has it switched off: not applicable, with no reason given.
+const sectionAbsent = "    N/A"
+
+// sdSection is the Next's SD cards: live while a Next that boots NextZXOS runs.
+func (b *appMenuBar) sdSection(zx *ZenZX) menuSpec {
+	if !usesSDCards(zx) {
+		return menuSpec{menuTitle("SD Card"), {label: sectionAbsent, disabled: true}}
 	}
 	second := zx.SecondCard()
 	slot2 := "Slot 2: empty"
 	if second != "" {
 		slot2 = "Slot 2: " + filepath.Base(second)
 	}
-	// The rows, items and actions together (menuspec_gui.go). Virtual Floppy: a Next reaches
-	// storage through its SD cards, but NextZXOS can also mount a .dsk as one of its own
-	// drives (A:/B:). ZenZX does not emulate that yet (T-72), so that section stands as
-	// disabled signposts -- the capability is shown where it will live, not hidden, and
-	// lights up when T-72 lands. It replaces the old swap that hid the Floppy Disk menu whole.
-	spec := menuSpec{
+	return menuSpec{
 		menuTitle("SD Card"),
 		{label: "Slot 1: " + filepath.Base(zx.next.files.Card), disabled: true},
 		{label: slot2, disabled: true},
@@ -69,25 +130,13 @@ func (b *appMenuBar) refreshStorageMenu(zx *ZenZX) {
 		menuRow("Insert ZenZX's Card (Examples)", func(zx *ZenZX) { b.insertOwnCard(zx) }),
 		{label: "Remove Card from Slot 2", disabled: second == "", run: func(zx *ZenZX) {
 			zx.RemoveSecondCard()
-			fmt.Println("SD card: slot 2 is empty. " + remountHint)
+			zx.notice("Slot 2 is empty. %s", remountHint)
 		}},
 		{label: "New Empty Card", sub: b.newCardSizeSpec()},
 		menuSep(),
 		menuRow("Card Info", func(zx *ZenZX) { b.showInfo("CARD INFO", cardInfoText(zx)) }), // info_gui.go
 		menuRow("Manage Cards...", func(zx *ZenZX) { b.openCards(zx) }),
-		menuSep(),
-		menuTitle("Virtual Floppy"),
-		{label: "    (NextZXOS disc images -- not emulated yet, T-72)", disabled: true},
-		{label: "    Mount DSK as Drive A...", disabled: true},
-		{label: "    Mount DSK as Drive B...", disabled: true},
-		{label: "    Unmount Drive", disabled: true},
 	}
-	b.storageSpec = spec
-	if !b.storageIsSD {
-		b.storageIsSD = true
-		b.widget.SetLabel(barFloppyDisk, storageLabel)
-	}
-	b.widget.SetItems(barFloppyDisk, spec.items())
 }
 
 // newCardSizes are the sizes New Empty Card offers. The first is the smallest a FAT32 card
@@ -134,10 +183,10 @@ func (b *appMenuBar) openNewCardDialog(zx *ZenZX, size int64) {
 func (b *appMenuBar) newCard(zx *ZenZX, path string, size int64) {
 	path, err := newEmptyCard(path, size)
 	if err != nil {
-		fmt.Printf("SD card: %s could not be made: %v\n", path, err)
+		zx.notice("The card %s could not be made: %v", filepath.Base(path), err)
 		return
 	}
-	fmt.Printf("SD card: made %s, empty, %d MB\n", path, size>>20)
+	zx.notice("Made the card %s, empty, %d MB", filepath.Base(path), size>>20)
 	b.insertCard(zx, path)
 }
 
@@ -161,19 +210,19 @@ func (b *appMenuBar) insertCard(zx *ZenZX, path string) {
 		return
 	}
 	if same(path, zx.next.files.Card) {
-		fmt.Println("SD card: that is the card in slot 1")
+		zx.notice("That is the card in slot 1")
 		return
 	}
 	if u := b.whereIs(path); u.machine != 0 && u.machine != b.numberOf(zx) {
-		fmt.Printf("SD card: %s is in slot %d of machine %d; a card is in one machine at a time\n", path, u.slot, u.machine)
+		zx.notice("%s is in slot %d of machine %d: a card is in one machine at a time", filepath.Base(path), u.slot, u.machine)
 		return
 	}
 	protected, err := zx.InsertSecondCard(path, b.nextReadOnly)
 	if err != nil {
-		fmt.Printf("SD card: %s could not be used: %v\n", path, err)
+		zx.notice("The card %s could not be used: %v", filepath.Base(path), err)
 		return
 	}
-	fmt.Printf("SD card: %s is in slot 2 (write-protected: %v). %s\n", path, protected, remountHint)
+	zx.notice("%s is in slot 2 (write-protected: %v). %s", filepath.Base(path), protected, remountHint)
 }
 
 // insertOwnCard puts ZenZX's own card in the second slot, making it with the example
@@ -189,10 +238,10 @@ func (b *appMenuBar) insertOwnCard(zx *ZenZX) {
 			err = addToOwnCard(path, examples)
 		}
 		if err != nil {
-			fmt.Printf("SD card: %s could not be made: %v\n", path, err)
+			zx.notice("The card %s could not be made: %v", filepath.Base(path), err)
 			return
 		}
-		fmt.Printf("SD card: made %s with the example programs on it\n", path)
+		zx.notice("Made the card %s with the example programs on it", filepath.Base(path))
 	}
 	b.insertCard(zx, path)
 }

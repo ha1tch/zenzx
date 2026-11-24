@@ -199,6 +199,7 @@ type cardsWindow struct {
 	list     *zenui.List
 	buttons  *zenui.ButtonBar
 	browse   *zenui.Dialog
+	ask      *cardQuestion // Rename or Delete, asking: sdcards_manage_gui.go
 	note     string
 	bootCard string
 
@@ -325,6 +326,8 @@ const (
 	cardBtnSlot2     = "slot2"
 	cardBtnRemove    = "remove"
 	cardBtnCopy      = "copy"
+	cardBtnRename    = "rename"
+	cardBtnDelete    = "delete"
 	cardBtnBootable  = "bootable"
 	cardBtnNewSmall  = "new-small"
 	cardBtnNewLarge  = "new-large"
@@ -365,6 +368,8 @@ func (w *cardsWindow) setButtons() {
 		{ID: cardBtnSlot2, Label: "Put in slot 2", Disabled: !(running && free)},
 		{ID: cardBtnRemove, Label: "Take out of slot 2", Disabled: !(mine && u.slot == 2)},
 		{ID: cardBtnCopy, Label: "Copy", Disabled: !ok},
+		{ID: cardBtnRename, Label: "Rename", Disabled: !(free && !w.isStandard(c.path))},
+		{ID: cardBtnDelete, Label: "Delete", Disabled: !free},
 		{ID: cardBtnBootable, Label: "Make bootable", Disabled: !(free && !c.system && w.systemSource() != "")},
 		{ID: cardBtnNewSmall, Label: "New 280 MB"},
 		{ID: cardBtnNewLarge, Label: "New 1 GB"},
@@ -402,6 +407,10 @@ func (w *cardsWindow) do(id string) cardsResult {
 		w.note = "Slot 2 is empty. " + remountHint
 	case cardBtnCopy:
 		w.startCopy(c)
+	case cardBtnRename:
+		w.startRename(c)
+	case cardBtnDelete:
+		w.startDelete(c)
 	case cardBtnBootable:
 		w.startBootable(c)
 	case cardBtnNewSmall, cardBtnNewLarge:
@@ -610,6 +619,9 @@ func (w *cardsWindow) layout(r zenui.Renderer, screenW, screenH int) {
 
 // Update runs the window for a frame.
 func (w *cardsWindow) Update(in zenui.Input, r zenui.Renderer, screenW, screenH int) cardsResult {
+	if w.ask != nil {
+		return w.updateAsk(in)
+	}
 	if w.browse != nil {
 		switch w.browse.Update(in) {
 		case zenui.Accepted:
@@ -711,6 +723,9 @@ func (w *cardsWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 		}
 	}
 	w.buttons.Draw(r, theme, w.barArea, w.scale)
+	if w.ask != nil {
+		w.ask.draw(r, screenW, screenH, theme)
+	}
 }
 
 // busy reports that the window must not be closed from outside: a copy is

@@ -76,9 +76,23 @@ type machineDeck struct {
 	machines []*deckMachine
 	front    int
 
+	// idle is the machine that was stopped last, when no machine is left to show (machines is
+	// then empty): the window keeps it as the machine it shows, with nothing running and
+	// nothing drawn but the background, until a machine is started to take its place
+	// (machinedeck_stop_gui.go). nil while there are machines.
+	idle      *ZenZX
+	idleModel string // the model it was, for the next machine to be
+	// stomp is the animation of a machine being stopped, nil when none is; textures are its
+	// pictures, made when it first plays.
+	stomp    *stompAnim
+	textures *stompTextures
+
 	// dockOn and multiOn, when set, are the Preferences: whether the dock may be shown, and
 	// whether it may add machines. Unset is on, as it always was.
 	dockOn, multiOn func() bool
+	// stopAnimation, when set, is the Preference for the animation that plays as a machine is
+	// stopped (stomp_gui.go): off, the machine goes at once.
+	stopAnimation func() bool
 
 	// focusFollow, when set, moves the front (and so the keyboard) to the
 	// machine whose player beacon is set -- for an example whose program
@@ -159,11 +173,19 @@ func newMachineDeck(zx *ZenZX, model string, dm *DisplayManager, dev AudioDevice
 }
 
 // Front returns the machine the window shows.
-func (d *machineDeck) Front() *ZenZX { return d.machines[d.front].zx }
+func (d *machineDeck) Front() *ZenZX {
+	if len(d.machines) == 0 {
+		return d.idle
+	}
+	return d.machines[d.front].zx
+}
 
 // frontCaption is a short label for the front machine, for the debugger HUD:
 // its dock number and its title (name or model), e.g. "Machine 2 · 128K".
 func (d *machineDeck) frontCaption() string {
+	if len(d.machines) == 0 {
+		return "No machine"
+	}
 	m := d.machines[d.front]
 	return fmt.Sprintf("Machine %d - %s", d.front+1, m.title())
 }
@@ -204,6 +226,9 @@ func modelLabel(model string) string {
 // machine's, except that a second Next would boot from the first one's SD card
 // while that one writes to it, so beside a Next the new machine is a 48K.
 func (d *machineDeck) modelForNew() string {
+	if len(d.machines) == 0 {
+		return d.idleModel
+	}
 	m := d.machines[d.front].model
 	if m == "next" {
 		return "48k"
@@ -214,6 +239,9 @@ func (d *machineDeck) modelForNew() string {
 // add makes a new machine and returns its place in the deck. It runs behind
 // the front machine until it is flipped to.
 func (d *machineDeck) add(model string) int {
+	if len(d.machines) == 0 {
+		return d.revive(model)
+	}
 	zx := d.make(model)
 	d.machines = append(d.machines, &deckMachine{zx: zx, model: model, mag: 1})
 	d.applyLayout()
@@ -254,7 +282,7 @@ func (d *machineDeck) remove(i int) {
 // flip brings machine i to the front: the display, the sound device and the
 // keyboard pass from the machine that had them to it.
 func (d *machineDeck) flip(i int) {
-	if i == d.front || i < 0 || i >= len(d.machines) {
+	if len(d.machines) == 0 || i == d.front || i < 0 || i >= len(d.machines) {
 		return
 	}
 	prev, next := d.machines[d.front].zx, d.machines[i].zx
@@ -442,8 +470,18 @@ func (d *machineDeck) startRename(i int, l dockLayout, textW func(string) int) {
 
 // frontModel and setFrontModel are the front machine's model as the dock
 // labels it; the Machine menu changes it.
-func (d *machineDeck) frontModel() string     { return d.machines[d.front].model }
-func (d *machineDeck) setFrontModel(m string) { d.machines[d.front].model = m }
+func (d *machineDeck) frontModel() string {
+	if len(d.machines) == 0 {
+		return d.idleModel
+	}
+	return d.machines[d.front].model
+}
+
+func (d *machineDeck) setFrontModel(m string) {
+	if len(d.machines) > 0 {
+		d.machines[d.front].model = m
+	}
+}
 
 // cardUse tells which machine of the deck has the card image at path, and
 // in which slot; the zero value when none has.
@@ -647,6 +685,11 @@ func (d *machineDeck) screenRect(i int) rl.Rectangle {
 // and sends it to the front.
 func (d *machineDeck) choose(i int, l dockLayout) {
 	if i == len(d.machines) {
+		if len(d.machines) == 0 { // none is running: New starts the one that fills the window
+			d.add(d.modelForNew())
+			d.hide()
+			return
+		}
 		if !d.multiAllowed() {
 			sayf("Machines: adding machines is off (File > Preferences...)\n")
 			return
@@ -677,6 +720,7 @@ func (d *machineDeck) startFly(i int, from rl.Rectangle) {
 // window) has the keyboard and the pointer.
 func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) {
 	d.frame++
+	d.tickStomp(time.Now())
 	d.addHover = false
 	wantHand := false
 	defer func() { setHandCursor(&d.addHand, wantHand) }()
@@ -865,7 +909,7 @@ func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) 
 		d.choose(d.sel, l)
 	case rl.IsKeyPressed(rl.KeyDelete), rl.IsKeyPressed(rl.KeyBackspace):
 		if d.sel < len(d.machines) {
-			d.remove(d.sel)
+			d.stop(d.sel)
 		}
 	case rl.IsKeyPressed(rl.KeyEscape):
 		d.hide()
@@ -908,6 +952,7 @@ func toRect(r rl.Rectangle) zenui.Rect {
 // Draw draws the dock and a picture on its way to the screen. It is called
 // inside the display's frame, after the machine's picture.
 func (d *machineDeck) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.Theme) {
+	defer d.drawStomp()
 	d.theme = theme
 	if d.state != barHidden {
 		l := d.layout(screenW, screenH, r.LineHeight(1))
@@ -1053,6 +1098,8 @@ func (d *machineDeck) Unload() {
 		d.roundCache.Unload()
 		d.round, d.roundCache = nil, nil
 	}
+	d.textures.unload()
+	d.textures = nil
 }
 
 // ----------------------------------------------------------------------------

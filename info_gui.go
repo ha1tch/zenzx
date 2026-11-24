@@ -5,13 +5,15 @@ package zenzx
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ha1tch/zenui"
 	"github.com/ha1tch/zenzx/pkg/nextcard"
 )
 
-// The Info items of the Tape, Floppy Disk, SD Card and Snapshot menus.
+// The Info items of the Tape, Storage and Snapshot menus.
 //
 // Each used to print a line or two to the terminal, which someone who
 // started the program from an icon never sees. Each now opens a small
@@ -71,6 +73,11 @@ func tapeInfoText(zx *ZenZX) string {
 	if name := zx.FirstProgram(); name != "" {
 		lines = append(lines, infoLine("First program", name))
 	}
+	size := 0
+	for _, blk := range st.Blocks {
+		size += len(blk.Data)
+	}
+	lines = append(lines, infoLine("Size", fmt.Sprintf("%d bytes in %d blocks", size, len(st.Blocks))))
 	lines = append(lines, "", "## Blocks", "")
 	for _, info := range zx.tape.GetBlockInfo() {
 		lines = append(lines, "  "+strings.TrimPrefix(info, "  "))
@@ -191,20 +198,63 @@ func cardInfoText(zx *ZenZX) string {
 	return strings.Join(lines, "\n")
 }
 
-// snapshotInfoText says how snapshots are loaded and saved.
-func snapshotInfoText() string {
-	return strings.Join([]string{
-		"## Snapshots",
-		"",
-		"A snapshot is the whole machine at one moment, in a file.",
-		"",
-		infoLine("Load", "drop a .zxs, .sna, .z80 or .szx file on the window,"),
-		infoLine("", "or start with -snapshot"),
-		infoLine("Quick Save", "writes quicksave.zxs, or the format -format names;"),
-		infoLine("", "Quick Load reads it back"),
-		infoLine("Timestamped", "writes a new file named for the date and time"),
-		"",
-		"Run Diagnostics prints a report on the running machine's",
-		"state to the terminal.",
-	}, "\n")
+// snapshotFileLine is one snapshot file as the Snapshot Info window lists it: its path, size
+// and when it was written. ok is false when the file is not there.
+func snapshotFileLine(label, path string) (line string, ok bool) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return infoLine(label, "none yet"), false
+	}
+	return infoLine(label, fmt.Sprintf("%s, %d KB, %s", infoPath(path), (st.Size()+1023)/1024,
+		st.ModTime().Format("2006-01-02 15:04"))), true
+}
+
+// snapshotInfoText says what snapshots there are to load or save, and how.
+func snapshotInfoText(zx *ZenZX) string {
+	format := zx.snapshotFormat
+	if format == "" || format == "auto" {
+		format = "zxs"
+	}
+	lines := []string{"## Here", "", infoLine("Saves in", strings.ToUpper(format)+", unless Save As says another")}
+	for _, ext := range []string{"zxs", "sna", "z80"} {
+		if line, ok := snapshotFileLine("Quick save ."+ext, "quicksave."+ext); ok {
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 3 {
+		lines = append(lines, infoLine("Quick save", "none yet: Quick Save writes quicksave."+format))
+	}
+	// The newest of the timestamped saves in the folder the program runs in.
+	var newest string
+	var when time.Time
+	count := 0
+	if names, err := filepath.Glob("snapshot_*"); err == nil {
+		for _, n := range names {
+			ext := strings.ToLower(filepath.Ext(n))
+			if ext != ".zxs" && ext != ".sna" && ext != ".z80" {
+				continue
+			}
+			count++
+			if st, err := os.Stat(n); err == nil && st.ModTime().After(when) {
+				newest, when = n, st.ModTime()
+			}
+		}
+	}
+	if count == 0 {
+		lines = append(lines, infoLine("Timestamped", "none yet"))
+	} else {
+		lines = append(lines, infoLine("Timestamped", fmt.Sprintf("%d saved; the newest", count)))
+		line, _ := snapshotFileLine("", newest)
+		lines = append(lines, line)
+	}
+	lines = append(lines, "", "## Loading", "",
+		infoLine("From a file", "drop a .zxs, .sna, .z80 or .szx file on the window,"),
+		infoLine("", "or start with -snapshot (a .rzx plays the same way)"),
+		infoLine("Quick Load", "reads the quick save back, in any of the formats"),
+		"", "## Saving", "",
+		infoLine("Quick Save", "writes quicksave.<format>"),
+		infoLine("Timestamped", "writes snapshot_<date>_<time>.<format>"),
+		infoLine("Save As", "the format (.zxs, .sna or .z80), then the name"),
+		"", "Run Diagnostics reports on the running machine.")
+	return strings.Join(lines, "\n")
 }

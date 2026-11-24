@@ -623,7 +623,7 @@ func (b *appMenuBar) diskUser(zx *ZenZX) func(path string) int {
 // openDisks opens the Floppy Disks window for a machine with a drive.
 func (b *appMenuBar) openDisks(zx *ZenZX) {
 	if !zx.io.hasFDC || zx.io.fdc == nil {
-		fmt.Println("Manage Disks: the current model has no floppy controller -- switch to +3 or Spanish +3 first (Machine menu)")
+		zx.notice("This model has no disk drive: switch to a +3 first, from the Machine menu")
 		return
 	}
 	holder := func(n int) *ZenZX {

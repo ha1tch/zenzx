@@ -41,12 +41,13 @@ func (b *appMenuBar) logoButton(screenW int) (zenui.Rect, bool) {
 	if x <= 0 || x >= screenW {
 		return zenui.Rect{}, false
 	}
-	left := max(x-logoButtonPad, b.widget.LabelsEndX())
-	right := screenW - logoRightMargin + logoButtonPad
+	pad := logoButtonPadFor(b.stripH())
+	left := max(x-pad, b.widget.LabelsEndX())
+	right := screenW - logoRightMargin + pad
 	if right <= left {
 		return zenui.Rect{}, false
 	}
-	return zenui.Rect{X: left, Y: 1, W: right - left, H: menuStripHeight - 2}, true
+	return zenui.Rect{X: left, Y: 1, W: right - left, H: b.stripH() - 2}, true
 }
 
 // logoButtonState is how the button looks now.
@@ -76,15 +77,18 @@ func drawLogoButton(r zenui.Renderer, rc zenui.Rect, barY int, state logoButtonS
 		softLight, softDark = softDark, softLight
 		r.FillRect(rc, zenui.Colour{R: 0, G: 0, B: 0, A: 45})
 	}
+	// The edges are as thick as the bar is tall in strips of its usual height: one pixel in the
+	// usual strip, two in one half as tall again as that.
+	t := logoBevelThickness(rc.H + 2)
 	edges := func(box zenui.Rect, topLeft, bottomRight zenui.Colour) {
-		r.FillRect(zenui.Rect{X: box.X, Y: box.Y, W: box.W, H: 1}, topLeft)
-		r.FillRect(zenui.Rect{X: box.X, Y: box.Y, W: 1, H: box.H}, topLeft)
-		r.FillRect(zenui.Rect{X: box.X, Y: box.Y + box.H - 1, W: box.W, H: 1}, bottomRight)
-		r.FillRect(zenui.Rect{X: box.X + box.W - 1, Y: box.Y, W: 1, H: box.H}, bottomRight)
+		r.FillRect(zenui.Rect{X: box.X, Y: box.Y, W: box.W, H: t}, topLeft)
+		r.FillRect(zenui.Rect{X: box.X, Y: box.Y, W: t, H: box.H}, topLeft)
+		r.FillRect(zenui.Rect{X: box.X, Y: box.Y + box.H - t, W: box.W, H: t}, bottomRight)
+		r.FillRect(zenui.Rect{X: box.X + box.W - t, Y: box.Y, W: t, H: box.H}, bottomRight)
 	}
 	edges(rc, light, dark)
-	inner := zenui.Rect{X: rc.X + 1, Y: rc.Y + 1, W: rc.W - 2, H: rc.H - 2}
-	if inner.W > 2 && inner.H > 2 {
+	inner := zenui.Rect{X: rc.X + t, Y: rc.Y + t, W: rc.W - 2*t, H: rc.H - 2*t}
+	if inner.W > 2*t && inner.H > 2*t {
 		edges(inner, softLight, softDark)
 	}
 }

@@ -20,11 +20,14 @@ appear.
   Custom ROM     load a ROM file live from -custom-roms-dir
   Tape           play/stop, rewind, accurate/fast mode, tape info
                  (a window with its file, state and blocks)
-  Storage        a +3's floppy drive: open a .dsk image, save,
-                 insert blank, eject, save as, disk info. A Next's
-                 SD cards (slot 2) and, greyed for now, its
-                 virtual floppy
-  Snapshot       quick save/load, save timestamped, snapshot
+  Storage        the same two sections on every model: a +3's
+                 floppy drive (open a .dsk image, save, insert
+                 blank, eject, save as, disk info) and a Next's
+                 SD cards (slot 2). Greyed, with the reason,
+                 where the machine has none; results show as
+                 a toast
+  Snapshot       quick save/load, save timestamped, save as (a
+                 format: .zxs, .sna or .z80, then a name), snapshot
                  info, run diagnostics
   View           FPS and border checkboxes (the border is greyed
                  where the picture decides it: tiled layouts, full-
@@ -120,7 +123,7 @@ Debugger). The bar's settings are in File > Preferences.
                       fixed-bar persistence; default settings.json)
   -disk=FILE          mount a .dsk at startup (+3 models)
   -snapshot=FILE      load a snapshot at startup
-  -format=FORMAT      snapshot format: sna, z80, szx (load only), zxs, auto
+  -format=FORMAT      snapshot format: sna, z80, szx (load only), zxs, rzx (a recording to play), auto
   -audiobackend=NAME  raylib or oto
 
 Examples:

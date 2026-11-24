@@ -12,6 +12,178 @@ rework, and a documentation sweep.
 
 ### Added
 
+- **File > Export...** makes a program of one file from the machine on the
+  screen: a copy of the ZenZX that is running, with the machine as it was at that moment after it
+  (a `.zxs` snapshot, a model and a checksum, behind a trailer the program finds at its own
+  end). Nothing else goes with it: it needs no ROM file, no settings and no snapshot, and when it
+  is run it opens a window and goes on from where the machine was, with the window as it was:
+  the border shown or hidden, the FPS counter, the menu bar fixed or left to hide, and the menus'
+  preferences (theme, font, zoom, scale, dock, drops, tape deck), which are the program's own and
+  not written to the settings of whoever runs it (`-noborder` on its command line still wins for
+  the border). A program exported from the headless ZenZX has no window to carry and starts with
+  the usual settings. The machine is paused the
+  moment the item is picked, whether or not the name is asked for in the form that follows
+  (what Export does, a box for the name, the folder it goes to, and **Browse...** to pick another;
+  a name that is there already is replaced only when **Export** is pressed again), and is put back
+  as it was (running or paused) once the program is written or the form is cancelled. It exports the 48K, 128K, +2, +2A and +3 and the Spanish models; a Next
+  and the Timex machines say so and are not exported, and the tape's position is not kept. A
+  program that carries a machine can export another: the old machine is taken off first, and a
+  damaged one is refused and not mistaken for none. `-export-program PATH` does the same from the
+  headless program at the end of a run, and `-export-stub PROGRAM` names the ZenZX to make it
+  from, to make a program for another system (a Windows ZenZX makes a Windows program). Tests:
+  `standalone_test.go` (the file; a machine put back is the machine that was exported, field by
+  field and 100 frames on, in nine models) and `export_gui_test.go` (the menu, the pause, the
+  browser's cancel and accept). Run on a Mac (2026-11-24): the
+  exported program works. What has not run: a program on Windows, and one seen on a Linux screen (T-89).
+- **The Machine menu's Pause row says what it does, and there is a Stop.** The row reads **Pause**
+  with the pause icon while the machine runs and **Play** with the play icon while it is paused
+  (the debugger's own sprites, drawn in the row by `Item.Icon`, new in **zenui 0.3.4**), and **Stop**, with its
+  icon, ends the machine: it goes from the dock and its place is taken by the others. When the
+  last machine is stopped the window shows only its background (the gradient and lines that are round a picture, with no picture and no shadow) and a small figure waiting on it, ten pictures drawn by hand (the `frame*.png` files in `sprites/wait`, with `sequence.txt` for what it does with them, which any others can replace): a long rest between its gestures: a blink, three taps of a foot, a look to its right, two blinks, and round, with the menu bar and the dock
+  (whose **New** button, and the Machine menu's models, start a machine again). A machine that is
+  in front or tiled is stopped with an animation, as the end of a life in Manic Miner and Jet Set
+  Willy was: a ground of cardboard, like the floor of a toy theatre, comes up from below the window
+  with the bin and the small ZX Spectrum on it; a leg comes down from the top of the window and a
+  boot stamps the Spectrum flat; and the ground goes back down, with the bin and what is left of
+  the Spectrum (about 2.8 s in all). The bin has weight: it is thrown up a little when the ground
+  stops, pushed down when the boot lands and shaken as the ground goes. A machine that is not on
+  the screen is stopped at once. The Spectrum is black, with a red badge, rows of light keys and a green stripe, and a thin grey line round it while it is in one piece, and
+  stands on a rubbish bin (zenplay's `icon-rubbish`) on a ground of dither and bricks (two of the
+  tile patterns of its `gui-elements.zplay`), which go with the rest when the animation is over.
+  **Preferences >
+  Machines > Stop animation** (On by default; `"stopAnimation"` in `settings.json`) turns the
+  animation off, and the machine then goes at once. The pictures are replaceable: a PNG named `icon.png`, `flat.png`, `boot.png`, `leg.png`, `bin.png`, `ground-top.png` or `ground.png` in `sprites/stomp`
+  (README.txt there says how they fit together) is used in place of ZenZX's own when ZenZX is
+  built again; the foot and the leg that ship are the ones drawn for it, magenta on black, and the icon, the bin and the ground are drawn in code. A stopped machine runs nothing and takes no input, and its disk is saved first.
+  Tests: `stop_gui_test.go`, `stompicon_gui_test.go`, `TestGLStomp` (G-18); T-90.
+- **A check on what a release builds** (`tools/check_binaries.py`, `make check-binaries`). It reads
+  each ELF, Mach-O and PE program with LIEF and checks that it is the one its name says: the
+  processor, the Windows subsystem (GUI, or console for headless), the DLLs and libraries it may
+  need, a minimum macOS version no higher than 12.0, the code signature Apple Silicon requires, and
+  no build path inside (`/home/`, `/root/`, `/Users/`, `C:\Users\`). It runs before each archive in
+  the release workflow, whose builds now use `-trimpath` to keep those paths out. Every expectation
+  has an option that overrides it (`--skip`, `--allow-import`, `--allow-lib`, `--max-min-macos`,
+  `--max-glibc`, `--forbid`, `--subsystem`, `--os`, `--arch`, `--kind`), and `--warn-only` reports
+  without failing. Tests: `scripts/test_check_binaries.py`, which builds a program for each system.
+- **A guard on raylib-go's cgo-free calls** (`scripts/check_purego_ffi.py`, `make check-purego`,
+  and a CI step). It compares, for every function the library prepares, the number of argument
+  types with every call made through it, which the library checks only when the call is made.
+- **A tape deck, from the Preferences window.** Machines > Tape > **Tape deck**, Top by default,
+  Off or Bottom: while a tape loads in Accurate (or Turbo) mode, a cassette, a bar that fills as
+  the tape plays, a counter and the buttons of a tape recorder in the order such recorders had
+  them (Play, Rewind, Stop, Pause) are shown in the top or the bottom of the border, or, when the
+  border is not shown or is under 40 pixels thick (a zoom of 1), over the picture near the top or
+  the bottom. Play, Pause and Rewind stay pressed in while they are on; Pause holds the tape where it is
+  and Pause or Play lets it go; Rewind stops the tape and winds it back to its start. The cassette
+  is drawn from shapes, not a picture (`cassette_vector.go`), so it is sharp at any zoom, its reels
+  turn slowly while the tape plays, and fast the other way while it is rewound, and the tape in
+  its window moves from one reel to the other; Rewind is wound back over a time that follows the
+  length played (40 times the speed of playing, from 0.7 to 4 seconds), the bar running back with
+  it, and Stop or Play cuts it short where it has got to; the cassette comes
+  in twelve colours, the red it was designed in turned round the colour wheel 30 degrees at a
+  time (red, orange, amber, lime, green, teal, cyan, blue, indigo, purple, magenta, rose), and
+  **every new tape is a cassette of another colour**. The first program's name is written on its
+  label (the name of the tape's file for a tape with no program) as large as the label allows, and
+  in a row of its own over the buttons when the cassette is too small for it. **Cassette** (also
+  under Tape, **Big** by default) makes the cassette **Small**, beside the buttons, as above; **Big**, under the
+  buttons and the bar, over the picture (a border is never thick enough for it), with the title
+  written large on its label; or **Hidden**, leaving the buttons, the bar, the counter and the
+  program's name in a row of its own. The deck stays on the
+  screen for four seconds after the tape has played to its end, and then slides out towards its
+  edge, as the dock does. The twelve cassettes are in
+  `docs/img/tape-deck-cassettes.svg` (`ZENZX_WRITE_CASSETTES=dir go test -run TestWriteCassettes`
+  writes them one by one). `settings.json` has `"tapeDeck"` (`"off"`, `"top"`, `"bottom"`) and `"tapeCassette"` (`"small"`, `"big"`, `"hidden"`); the
+  tape has a Pause (`Tape.Pause`, `TapeState.Paused`) and the debugger's sprites a rewind. What the
+  first cut leaves out is T-88. `TestGLTapeDeck` is a dormant guard, G-17.
+- **The tape deck can be made small, sent away, resized and moved with the pointer.** A deck that
+  stays up for good is in the way once the tape has stopped or the game has loaded, so it has
+  three states for the tape in it: **full**; the **chip**, a mini cassette with a play (and
+  pause) button, the counter, a close cross and a hairline of progress, at the right end of the
+  deck's strip; and **away**. A deck that is not running (stopped, paused or never started), with
+  the pointer off it, becomes the chip after six seconds; at the tape's end it goes after four
+  (the chip too), sliding out. The wheel over the deck steps its size, one notch at a time: big, small, no cassette,
+  the chip, and the other way back; a size is saved as the **Cassette** setting. A full deck has
+  a minimise and a close button at the end of its counter's row, where there is room, the chip's
+  cross sends it away, and a click on the chip makes it full. The deck (or the chip) can be
+  dragged: it follows the pointer, kept inside the window, and let go it glides to the top or the
+  bottom edge, whichever its middle is nearer, and that is saved as the **Tape deck** setting. The
+  deck no longer jumps between its forms: a change of size, of form (full, chip) or of edge moves
+  every part from where it was to where it goes over the dock's 220 ms, eased in and out, the parts
+  the new form has not shrinking into their place and the ones it has growing out of it, and the
+  deck slides in from its edge when it comes on and out to it when it is closed or the tape ends
+  (`tapedeck_morph.go`, headless, tested in `tapedeck_morph_test.go`; the pointer and the drag in
+  `tapedeck_gui.go`). A deck that is the chip or away comes back as a full one when the tape is set
+  going again or another is loaded (but not when the chip's own play button starts it), and turning
+  the deck off and on in Preferences brings it back. The pointer is a hand over the buttons, the
+  corner buttons and the chip. The states, the idle rule, the wheel's steps and the layout are in
+  `tapedeck_mode.go` and `tapedeck_chip.go`, and the pointer is `tapeDeckUI.interact`, which
+  `tapedeck_mode_test.go`, `tapedeck_chip_test.go` and `tapedeck_interact_gui_test.go` drive with
+  no window; `TestGLTapeDeckChip` draws the chip and `TestGLTapeDeckMorph` the deck at five moments of a move
+  (dormant guard G-17).
+- **A page of the programs, published by CI.** Pushing a `v*` tag now also deploys
+  https://ha1tch.github.io/zenzx/ (GitHub Pages, as for gorepoman): the GUI program for each of
+  linux, macOS and Windows on amd64 and arm64 as a raw executable, `bin/checksums.txt` for
+  `sha256sum -c`, and `runners.json`, each program with its size and SHA-256, for a ZenZX client to
+  read. The page is built by `tools/build_site.py` from the archives the release's own GUI jobs
+  built (the release's bytes, not a second build) and only when every platform has built; it stops,
+  and nothing is deployed, if a platform is missing or a file is not an executable for its
+  platform. `scripts/test_build_site.py` tests it, and CI runs that on every push. The repository's
+  Pages source has to be set to "GitHub Actions" once.
+- **Links in the Help, About and Acknowledgements windows can be clicked.** A web address in the
+  text, and each link of the acknowledgements, is drawn in the accent colour and underlined, and a
+  click on one opens it in the default browser; the pointer is a hand over one. The links of
+  `ACKNOWLEDGEMENTS.md` were shown as their text, with the address after it where the text is not
+  the address, and are now that text, clickable, with no change to what is seen (a link that falls
+  across a line break works on both lines). Only `http` and `https` addresses are links. The
+  info windows (Tape Info, Disk Info and the others) show text that comes from files, and have
+  none. The windows are `zenui.TextModal`, which takes links in **zenui 0.3.0**
+  (`WithLinks`, `WrapLinkedText`); `links_gui_test.go` clicks them.
+- **The logo's colours.** The logo at the right of the bar in the Dark and Light themes is four
+  teeth, and each is now a colour of its own: one of the Spectrum's eight, picked at random, in a
+  pastel version of it (lighter, and a tenth less saturated; black is 70% white). A quartet of
+  colours holds still for a second, and the four teeth then fade together, over half a second, to
+  the next quartet, in which no tooth keeps the colour it had. After every ten quartets picked
+  at random the logo shows the Spectrum's own instead, the four bands of its rainbow in their
+  order, red, yellow, green and cyan, one for each tooth, in the same pastel colours; that one
+  holds for three seconds, and ten random quartets follow it. The logo turned through three
+  fixed pairs of colours, switching all at once, before. It is drawn by zenui (**zenui 0.3.3**,
+  `zsplogo.go`), and the Spectrum theme's rainbow is as it was.
+- **Snapshot > Save As.** A submenu of the formats ZenZX writes, ZenZX snapshot (`.zxs`), SNA
+  (`.sna`) and Z80 (`.z80`): a choice opens the file browser, in the folder ZenZX runs in, with that
+  format's files shown and its extension added to a name that has none, and the machine is saved
+  where the person says in the format they chose. `.szx` and `.rzx` are read only and are not on
+  the list. The result, saved or refused, is a toast, and so now is the result of Quick Save,
+  Quick Load and Save Timestamped (and `F9` to `F11`), which printed to the terminal only. The
+  formats and the saving are `snapshotsaveas.go`, the menu `snapshotsaveas_gui.go`;
+  `snapshotsaveas_test.go` saves each format and loads it back.
+- **A frame round a centred picture, with the picture's shadow.** Where the window is larger than
+  the picture and the picture is put in the middle of it (T-75), what is round it was flat black. It
+  is now a gradient from 80% grey (#333333) under the menu bar to 90% grey (#1A1A1A) at the bottom of the window, and the
+  picture casts a soft shadow on it, dropped a few pixels and blurred over about 36. Five beveled
+  lines cross the gradient at regular intervals, from the bar to the bottom of the window, each a
+  dark row at 28% opacity with a light row at 18% under it; the shadow and the picture are over them.
+  The shadow is
+  one small texture, blurred once on the processor and kept on the graphics card; a frame draws a
+  gradient rectangle and nine textured quads from it, and nothing is computed per frame. The
+  picture's place and size are as they were, and only the part of the canvas under the bar is
+  drawn, so that no black strip of the bar's band shows when the picture is scaled down. The
+  arithmetic is `pictureframe.go` (`pictureframe_test.go`), the drawing `pictureframe_gui.go`, and
+  `TestGLPictureFrame` reads the gradient and the shadow from a window (dormant guard G-14). A
+  window that is the size the display asked for has no frame and is drawn as it was, and so is a
+  tiled layout.
+- **`.rzx` recordings play.** A recording made in another emulator (a snapshot, then for every
+  frame how many opcodes ran and what each `IN` read) opens like any snapshot: `-snapshot`, the
+  `snapshot` script verb, File > Open or a drop on the window. The machine is put in the recorded
+  state and the recording plays from there with no keyboard needed, each frame as long as the
+  recording says and each `IN` given the recorded byte. Playback is checked at the end of every
+  frame and stops with a message, leaving the machine running, if it goes out of step. Start the
+  model the recording was made on first; the Next, encrypted recordings and recordings whose
+  snapshot is a separate file are not supported, and nothing is recorded (`docs/KNOWN_ISSUES.md`).
+  The 128K RoboCop recording tried plays about 100 seconds (5005 frames) before it goes out of step
+  (T-84). Closes T-82. While counting the fetches of a repeating `LDIR` it turned up that zen80 puts
+  R up by three for each repeat where the Z80 does two (T-83); the count is made by hand so the
+  playback does not depend on it. Formats the shared library has that ZenZX could also take are
+  listed in T-85.
 - **The logo is a button.** The Spectrum rainbow (or the logo of the Dark and Light
   themes) at the right of the bar is the Help menu's button and looks it, in the manner
   of a Windows 95 Start button: a light-and-dark bevel when the pointer is over it, the
@@ -160,6 +332,83 @@ rework, and a documentation sweep.
 
 ### Changed
 
+- **The tape deck starts at the top, with a big cassette.** A `settings.json` with no `"tapeDeck"`
+  or `"tapeCassette"` of its own (a new installation, or one from before them) now has the deck
+  at the top of the border and the cassette big, where it was Off and small. Both are still the
+  Preferences window's to change, and a file that says `"off"` or `"small"` keeps it. The deck
+  shows only while a tape loads in Accurate (or Turbo) mode, so a session that loads none sees
+  no difference.
+- **Snapshot Info and Run Diagnostics show something about the machine, in a window.** Snapshot
+  Info lists the snapshot files there are (the quick save in each format, the timestamped saves
+  and the newest of them, with size and date) over the short account of loading and saving it used
+  to be. Run Diagnostics, which printed a developer's dump to the terminal and ran ten instructions
+  on the live CPU to watch R, opens a scrollable report on the machine as it is: model and state,
+  the registers, flags and interrupts, where PC is (with the nearest ROM routine), the memory
+  layout and banking, the top of the stack, the tape, the floppy drive and the card slots, and
+  checks that say what is wrong when something is (a stack pointer in the ROM, banks out of range,
+  a snapshot byte order that does not read back). Nothing in it changes the machine. Show Info
+  (Tape) also gives the tape's size. The terminal still gets the text; `Shift+F12` still prints the
+  old report. `diagnostics_gui.go`, `info_gui.go`; the nearest-routine table is `nearestROMRoutine`
+  in `snapshot_debug.go`, which now also finds the cold start at 0000.
+- **Rename and Delete, in the SD Cards window.** **Rename** asks for the new name and then whether to
+  go ahead; a name that is taken, has a slash or one of `< > : " | ? *`, begins with a dot, is too
+  long or is the card's own is refused with the reason, and the question stays open with what was
+  typed. `.img` is added when it is left out. **Delete** asks for the word `DELETE`, in capitals and
+  exactly (not `delete`, not `DELETE ` with a space, not anything else), and then deletes the file
+  for good, with its size and a line saying it is not kept in a bin and cannot be got back. Both are
+  for a free card only: a card in a slot of any machine is open, and the buttons are off. The
+  standard system card cannot be renamed, since the Next's files are found by its name; deleting
+  it is allowed, with a line that Make bootable and every Next that boots NextZXOS use it. The
+  window keeps the selection on the renamed card, or on the card that took the deleted one's
+  place, and says what was done under the list; the terminal gets a line too. The reason an answer
+  was refused is written in the theme's accent colour (the headings' colour), apart from the text
+  that informs.
+  `sdcards_manage_gui.go`, tested in `sdcards_manage_gui_test.go`.
+- **Spleen is the default font.** A new installation, with no `settings.json` of its own, starts in
+  Spleen (5x8) instead of TomThumb, which is what the embedded default settings said, and a bar
+  built without settings falls back to Spleen instead of Sinclair. A `settings.json` that names a
+  font keeps it: only a fresh one changes, and **Theme > Font** still lists all the faces. The
+  menu bar's text scale follows the face's width, so with Spleen's narrower labels X2 and X3 come
+  at narrower windows than with Sinclair (see below).
+- **The menu bar's text is magnified to suit the window.** It was always drawn at X1. The bar now
+  takes the greatest of X1, X2 and X3 that fits the window both ways: its labels, with a blank
+  space after each, take no more than 60% of the window's width (in the default face,
+  Spleen: X2 from 950 pixels wide, X3 from 1425; the faces differ in width, and so do the
+  thresholds), and the strip that holds the text takes no more than an
+  eighth of the window's height (X2 from 256 high, X3 from 384), so a short window does not give
+  most of itself to the bar. The rule is worked out every frame, so that it follows a resize. The
+  text has room above and below it, half its own height and never under 4 pixels, so it takes half
+  of the strip or less: the strip is 24 pixels high at X1, 32 at X2 and 48 at X3. What is made from
+  the strip's height grows with it: the Spectrum logo and the Spectrum theme's rainbow (bands in proportion), the Help button's
+  room and edges, and the space a fixed bar reserves at the top of the window. **Font zoom** is
+  unchanged and is still the size of the dropdowns' text. The rule is `menubarscale.go`
+  (`menubarscale_test.go`), the drawing `menubarscale_gui.go` (`menubarscale_gui_test.go`), and
+  `TestGLBarScale` draws the bar at ten window sizes in two themes (dormant guard G-14). The labels
+  are scaled by wrapping zenui's renderer for the strip only, until zenui can be asked for a label
+  scale (T-87).
+- **The Storage menu has the same shape on every model.** It shows the same two sections in the same
+  order, Floppy Disk and then SD Card. Where the machine has the hardware the section is live; where it
+  has not, the section stays, greyed, with one line, N/A (no drive on a 48K, 128K, +2 or +2A; no
+  card slots outside a Next; the disk controller off under `-nofdc`). Before, a drive-less model showed a
+  full set of floppy rows that could only print "FDC not available" to the terminal, and a Next replaced
+  the whole menu with another one. A +3 and a Next now differ only in which section is lit. The
+  Next's greyed Floppy Disk section carries no line about NextZXOS disc images not being emulated yet,
+  with a tracker number: that is a note for the register and the log, not for the person using the menu.
+- **What a machine started from the empty window says is a toast too, and the console is left alone.** A machine
+  started after launch (from the Machine menu with none running, or added to the dock) was not given the window's
+  `OnNotice`, so File > Export on it, and anything else the menus say, reached only the terminal; every machine
+  has the hook now, and `notice` writes to the terminal only when no host is there to show it
+  (`TestExportMessagesAreToastsAndNotConsoleLines`).
+- **Menu actions on discs and cards report in the window.** What Open DSK Image, Insert Blank Disk, Save,
+  Eject, Insert Card, Remove Card and the rest have to say now shows as a toast at the corner of the
+  window, for those who only use the GUI (the terminal has them only when there is no window). A host that embeds ZenZX gets the
+  same messages through a new `OnNotice` hook. The other menus' messages still go to the terminal only
+  (T-86).
+- **The README shows two Spectrum games in the ZenZX window.** Manic Miner in the Central Cavern
+  and RoboCop on the first level, each captured from the GUI itself, menu bar included, and put in
+  a table above the Next ones. The RoboCop picture comes from the 128K snapshot inside a `.rzx`
+  recording: the same game's `.dsk` and `.tzx` use copy protection that ZenZX does not yet load
+  (T-22).
 - **The Preferences window is in tabs, with its settings grouped.** It was one long panel of
   every setting. It now has a strip of three tabs, the toolkit's own `Tabs` as zenplay uses them:
   **Appearance** (Colours and text: theme, font, font zoom; Window: display zoom, fixed menu bar),
@@ -171,6 +420,15 @@ rework, and a documentation sweep.
   `prefs_tabs_gui_test.go` holds the grouping, the clicks, the keys and the panel's size on every
   tab at three window sizes, and `TestGLPreferencesTabs` draws each tab in a window (dormant guard
   G-14).
+- **The Preferences window's tabs show a hand, and its help text is a tooltip.** The pointer is a
+  hand over a tab, and the arrow again off it or when the window closes. The help line that sat
+  under a row (a hint, or why the row cannot be changed now) is no longer there: it is hidden, and
+  shows in a box after the pointer has rested a third of a second on the row's caption or on the
+  part of its control that answers a click, and the box goes when the pointer moves off, or after a
+  click until it has. Resting on a group's title shows the help of every row in the group. The
+  panel is shorter for the lines it no longer keeps. `prefs_tips_gui_test.go` holds the cursor, the
+  pause, the click, what answers and what does not, and the box's size and place on the screen;
+  `TestGLPreferencesTips` draws the box in a window (dormant guard G-14).
 - **The FPS counter is off at start, and is drawn in the interface font.** It used to be on and
   drawn in raylib's own font; it is now in the face chosen under Theme > Font, as the rest of the
   interface is, red, at the bottom right of the window. `Alt+F` and View > FPS Counter
@@ -244,6 +502,38 @@ rework, and a documentation sweep.
 
 ### Fixed
 
+- **The GUI stopped at its first frame on macOS, and would have on Windows.** It panicked with
+  `ffi: calling with too many arguments` in `SetWindowSize`. raylib-go v0.60.0, which the
+  cgo-free macOS and Windows builds reach raylib through, prepared that function without its
+  result type, so the one call that resizes the window to the picture could never be made; it also
+  prepared `DrawCircleLinesV` with one type too many. Neither shows on Linux, which does not use
+  that layer, nor in the tests, nor in a structural check of the program. Found by running the
+  released macOS program on a Mac. go.mod now takes raylib-go v0.60.1, which has both right
+  (the same library, a patch release; v0.63.0 has them right too, but needs the libdrm headers
+  to build on Linux).
+- **The Windows program opened a console window behind its own.** It was linked for the console
+  subsystem, so starting `zenzx.exe` from Explorer or a shortcut left a black console open for as
+  long as the emulator ran, and closing it closed the emulator. The release builds (and
+  `build_windows.sh`) now link it for the GUI subsystem (`-H=windowsgui`). Started from a console,
+  it attaches to that console, so `-help`, `-version` and what it reports still print there; output
+  redirected to a file or a pipe is left as it was (`cmd/zenzx/console_windows.go`).
+- **A window the person enlarged or maximised was put back, or left the picture in its corner.**
+  Found by running the program under a window manager and enlarging the window (T-75), after a
+  report from a Mac: the picture sat at the top left of the window, with no frame, on black.
+  Two things sent the window back to the display's own size. The space a fixed menu bar reserves
+  at the top of the window was worked out from the window's width, so a wider window made a
+  bigger bar (the menu bar's text scale, above), which changed the reservation, which made the
+  display resize the window to suit; the reservation is now worked out from the display's own
+  window, and the bar is drawn at the scale of the window it is in, over the frame where that is
+  taller than what is reserved. And a window that settled at another size was asked to become the
+  size of the zoom that fits it, which a system that keeps a maximised window refuses: the display
+  now takes the zoom that fits and the picture's size as its own, leaves the window as it was
+  given, and centres the picture in it, with the frame. Zooming from the menu, and the border,
+  still send the window to a size, as before. `ZENZX_WINDOW_DEBUG=1` prints one line each time
+  what the window reports and what the display makes of it changes (the framebuffer's size, the
+  window's, the factor between them, the display's size, the zoom, the reservation, and whether
+  the picture is drawn into the canvas), to see why a window is not framed on a system that is
+  not at hand. `windowkept_gui_test.go` holds both fixes; it has not run on a Mac.
 - **The AY played an octave low.** A tone toggled every 16 x period chip clocks, which makes
   a whole wave 32 x period, where the datasheet's tone is clock / (16 x period): measured,
   the emulation was at 0.48 of that (a 440 Hz A, period 252, played near 211 Hz). Tone now
@@ -274,10 +564,11 @@ rework, and a documentation sweep.
   over the menu's own rows (an earlier workaround moved the whole menu left to make
   room). The placement is zenui's, fixed in **zenui 0.2.1**: with no room on the
   right a submenu opens beside its parent on the left, its right edge on the
-  parent's left edge, and covers none of it. The workaround is gone. **zenui v0.2.1
-  has to be on GitHub, tagged, before this builds anywhere but here**, and its
-  tagged tree has to be the delivered one, `MANIFEST.sha256` included: `go.sum`
-  records `h1:dOP0HXuVNPik6XyDNPnxAsQs7DPFHt8Pv/q+b9M5Zt4=`, the hash Go computes
+  parent's left edge, and covers none of it. The workaround is gone. **zenui v0.3.3
+  (which has 0.2.1's fix, the links of the text windows and the logo's new colours, fade
+  and Spectrum quartet) has to be on GitHub, tagged, before this builds anywhere but
+  here**, and its tagged tree has to be the delivered one, `MANIFEST.sha256` included:
+  `go.sum` records `h1:4XxERV8hADwkq8QtU3AY8tmoUqL0tXCGhGxNqROx3f8=`, the hash Go computes
   for that tree's module archive.
 - **The Help menu and a dropdown can no longer be open together, and a window has
   the frame to itself.** One rule, applied every frame, closes whatever should not
@@ -326,6 +617,14 @@ rework, and a documentation sweep.
   arithmetic is `picturefit.go`, tested at HiDPI factors 1 and 2; `TestGLPictureFitsAWindowOfAnotherSize`
   holds a window at four sizes and finds the picture's border (dormant guard G-14). It has not
   been seen on a Mac: the register keeps the item open for that.
+- **An empty or broken `settings.json` no longer stands in the way of starting.** A file with
+  nothing in it (zero bytes, spaces, `null` or `{}`) is recreated from the built-in default, which
+  is used, with a one-line note. A file with some of the keys is used with the rest from the
+  default, and is not rewritten. A file that cannot be used (not JSON, not an object, a value
+  that is not allowed) is moved aside to `settings.json.bad` and recreated, with a warning that
+  names the copy; where the folder cannot be written to the program starts all the same and the
+  warning says so. A missing file is still not made until a setting changes. `Save` also makes
+  the folder it saves into. `pkg/settingsconfig/load_recreate_test.go` holds each case.
 - **`TestBatchThreeModeCompare` skips when its tape corpus is not there (T-81).** It used to
   record a load error for every game and report a pass.
 

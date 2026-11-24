@@ -21,6 +21,13 @@ var transportSprites = map[string][16]string{
 		"07e0/07e0", "07f0/07f0", "07f0/07f0", "07e0/07e0", "07c0/07c0", "0780/0780",
 		"0700/0700", "0600/0600", "0000/0000", "0000/0000",
 	},
+	// rewind is two triangles pointing left, for the tape deck (tapedeck_gui.go); the
+	// debugger's row (transportOrder) has no rewind.
+	"rewind": {
+		"0000/0000", "0000/0000", "0204/0204", "060c/060c", "0e1c/0e1c", "1e3c/1e3c",
+		"3e7c/3e7c", "7efc/7efc", "7efc/7efc", "3e7c/3e7c", "1e3c/1e3c", "0e1c/0e1c",
+		"060c/060c", "0204/0204", "0000/0000", "0000/0000",
+	},
 	"pause": {
 		"0000/0000", "0000/0000", "0e38/0e38", "0e38/0e38", "0e38/0e38", "0e38/0e38",
 		"0e38/0e38", "0e38/0e38", "0e38/0e38", "0e38/0e38", "0e38/0e38", "0e38/0e38",

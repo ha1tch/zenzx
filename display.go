@@ -61,6 +61,7 @@ type DisplayManager struct {
 	// fit is what puts the picture in the middle of a window that is not the size asked for
 	// (display_fit_gui.go).
 	fit            pictureFit
+	wait           *waitTextures // the figure that waits in a window with no machine (waitfigure_gui.go)
 	isAnimating    bool
 	borderChanges  []BorderChange
 	frameOrigin    uint64
@@ -97,6 +98,21 @@ type DisplayManager struct {
 	// the Spectrum content itself is shifted, not squished, once the
 	// window has finished animating to its new size.
 	reservedTopHeight int
+
+	// barOverlay is how tall the fixed menu bar is drawn now, which is more than
+	// reservedTopHeight where the window is larger than the display made it and the bar's
+	// text has grown to suit (menubarscale.go): the reservation is worked out from the
+	// display's own size, so that it, and the window with it, do not follow the window's
+	// size. Where the picture is centred in a larger window it goes below the taller of the
+	// two. 0 while the bar is not fixed.
+	barOverlay int
+
+	// windowKept is true while the window is a size that the person or the system gave it and
+	// the display has taken as it is (display_fit_gui.go): the picture is fitted to it and
+	// centred, and a change of the space reserved at the top or of the border follows the
+	// picture's size without asking the window to be that size. Zooming from the menu asks for
+	// a size, and ends it.
+	windowKept bool
 
 	// tiles, when set, draws the window's whole content below the reserved
 	// top in place of one machine's picture: the tiled layouts of
@@ -552,7 +568,23 @@ func (dm *DisplayManager) renderTiles(paused bool) {
 	rl.EndDrawing()
 }
 
+// RenderBlank is Render for a stopped machine: the background, and what is drawn over it. The
+// background is the one that is around a picture, the gradient and its lines (drawFrame), with
+// no picture and so no shadow.
+func (dm *DisplayManager) RenderBlank() {
+	rl.BeginDrawing()
+	w, h := drawableSize()
+	top := dm.frameTop()
+	dm.drawFrame(pictureRect{}, top, w, h)
+	dm.drawWaiting(top, w, h)
+	if dm.preEndDrawHook != nil {
+		dm.preEndDrawHook()
+	}
+	rl.EndDrawing()
+}
+
 func (dm *DisplayManager) updateTargetSize() {
+	dm.windowKept = false // the window is being sent to a size: it is no longer left as it was
 	showBorder := dm.borderView().Shown
 	dm.borderApplied = showBorder
 	if dm.tiles != nil {
@@ -650,6 +682,17 @@ func (dm *DisplayManager) SetReservedTopHeight(h int) {
 		return
 	}
 	dm.reservedTopHeight = h
+	dm.retarget()
+}
+
+// retarget is updateTargetSize for a change that is not the person asking for a size: a window
+// that is being kept as it is follows the picture's size (adoptPictureSize), and any other is
+// sent to its new size.
+func (dm *DisplayManager) retarget() {
+	if dm.windowKept && dm.tiles == nil {
+		dm.adoptPictureSize()
+		return
+	}
 	dm.updateTargetSize()
 }
 
@@ -658,7 +701,7 @@ func (dm *DisplayManager) SetReservedTopHeight(h int) {
 // machine going into a mode that needs it.
 func (dm *DisplayManager) followBorder() {
 	if dm.borderView().Shown != dm.borderApplied {
-		dm.updateTargetSize()
+		dm.retarget()
 	}
 }
 
@@ -979,6 +1022,8 @@ func (dm *DisplayManager) InitializeAfterWindow() {
 // CleanupTextures should be called before closing the window.
 func (dm *DisplayManager) CleanupTextures() {
 	dm.unloadPictureCanvas()
+	dm.unloadFrameShadow()
+	dm.unloadWaiting()
 	if dm.screenTextureReady {
 		rl.UnloadTexture(dm.screenTexture)
 	}

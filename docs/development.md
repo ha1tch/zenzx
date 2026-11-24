@@ -36,6 +36,19 @@ headless-only for freebsd/amd64) as GitHub release assets. This is
 separate from `repoman relcore`'s local checkpoint: run the local release
 first to gate and verify, then tag once it's green.
 
+The same tag also publishes the page at https://ha1tch.github.io/zenzx/
+(the `pages` and `deploy` jobs of `release.yml`): the GUI program for each
+platform as a raw executable, `bin/checksums.txt`, and `runners.json`, which
+lists each program with its size and SHA-256 for a ZenZX client that needs
+the program for another platform. `tools/build_site.py` makes it from the
+archives the release's own GUI jobs built, so the page's programs are the
+release's, byte for byte; it stops, and nothing is deployed, if a platform
+is missing or a file is not an executable for its platform
+(`scripts/test_build_site.py`, run by CI). The page holds the newest tag
+only, since a deployment replaces the last; every version stays as an
+archive on its GitHub release. The repository's Pages source must be set to
+"GitHub Actions" (Settings > Pages), once, or the `deploy` job has nowhere to go.
+
 ## Project layout
 
 Emulation core (raylib-free, shared by both builds): `zenzx.go`, `memory.go`,

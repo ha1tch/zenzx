@@ -10,7 +10,8 @@ import (
 )
 
 func TestAcknowledgementsWindowReadsTheFileInTheTree(t *testing.T) {
-	text := acknowledgementsModalText(acknowledgementsSource)
+	// What the window shows: the links as their seen text.
+	text := ackLink.ReplaceAllString(acknowledgementsModalText(acknowledgementsSource), "$1")
 	lines := strings.Split(text, "\n")
 
 	if lines[0] != "# Acknowledgements" {
@@ -23,8 +24,7 @@ func TestAcknowledgementsWindowReadsTheFileInTheTree(t *testing.T) {
 	}
 	// A link whose text is not its address keeps its address; one whose text is the
 	// address, or has it in it, does not repeat it.
-	// A line break may fall inside a phrase, or inside an address, where the wrapper breaks a
-	// long word at a slash; so what is compared has no white space in it at all.
+	// A line break may fall inside a phrase; so what is compared has no white space in it at all.
 	squash := func(s string) string { return strings.Join(strings.Fields(s), "") }
 	flat := squash(text)
 	for _, want := range []string{

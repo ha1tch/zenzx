@@ -61,7 +61,7 @@ jobs:
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
           out="dist/zenzx-${GOOS}-${GOARCH}-headless"
           mkdir -p "$out"
-          go build -tags headless -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" \
+          go build -trimpath -tags headless -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" \
               -o "${out}/zenzx-headless${ext}" ./cmd/zenzx-headless
           cp -r rom "$out"/
           cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
@@ -73,6 +73,15 @@ jobs:
           mkdir -p "$out"/next
           GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
               -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the binaries
+        # Structure only (tools/check_binaries.py): the right format, processor, Windows
+        # subsystem, libraries and minimum macOS version, and no build path inside.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
 
       - name: Archive
         env:
@@ -145,10 +154,14 @@ jobs:
         run: |
           set -euo pipefail
           ext=""
-          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          # Windows: the GUI subsystem, so that starting zenzx.exe opens its window and no
+          # console window behind it (cmd/zenzx/console_windows.go attaches to a console
+          # that started it, so -help and the like still print there).
+          gui=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; gui=" -H=windowsgui"; fi
           out="dist/zenzx-${GOOS}-${GOARCH}"
           mkdir -p "$out"
-          go build -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" \
+          go build -trimpath -ldflags "-s -w${gui} -X github.com/ha1tch/zenzx.version=${VERSION}" \
               -o "${out}/zenzx${ext}" ./cmd/zenzx
           cp -r rom "$out"/
           cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
@@ -161,6 +174,15 @@ jobs:
           mkdir -p "$out"/next
           GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
               -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the binaries
+        # Structure only (tools/check_binaries.py): the right format, processor, Windows
+        # subsystem, libraries and minimum macOS version, and no build path inside.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
 
       - name: Archive
         env:
@@ -229,7 +251,7 @@ jobs:
           set -euo pipefail
           out="dist/zenzx-linux-amd64"
           mkdir -p "$out"
-          go build -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${out}/zenzx" ./cmd/zenzx
+          go build -trimpath -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${out}/zenzx" ./cmd/zenzx
           cp -r rom "$out"/
           cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
           mkdir -p "$out"/docs
@@ -237,6 +259,15 @@ jobs:
           mkdir -p "$out"/next
           GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
               -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the binaries
+        # Structure only (tools/check_binaries.py): the right format, processor, Windows
+        # subsystem, libraries and minimum macOS version, and no build path inside.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
 
       - name: Archive
         env:
@@ -300,7 +331,7 @@ jobs:
           set -euo pipefail
           out="dist/zenzx-linux-arm64"
           mkdir -p "$out"
-          go build -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${out}/zenzx" ./cmd/zenzx
+          go build -trimpath -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${out}/zenzx" ./cmd/zenzx
           cp -r rom "$out"/
           cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
           mkdir -p "$out"/docs
@@ -308,6 +339,15 @@ jobs:
           mkdir -p "$out"/next
           GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
               -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the binaries
+        # Structure only (tools/check_binaries.py): the right format, processor, Windows
+        # subsystem, libraries and minimum macOS version, and no build path inside.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
 
       - name: Archive
         env:
@@ -344,3 +384,57 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+  pages:
+    # The page of programs at https://ha1tch.github.io/zenzx/: the GUI program for
+    # every platform as a raw executable, with checksums.txt and runners.json (what a
+    # ZenZX client reads to fetch the program for another platform). It is made from
+    # the archives the jobs above built for this tag -- the release's own bytes, not a
+    # second build -- and only once all of them have built, so the page never has a
+    # platform missing or a build that no release has. tools/build_site.py stops, and
+    # nothing is deployed, if a platform is absent or a program is not one.
+    needs:
+      - gui-binaries-cross
+      - gui-binaries-linux-amd64
+      - gui-binaries-linux-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the GUI archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: zenzx-*
+          merge-multiple: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build the page
+        run: python3 tools/build_site.py --version "${GITHUB_REF_NAME#v}" --archives dist --out zenzx_site
+
+      - name: Upload the page
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: zenzx_site
+
+  deploy:
+    # Needs the repository's Pages source set to "GitHub Actions" (Settings > Pages),
+    # once.
+    needs: pages
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

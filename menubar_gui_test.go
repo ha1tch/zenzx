@@ -80,6 +80,14 @@ func testZX() *ZenZX {
 	return NewZenZX(AudioBackendOto)
 }
 
+// testZXWithDrive is a machine with a floppy controller, which is what the Floppy Disk
+// section of the Storage menu is for.
+func testZXWithDrive() *ZenZX {
+	zx := NewZenZX(AudioBackendOto)
+	zx.io.EnableFDC()
+	return zx
+}
+
 func TestNewAppMenuBarActionCounts(t *testing.T) {
 	b, err := newAppMenuBar(testZX(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
@@ -87,10 +95,10 @@ func TestNewAppMenuBarActionCounts(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	// Machine: Reset, Pause/Resume only -- model switching now happens
+	// Machine: Reset, Pause or Play, Stop only -- model switching now happens
 	// via the Standard/Spanish/Timex submenus (dispatched separately,
 	// not through b.actions), not one flat action per model.
-	wantMachine := 2
+	wantMachine := 3
 	if got := len(b.actions[barMachine]); got != wantMachine {
 		t.Errorf("len(actions[barMachine]) = %d, want %d", got, wantMachine)
 	}
@@ -331,7 +339,7 @@ func TestParseThemeFlagOldSpectrum128FormNoLongerRecognised(t *testing.T) {
 }
 
 func TestFloppyDiskMenuHasOpenDSKImage(t *testing.T) {
-	b, err := newAppMenuBar(testZX(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
+	b, err := newAppMenuBar(testZXWithDrive(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
 		t.Fatalf("newAppMenuBar: %v", err)
 	}
@@ -339,9 +347,10 @@ func TestFloppyDiskMenuHasOpenDSKImage(t *testing.T) {
 
 	// A "Floppy Disk" title, then 7 real actions (Open, Insert Blank, Save, Save As,
 	// Eject, Info, Manage Disks) plus 2 separator placeholders, grouped as [mount] |
-	// [save] | [current-disk operations] -- 10 entries in all.
-	if got := len(b.actions[barFloppyDisk]); got != 10 {
-		t.Errorf("len(actions[barFloppyDisk]) = %d, want 10 (title + 7 real actions + 2 separator placeholders)", got)
+	// [save] | [current-disk operations] -- 10 entries; then a separator and the SD Card
+	// section, which on a machine without card slots is its title and one disabled note.
+	if got := len(b.actions[barFloppyDisk]); got != 13 {
+		t.Errorf("len(actions[barFloppyDisk]) = %d, want 13 (10 floppy entries, a separator, the SD Card title and its note)", got)
 	}
 	items := b.widget.ItemsFor(barFloppyDisk)
 	if items[0].Label != "Floppy Disk" || !items[0].Title {
@@ -515,7 +524,7 @@ func TestTapeMenuHasSeparatorBetweenPlaybackAndSettings(t *testing.T) {
 }
 
 func TestFloppyDiskMenuGrouping(t *testing.T) {
-	b, err := newAppMenuBar(testZX(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
+	b, err := newAppMenuBar(testZXWithDrive(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
 		t.Fatalf("newAppMenuBar: %v", err)
 	}
@@ -527,6 +536,8 @@ func TestFloppyDiskMenuGrouping(t *testing.T) {
 		"Open DSK Image...", "Insert Blank Disk", "",
 		"Save Disk", "Save Disk As...", "",
 		"Eject Disk", "Disk Info", "Manage Disks...",
+		"",
+		"SD Card", "    N/A",
 	}
 	if len(items) != len(wantLabels) {
 		t.Fatalf("len(items) = %d, want %d", len(items), len(wantLabels))
@@ -548,7 +559,7 @@ func TestFloppyDiskActionsMatchReorderedItems(t *testing.T) {
 	// Confirms b.actions[barFloppyDisk] wasn't left in the old order
 	// after diskItems was reorganised -- each real action index should
 	// invoke the handler matching that position's own label.
-	b, err := newAppMenuBar(testZX(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
+	b, err := newAppMenuBar(testZXWithDrive(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
 		t.Fatalf("newAppMenuBar: %v", err)
 	}
@@ -575,12 +586,12 @@ func TestSnapshotMenuGrouping(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barSnapshot)
-	wantLabels := []string{"Quick Save", "Quick Load", "Save Timestamped", "", "Snapshot Info", "Run Diagnostics"}
+	wantLabels := []string{"Quick Save", "Quick Load", "Save Timestamped", "Save As", "", "Snapshot Info", "Run Diagnostics"}
 	if len(items) != len(wantLabels) {
 		t.Fatalf("len(items) = %d, want %d", len(items), len(wantLabels))
 	}
-	if !items[3].Separator {
-		t.Error("items[3] should be the separator between the save operations and info/diagnostics")
+	if !items[4].Separator {
+		t.Error("items[4] should be the separator between the save operations and info/diagnostics")
 	}
 	for i, want := range wantLabels {
 		if want == "" {
@@ -599,8 +610,8 @@ func TestNewAppMenuBarNilSettingsUsesHardcodedDefaults(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	if b.fontName != fonts.NameSinclair {
-		t.Errorf("fontName = %s, want %s (nil settings should fall back to the original hardcoded default)", b.fontName, fonts.NameSinclair)
+	if b.fontName != fonts.NameSpleen {
+		t.Errorf("fontName = %s, want %s (nil settings should fall back to the hardcoded default)", b.fontName, fonts.NameSpleen)
 	}
 	if b.scale != 2 {
 		t.Errorf("scale = %d, want 2 (nil settings should fall back to the original hardcoded default)", b.scale)

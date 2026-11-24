@@ -105,7 +105,7 @@ func RunGUI(args []string) {
 	nextIssue := fs.Int("next-issue", 5, nextIssueHelp)
 	debugFdc := fs.Bool("debugfdc", false, "Enable FDC debug output")
 	snapshot := fs.String("snapshot", "", "Load snapshot on startup")
-	snapshotFormat := fs.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only)")
+	snapshotFormat := fs.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only), rzx (a recording to play, load only)")
 	tapeFile := fs.String("tape", "", "Load tape file (.tap or .tzx)")
 	tapeMode := fs.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
 	noAudio := fs.Bool("noaudio", false, "Disable audio")
@@ -128,6 +128,10 @@ func RunGUI(args []string) {
 	focusFollow := fs.Bool("focus-follow", false, focusFollowHelp)
 	showVersion := fs.Bool("version", false, "Print version and exit")
 	fs.Parse(args)
+	if err := startProgram(model, snapshot, snapshotFormat); err != nil { // a standalone program starts as its machine
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 	if err := romBin.check(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -233,10 +237,25 @@ func RunGUI(args []string) {
 	}
 	if settingsRes.FromDisk {
 		fmt.Printf("Settings: loaded %s\n", settingsRes.DiskPath)
-	} else if settingsRes.Warning != "" {
+	}
+	if settingsRes.Note != "" {
+		fmt.Println("Settings:", settingsRes.Note)
+	}
+	if settingsRes.Warning != "" {
 		fmt.Println("Warning:", settingsRes.Warning)
 	}
 
+	// A standalone program starts with the preferences it was exported with, not with those of
+	// whoever runs it, and does not write theirs: its menus change what it shows now only.
+	settingsPath := *settingsPathFlag
+	var startView *ProgramView
+	if startupProgram != nil && startupProgram.View != nil {
+		startView = startupProgram.View
+		if s := startView.checked(validThemeNames, validFontNames); s != nil {
+			settingsRes.Settings = s
+		}
+		settingsPath = ""
+	}
 	effectiveTheme := resolveExplicitOrPersisted(explicitFlags, "theme", *themeFlag, settingsRes.Settings.Theme)
 	effectiveScale := resolveExplicitOrPersistedInt(explicitFlags, "scale", *scale, settingsRes.Settings.DisplayScale)
 
@@ -300,7 +319,11 @@ func RunGUI(args []string) {
 	zx.io.SetMouseMode(mouseMode)
 
 	// Initialize display
-	windowWidth, windowHeight := InitDisplay(effectiveScale, !*noBorder, zx.videoRenderer)
+	startBorder := !*noBorder
+	if startView != nil && !explicitFlags["noborder"] {
+		startBorder = startView.Border // the border as it was when the program was exported
+	}
+	windowWidth, windowHeight := InitDisplay(effectiveScale, startBorder, zx.videoRenderer)
 	defer rl.CloseWindow()
 	// Escape is this program's to interpret (the loop below): raylib would
 	// close the window on it whatever is open.
@@ -311,8 +334,11 @@ func RunGUI(args []string) {
 
 	zx.screen.SetMultiplier(effectiveScale)
 	zx.window().SetInitialSize(windowWidth, windowHeight)
-	if *noBorder {
+	if !startBorder {
 		zx.window().showBorder = false
+	}
+	if startView != nil {
+		zx.window().showFPS = startView.FPS
 	}
 	escMode, escOK := parseEscapeMode(*escapeFlag)
 	if !escOK {
@@ -342,11 +368,22 @@ func RunGUI(args []string) {
 	drawer := newMountDrawer(zx)
 	defer drawer.Unload()
 	dropC := &dropChoice{}
+	// What a machine tells the person goes to the window, not to the console, which most who use
+	// the window never read: how a .nex or an .rzx ended, what the menus did (input.go notice), and
+	// the question of a busy Next. Every machine has these, the ones the deck starts later as well:
+	// a machine started from the empty window used to say its notices on the console only.
+	hostHooks := func(z *ZenZX) {
+		z.OnNEXRun = func(msg string) { drawer.say(msg) }
+		z.OnRZX = func(msg string) { drawer.say(msg) }
+		z.OnNotice = func(msg string) { drawer.say(msg) }
+		z.NEXAskReset = func(path string) { dropC.openReset(path) }
+	}
+	hostHooks(zx)
 	if overlay != nil {
 		defer overlay.Unload()
 	}
 
-	bar, err := newAppMenuBar(zx, *customROMsDir, parseThemeFlag(effectiveTheme), *model, settingsRes.Settings, *settingsPathFlag)
+	bar, err := newAppMenuBar(zx, *customROMsDir, parseThemeFlag(effectiveTheme), *model, settingsRes.Settings, settingsPath)
 	if bar != nil {
 		uiText = func() *zenuiraylib.BDFText { return bar.text } // the FPS counter is drawn in the chosen font
 		snapshotStartsPlaying = func() bool { return bar.snapshotPlay }
@@ -368,7 +405,7 @@ func RunGUI(args []string) {
 	// dock: the HUD and the dock are mutually exclusive, so one never paints over or steals
 	// focus from the other.
 	openHUD := func() {
-		if hud == nil || hud.Active() {
+		if hud == nil || hud.Active() || (deck != nil && deck.Empty()) {
 			return
 		}
 		if deck != nil {
@@ -386,6 +423,7 @@ func RunGUI(args []string) {
 			nz.escape = escMode
 			nz.snapshotFormat = *snapshotFormat
 			nz.nonStandard = nsConfig
+			hostHooks(nz)
 			switchModelLive(nz, m, bar.romDir)
 			nz.io.SetMouseMode(mouseMode)
 			if *noAudio {
@@ -396,7 +434,10 @@ func RunGUI(args []string) {
 		defer deck.Unload()
 		deck.dockOn = func() bool { return bar.dockOn }
 		deck.multiOn = func() bool { return bar.multiOn }
+		deck.stopAnimation = func() bool { return bar.stopAnimation }
 		bar.cardUse = deck.cardUse
+		bar.stopMachine = deck.stopFront
+		bar.startMachine = deck.start
 		bar.machineNumber = deck.numberOf
 		bar.diskUse = deck.diskUse
 		bar.machineAt = deck.machineAt
@@ -444,6 +485,9 @@ func RunGUI(args []string) {
 	playBtn := newPlayButton()
 	playShown := false
 	var playArea rl.Rectangle
+	// The tape deck, when the Preferences window has it on (tapedeck_gui.go): updated once a
+	// frame with the machine's tape, drawn by the hook below.
+	tapeUI := newTapeDeckUI()
 
 	// Draws inside Render's own BeginDrawing/EndDrawing bracket -- see
 	// preEndDrawHook's doc comment for why this can't just be a plain
@@ -454,6 +498,9 @@ func RunGUI(args []string) {
 		screenW, screenH := int(rl.GetScreenWidth()), int(rl.GetScreenHeight())
 		if playShown {
 			playBtn.Draw(playArea, bar.theme)
+		}
+		if tapeUI.Visible() && !zx.stopped {
+			tapeUI.Draw(bar.theme)
 		}
 		if overlay != nil && overlay.Active() {
 			overlay.Draw(screenW, screenH)
@@ -1007,8 +1054,7 @@ func RunGUI(args []string) {
 	// Preferences' choices.
 	// A .nex is run from the menus by keys pressed a frame at a time (nexrun.go); how it ends
 	// is said as the drawer says everything else, and a busy Next is asked about first.
-	zx.OnNEXRun = func(msg string) { drawer.say(msg) }
-	zx.NEXAskReset = func(path string) { dropC.openReset(path) }
+	// (hostHooks, above, gives each machine these: the first, and every one the deck makes.)
 	routeFiles := func(files []string, shift bool, x int32) {
 		plain, withShift := dropAsk, dropRun
 		if bar != nil {
@@ -1170,8 +1216,8 @@ func RunGUI(args []string) {
 		// The emulated machine receives no input while a demo widget, the
 		// menu bar or the HUD owns the frame -- HandleInput is skipped
 		// outright rather than filtered, so nothing leaks through by accident.
-		guiHasInput := (overlay != nil && overlay.Active()) || (bar != nil && bar.Active()) || (deck != nil && deck.Active()) || (hud != nil && hud.Active()) || dropC.Active()
-		if !guiHasInput {
+		guiHasInput := (overlay != nil && overlay.Active()) || (bar != nil && bar.Active()) || (deck != nil && deck.Active()) || (deck != nil && deck.Stopping()) || (hud != nil && hud.Active()) || dropC.Active()
+		if !guiHasInput && !zx.stopped {
 			zx.HandleInput()
 		}
 		// RunTurboAwareFrame owns the whole Turbo-mode lifecycle (fast-path
@@ -1188,13 +1234,13 @@ func RunGUI(args []string) {
 		// stepping through the debug engine, so the normal 50fps advance
 		// must not also run (it would race the engine on the same CPU).
 		// The screen is still drawn, frozen at the last frame.
-		if hud == nil || !hud.Active() {
+		if (hud == nil || !hud.Active()) && !zx.stopped {
 			blockedOnRealMemory := sched != nil && sched.BlockingOnRealMemory()
 			zx.RunTurboAwareFrame(blockedOnRealMemory)
 		}
 		// A paused machine shows the Play button in the middle of its picture; clicking it
 		// resumes the machine, as F2 does. Not while something else has the pointer.
-		playShown = zx.paused && (hud == nil || !hud.Active())
+		playShown = zx.paused && !zx.stopped && !zx.stopping && (hud == nil || !hud.Active())
 		if playShown {
 			playArea = playButtonArea(zx, deck)
 		}
@@ -1202,6 +1248,18 @@ func RunGUI(args []string) {
 			(hud != nil && hud.Visible()) || (drawer != nil && drawer.Visible()) || dropC.Active()
 		if playBtn.Update(playArea, playShown, playOwned) {
 			zx.TogglePause()
+		}
+		// The pointer can move the deck and resize it; what it changes is kept like a setting
+		// made in Preferences.
+		if zx.stopped {
+			// No machine: no tape deck either.
+		} else if bar != nil {
+			if tapeUI.Update(zx, &bar.tapeDeck, &bar.tapeCassette, playOwned) {
+				bar.saveSettings(zx)
+			}
+		} else {
+			place, size := tapeDeckTop, cassetteBig
+			tapeUI.Update(zx, &place, &size, playOwned)
 		}
 		zx.Render()
 
@@ -1225,7 +1283,9 @@ func RunGUI(args []string) {
 		}
 
 		frameNo++
-		zx.io.FDCTick(frameNo, autoCommitDebounceFrames)
+		if !zx.stopped {
+			zx.io.FDCTick(frameNo, autoCommitDebounceFrames)
+		}
 
 		// The machines behind the front one run on, and the dock may bring
 		// another to the front: from the next frame on, that one is zx.

@@ -18,7 +18,7 @@ there are in [`gui.md`](gui.md), [`headless.md`](headless.md) and
 7. [Keyboard](#keyboard)
 8. [Joystick and mouse](#joystick-and-mouse)
 9. [Media formats](#media-formats)
-10. [The menu bar (GUI)](#the-menu-bar-gui), [the Info windows](#the-info-windows-gui), [the +3's discs](#the-3s-discs-gui) and [several machines](#several-machines-gui)
+10. [The menu bar (GUI)](#the-menu-bar-gui), [the Info windows](#the-info-windows-gui), [the +3's discs](#the-3s-discs-gui), [standalone programs](#standalone-programs-gui) and [several machines](#several-machines-gui)
 11. [Configuration files](#configuration-files)
 12. [Scripting with zenscript](#scripting-with-zenscript)
 13. [Headless debugging workflow](#headless-debugging-workflow)
@@ -70,6 +70,18 @@ derived from `git describe`. Confirm with `-version`:
 ./zenzx -version
 ./zenzx-headless -version
 ```
+
+What a release builds can be checked without running it: `make check-binaries` reads every
+program in `dist/` (ELF, Mach-O and PE) and says whether it is the one its name says: the
+processor, the Windows subsystem, the libraries and imports it needs, the minimum macOS
+version, the macOS code signature Apple Silicon requires, and no build machine's path inside.
+It needs [LIEF](https://github.com/lief-project/LIEF) (`pip install lief`, `pip3` on a Mac).
+Each expectation has an option that overrides it (`make check-binaries BINARY_FLAGS="--skip minos"`,
+or `python3 tools/check_binaries.py --help`), and `--warn-only` reports without failing. It reads
+structure only: whether a program starts on a given system is for a machine of that system.
+`make check-purego` reads raylib-go's cgo-free layer, which the macOS and Windows GUI use, and
+fails when a function is prepared with a different number of arguments from the one it is called
+with, a mistake that builds and runs everywhere but stops the program where the layer is used.
 
 The standard ROM set is bundled directly into the binary -- no separate
 `rom/` folder is required alongside a distributed executable. `-romdir`
@@ -225,6 +237,8 @@ screenshot controls.
 | `-shot-prefix` | `zenzx` | Filename prefix for auto-named screenshots |
 | `-quiet` | `false` | Suppress per-frame logging |
 | `-romdir` | `./rom` | Directory containing ROM files |
+| `-export-program` | *(none)* | At the end of the run, write the machine as a standalone program at this path: one file that starts as the machine is now (the 48K, 128K, +2, +2A and +3 families and their Spanish models; not the Next or the Timex machines). It is made from this program, or from the ZenZX named by `-export-stub` |
+| `-export-stub` | *(none)* | With `-export-program`: the ZenZX to make the program from, to make one for another system (a Windows ZenZX makes a Windows program). A program with a window comes from the windowed ZenZX |
 
 When a `-script` is given, the front-end's own periodic screenshot
 mechanism (`-shot-interval` and final-frame capture) is disabled -- the
@@ -326,7 +340,8 @@ Only a gamepad as a Kempston joystick on a 48K has been tried on a host;
 
 Standard snapshot formats (`.sna`, `.z80`, and `.szx` for loading only) and the proprietary `.zxs`
 chunk format are supported via `-snapshot`/`snapshot-save`, with
-`-format auto` detecting from content. Tapes (`.tap`, `.tzx`) load via
+`-format auto` detecting from content. An `.rzx` recording is opened the same way and
+played: see "RZX recordings" below. Tapes (`.tap`, `.tzx`) load via
 `-tape`, with `-tapemode fast|accurate|turbo` controlling load speed
 in both builds -- `fast` traps the ROM's own loader for a near-instant
 result but only while a standard loader is active; `accurate` runs the
@@ -354,6 +369,7 @@ In the GUI build, dropping a file onto the window loads it by extension:
 | `.dsk` | A +3 disk image (requires +3 mode with the FDC enabled) |
 | `.sna` / `.z80` | Standard snapshots (48K and 128K), via the shared `zentools` library |
 | `.szx` | ZX-State snapshots, load only, via the shared `zentools` library |
+| `.rzx` | A recording, played from its first frame (see "RZX recordings") |
 
 Dropping a file onto a storage slot instead copies it into that slot's media:
 onto a Next's SD card (slot 2) it is copied to the card and the Browser is
@@ -362,17 +378,39 @@ the disc's +3DOS filesystem. A slot drawer slides down from the top edge while a
 file is dragged over the window; with several machines the drop goes to the
 focused one. See "Drag and drop" in [`gui.md`](gui.md) for the details.
 
+### RZX recordings
+
+An `.rzx` file is a recording of a session made in another emulator: a snapshot to start from, then,
+frame by frame, how many instructions the machine ran before the next frame interrupt and what every
+`IN` read. Opening one (`-snapshot game.rzx`, the `snapshot` script verb, File > Open, or dropping it
+on the window) puts the machine in the recorded state and plays the recording from there, with no
+keyboard, joystick or tape needed: each frame is as long as the recording says, and each `IN` gets the
+byte that was recorded. A game plays itself, as it did when recorded.
+
+- **Start the model it was made on first.** Opening a snapshot never switches the machine model, and
+  nor does this: a 128K recording on a 48K is refused with a message saying so. The Spectrum Next is
+  not supported.
+- **Playback only.** ZenZX does not record. Nothing you press while a recording plays reaches the
+  game. A reset, or loading a snapshot or another recording, ends the playback and leaves the
+  machine as it is.
+- **A recording can go out of step.** Playback checks at the end of every frame that the machine ran
+  as many instructions and read as many ports as were recorded. If not (the recording was made on
+  something that behaved differently from this emulation) it stops, says at which frame, and the
+  machine carries on by itself from where it was. How soon that happens depends on the recording.
+- **Not supported:** encrypted recordings, and recordings whose snapshot is a separate file instead
+  of being inside the `.rzx`. The security blocks of a signed file are skipped, not checked.
+
 ## The menu bar (GUI)
 
 Hover the mouse within 10px of the top window edge and hold it still for
 100ms -- a menu bar slides in with eight menus: **File** (**Open...** for any
-file the program loads, routed as a drop is; **Preferences...**, one window for
+file the program loads, routed as a drop is; **Export...**, which writes the machine as a program of one file that starts as the machine is now; **Preferences...**, one window for
 every setting kept between sessions, in three tabs (Appearance, Machines and Files; a click, or
 Left, Right and Tab, changes tab) with the settings grouped under headings in each; and **Quit**, for systems with no
-application menu), **Machine** (reset,
-pause/resume, and every supported model grouped by manufacturer, switched
+application menu), **Machine** (reset, **Pause** or **Play** as the machine
+needs, **Stop**, which ends the machine, and every supported model grouped by manufacturer, switched
 live without restarting), **Custom ROM**, **Tape**, **Storage** (the +3's
-floppy drive, or the SD cards and virtual floppy of a Next that boots NextZXOS),
+floppy drive and a Next's SD cards, the same two sections on every model, greyed where the machine has none),
 **Snapshot**, **View** (FPS counter, border display, display scale, layouts),
 and **Theme** (Dark/Light/Spectrum, plus a font submenu with six bundled
 BDF faces). A logo/rainbow element at the right of the bar opens the Help
@@ -392,11 +430,11 @@ manual gives the practical summary above rather than repeating it.
 
 ### The Info windows (GUI)
 
-**Show Info** in the Tape menu, **Disk Info** in the Floppy Disk menu,
-**Card Info** in the SD Card menu and **Snapshot Info** in the Snapshot
-menu each open a small window with what they have to say, in the reader
+**Show Info** in the Tape menu, **Disk Info** in the Storage menu,
+**Card Info** in the Storage menu and **Snapshot Info** and **Run Diagnostics** in the Snapshot
+menu each open a window with what they have to say, in the reader
 Help and About use: Escape, its close box or a click outside closes it,
-and a long text (a tape of many blocks) scrolls. The same text is printed
+and a long text (a tape of many blocks, the diagnostics) scrolls. The same text is printed
 to the terminal, for a session that is being logged.
 
 | Window | Says |
@@ -404,7 +442,8 @@ to the terminal, for a session that is being logged.
 | Tape | the file, the mode (fast, accurate or turbo), whether it is playing and at which block, the first program's name, and every block with its type, name and length |
 | Disk | the file (or that the disc is a blank one not saved yet), its tracks and sides, whether it has changes that are only in memory, the file's size, and whether the file has changed on disk since it was loaded |
 | Card | for each of the two slots: the file, its size, whether it can be written to, how many files it holds and how much they come to, and whether a Next boots from it, with the reason when it does not |
-| Snapshot | how a snapshot is loaded and what Quick Save and Save Timestamped write |
+| Snapshot | the snapshot files there are in the folder ZenZX runs in (the quick save in each format, the timestamped saves and the newest, with size and date), then how a snapshot is loaded and what Quick Save, Save Timestamped and Save As write |
+| Diagnostics | the model and whether it runs or is paused, the registers, flags and interrupts, where PC is and the nearest ROM routine, the memory layout and banking, the top of the stack, the tape, the floppy drive and the card slots, and checks (byte order of snapshot files, the stack pointer, the memory map) that name what is wrong; reading it changes nothing in the machine |
 
 ![The Card Info window](img/info-card.png)
 
@@ -418,7 +457,7 @@ and either can be ahead: the memory when the +3 has written, the file when
 another program has rewritten it since (a build that makes the disc again,
 say).
 
-**Manage Disks...** in the Floppy Disk menu opens the Floppy Disks window.
+**Manage Disks...** in the Storage menu opens the Floppy Disks window.
 Its second line says how the drive's disc stands against its file: the
 same, changes here not yet in the file, the file changed on disk since it
 was read, or both. Below it are the disc images of the folder the disc
@@ -450,6 +489,26 @@ window does not offer a disc another machine has.
 
 ![The Floppy Disks window: the drive against its file, and the folder's disc images](img/floppy-disks-window.png)
 
+### Standalone programs (GUI)
+
+**File > Export...** pauses the machine in front and opens a form that says what Export does
+and asks for the name of the program, with the folder it goes to shown under it (the folder
+the last export went to, or the one ZenZX was started in) and a **Browse...** button to pick
+another; a name that is there already is replaced only when **Export** is pressed again. It
+writes one file: a copy of the ZenZX that is running with the machine as
+it was at that moment after it. Nothing goes with it. Run on its own, it opens a window
+and carries on from where the machine was, with the ROMs and the snapshot inside it.
+The window goes with it as it was at that moment: the border shown or hidden, the FPS
+counter, the menu bar fixed or left to hide at the top edge, and the theme, font, sizes and
+other preferences of the Preferences window. The program starts with these and not with the
+settings of whoever runs it, and what it changes of them is not written to that person's
+`settings.json`. The machine you exported is put back as it was (running or paused) once the file is
+written, or if you cancel the browser. The 48K, 128K, +2, +2A and +3 and the Spanish models
+can be exported; the Next and the Timex machines cannot, and a tape's position is not kept.
+A program made on Linux runs on Linux, and so on: to make one for another system, use the
+headless `-export-program` with `-export-stub` naming the ZenZX of that system. A program
+that carries a machine can itself export another.
+
 ### Several machines (GUI)
 
 One window can run any number of machines. One of them is in front: it is
@@ -464,6 +523,14 @@ pointer; it adds a machine when the button is let go on it. Click a picture, or
 choose it with the arrow keys and `Enter`, and it grows out of the dock
 until it fills the screen: that machine is now in front. Everything in the
 menu bar acts on the machine in front.
+
+**Machine > Stop** ends the machine in front: a ground comes up from below the window with a small
+Spectrum standing on a bin, a leg comes down from the top and a boot stamps the Spectrum flat, and
+the ground goes back down with the bin and what is left; the machine is gone from the dock. (A machine that is not
+on the screen is stopped at once.) When the last machine is stopped the window shows only its
+background, with the menu bar and the dock; **New**, or a model chosen from the Machine menu,
+starts a machine again. The pictures of the animation can be replaced with your own: see
+`sprites/stomp/README.txt`.
 
 | In the dock | Does |
 |---|---|
@@ -559,6 +626,12 @@ explicitly passed `-theme` or `-scale` flag always wins over the
 persisted value; leave either unset and the persisted value applies
 instead of that flag's own default. The running `-model` and FPS/border
 visibility are deliberately not persisted.
+
+A `settings.json` that is empty, or holds `{}` or `null`, does not stop the program: it starts
+from the defaults and writes the file again. A file with only some of the keys is used, the others
+being the defaults'. A file that is not usable (not JSON, not an object, or a value that is not
+one of the allowed ones) is moved aside to `settings.json.bad` and replaced the same way, with a
+warning that says so. A file that is not there is not made until a setting changes.
 
 ## Scripting with zenscript
 
@@ -699,8 +772,9 @@ gallop.nex`. The GUI does the same for a `.nex` chosen in File > Open or
 dropped on the window (docs/gui.md, "Running a .nex"). The examples and how
 they are built are in `examples/next/README.md`.
 
-In the GUI, while such a Next is running, the **SD Card** menu is where the
-Floppy Disk menu is for the other machines. It shows what is in the two
+In the GUI the **SD Card** section of the **Storage** menu is where this is done; the Floppy Disk
+section above it is the +3's, and every model shows both, the one it has not greyed with a line
+that says why. It shows what is in the two
 slots, and for the second: **Insert Card in Slot 2...** (a browser for
 `.img` files, opened in the folder of the boot files), **Insert ZenZX's
 Card (Examples)** (which makes the card with the examples when there is
@@ -726,6 +800,8 @@ only offers what keeps to that.
 | **Boot from it** / **Restart from it** | Puts the chosen card in slot 1 and starts the Next from it. For a free card that boots |
 | **Put in slot 2** / **Take out of slot 2** | The second slot, for a free card |
 | **Copy** | Copies the chosen card to a new file beside it (`next-card-2.img`, and so on), with a progress bar; **Stop copying** leaves nothing behind. The copy is of the file as it is at that moment: copy a card of a machine that is not writing to it |
+| **Rename** | Asks for a new name (`.img` is added if it is left out; a name that is taken, has a slash, or begins with a dot is refused, and the question stays open), then asks again whether to rename it: **Yes** does it, **No** or Escape leaves the card as it was. For a free card; not for the standard card, whose name the Next's files are found by |
+| **Delete** | Asks for the word `DELETE`, typed in capitals and exactly: `delete`, `Delete`, `DELETE ` with a space after it and anything else are refused, and the question stays open. The file is then deleted for good, not kept in a bin. For a free card; for the standard card the question adds that Make bootable and every Next that boots NextZXOS use it |
 | **New 280 MB** / **New 1 GB** | Makes an empty FAT32 card, `card.img`, `card-2.img`, ... |
 | **Make bootable** | Puts on the chosen card the files a Next needs to start NextZXOS, copied from the standard card (`next-card.img` in the folder): eight files, about 770 KB. What the card holds is kept. For a free card that does not boot, when the standard card is there |
 | **Other file...** | Adds a card image from another folder to the list |

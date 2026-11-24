@@ -300,3 +300,25 @@ func TestSnapshotStartDefaultsToPausedAndRoundTrips(t *testing.T) {
 		t.Errorf("read back %q", res.Settings.SnapshotStartAction())
 	}
 }
+
+// A settings.json from before stopAnimation existed plays the stop animation (as it was always
+// going to), and the choice to turn it off survives a save and a load.
+func TestStopAnimationDefaultsToOnAndRoundTrips(t *testing.T) {
+	var none *Settings
+	if !none.StopAnimationOn() || !(&Settings{}).StopAnimationOn() {
+		t.Error("the default is not on")
+	}
+	off := false
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := Save(path, &Settings{Version: 1, Theme: "Dark", Font: "Sinclair", FontZoom: 1,
+		DisplayScale: 2, StopAnimation: &off}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Load(path, []byte(validSettingsJSON()), testThemes, testFonts)
+	if err != nil || !res.FromDisk {
+		t.Fatalf("the saved file was refused: %v %s", err, res.Warning)
+	}
+	if res.Settings.StopAnimationOn() {
+		t.Error("an animation turned off came back on")
+	}
+}

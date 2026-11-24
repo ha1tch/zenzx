@@ -125,7 +125,8 @@ func TestCardInfoText(t *testing.T) {
 }
 
 func TestInfoItemsOpenAWindow(t *testing.T) {
-	zx := NewZenZX(AudioBackendOto)
+	// A machine with a drive: a drive-less one has no Disk Info row to open.
+	zx := testZXWithDrive()
 	if err := zx.LoadROM("./rom/48.rom"); err != nil {
 		t.Fatal(err)
 	}
@@ -133,16 +134,19 @@ func TestInfoItemsOpenAWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fitsThePanel(t, "snapshots", snapshotInfoText())
+	fitsThePanel(t, "snapshots", snapshotInfoText(zx))
+	fitsThePanel(t, "diagnostics", diagnosticsText(zx, "48k"))
 	// The Info item of each menu, by its place in that menu.
 	cases := []struct {
 		menu, item int
 		title      string
 		says       string
+		tall       bool // a text too long for a panel of its own height: it scrolls
 	}{
-		{barTape, 4, "TAPE INFO", "No tape is loaded"},
-		{barFloppyDisk, 8, "DISK INFO", "no floppy drive"}, // index 8: a Floppy Disk title now precedes the items
-		{barSnapshot, 4, "SNAPSHOT INFO", "Quick Save"},
+		{barTape, 4, "TAPE INFO", "No tape is loaded", false},
+		{barFloppyDisk, 8, "DISK INFO", "Drive A: is empty", false}, // index 8: the Floppy Disk title comes first
+		{barSnapshot, 5, "SNAPSHOT INFO", "Quick Save", true},
+		{barSnapshot, 6, "DIAGNOSTICS", "## CPU", true},
 	}
 	for _, c := range cases {
 		b.activeModal = nil
@@ -157,8 +161,8 @@ func TestInfoItemsOpenAWindow(t *testing.T) {
 		if text := strings.Join(b.activeModal.Lines(), "\n"); !strings.Contains(text, c.says) {
 			t.Errorf("%s does not say %q:\n%s", c.title, c.says, text)
 		}
-		if !b.activeModal.AutoHeight() {
-			t.Errorf("%s: a short text should have a panel of its own height", c.title)
+		if b.activeModal.AutoHeight() == c.tall {
+			t.Errorf("%s: AutoHeight is %v for a text of %d lines", c.title, b.activeModal.AutoHeight(), len(b.activeModal.Lines()))
 		}
 		if !b.Active() {
 			t.Errorf("%s: the bar should count as active while the window is open", c.title)

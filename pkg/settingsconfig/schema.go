@@ -27,7 +27,10 @@ func Schema(validThemes, validFonts []string) qf.Schema {
 		Field("fixedMenuBar", builders.Bool().Required()).
 		Field("dock", builders.Bool()).
 		Field("multi", builders.Bool()).
+		Field("stopAnimation", builders.Bool()).
 		Field("drop", builders.String().Enum("ask", "copy", "run")).
 		Field("dropShift", builders.String().Enum("ask", "copy", "run")).
-		Field("snapshotStart", builders.String().Enum("paused", "play"))
+		Field("snapshotStart", builders.String().Enum("paused", "play")).
+		Field("tapeDeck", builders.String().Enum("off", "top", "bottom")).
+		Field("tapeCassette", builders.String().Enum("small", "big", "hidden"))
 }

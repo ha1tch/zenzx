@@ -48,7 +48,7 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 | T-60 | IM 2: the CPU core clears bit 0 of the vector; ZenZX reads the handler's address again | timing | P3 | ☐ | — |
 | T-61 | The Multiface has no NMI key, and only what NextZXOS uses was tried | next-support | P3 | ☐ | — |
 | T-62 | The Next examples were compared with jnext only, not with CSpect | next-support | P3 | ☐ | — |
-| T-63 | SD Card menu: the first slot, per-slot write protection and an on-screen message are missing | next-support | P3 | ☐ | — |
+| T-63 | SD Card menu: the first slot and per-slot write protection are missing | next-support | P3 | ☐ | — |
 | T-64 | DMA+ and 4 MB: board ID, interrupts holding the DMA, and a comparison with CSpect 4.5 are missing | next-support | P3 | ☐ | — |
 | T-65 | The workbench: the running machine as the thing being edited | embedding | P2 | ☐ | after T-39 |
 | T-66 | gorepoman: no way to retire a tracked file; relcore's archive manifest is ordered differently from manifest.sh | hygiene | P3 | ☐ | — |
@@ -60,6 +60,14 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 | T-75 | On macOS, resizing the window crops the emulated screen or leaves a black area, and does not re-centre it: fixed in the sandbox, not yet seen on a Mac | graphics | P3 | ◐ | the public release |
 | T-79 | The GUI has never been launched with the Next boot cache on auto | next-support | P3 | ☐ | — |
 | T-80 | The Next boot cache over a changed card: memory fields not analysed one by one | next-support | P3 | ☐ | — |
+| T-83 | zen80 raises R by three for every repeat of LDIR and its kin; the real Z80 raises it by two | timing | P2 | ☐ | — |
+| T-84 | The RoboCop .rzx goes out of step at frame 5006 of 38881: a loop in a long interrupts-off routine runs about 130 fetches fewer than in the recorder | formats | P3 | ☐ | — |
+| T-85 | Formats zentools has that ZenZX does not use: Next and Spectrum screenshots, .pzx tapes, symbol files, saving .szx, ZX0 | formats | P4 | ☐ | — |
+| T-86 | Menu and key-handler messages other than the Storage menu's go to the terminal only; GUI-only users never see them | ux | P3 | ☐ | — |
+| T-87 | The bar's text scale is made by a wrapper around zenui's renderer; zenui should take a label scale | ux | P4 | ☐ | — |
+| T-88 | The tape deck's first cut: one machine at a time, no Fast mode, no seeking, nominal 3.5 MHz time, a colour per tape and not per header | ux | P3 | ☐ | — |
+| T-89 | An exported program has not been run on Windows, or seen opening its window on Linux | embedding | P2 | ◐ | — |
+| T-90 | Machine > Stop and the Pause/Play row have not been seen in a window with the machine's picture | ux | P3 | ☐ | — |
 
 ## timing
 
@@ -95,6 +103,14 @@ Theme: timing · Priority: P3 · Status: ☐
 - **Known:** the Z80 uses all eight bits of the byte on the bus; an even vector is the convention of Zilog's peripherals, not the CPU's rule. A Spectrum's ULA gives none and the CPU reads 0xFF, which is why tables are 257 bytes long. This is on every model, and only shows with a table that is not 257 equal bytes.
 - **Here:** `im2vector.go` reads the handler's address again from the whole vector when it was odd (called from `stepCPU` after an interrupt accepted in mode 2), with a test (`TestIM2UsesTheWholeVector`). With a corrected core it reads the same address twice.
 - **Done when:** zen80 uses the whole vector (the one line in its `handleInterrupts`), ZenZX's go.mod asks for that version, and `im2vector.go` and its call are removed with the test kept.
+
+### T-83. zen80 raises R by three for every repeat of LDIR and its kin; the real Z80 raises it by two
+
+Theme: timing · Priority: P2 · Status: ☐
+
+Trigger: found 2026-11-23 while building RZX replay (rzx.go). Counting the fetches of a recorded frame by R went wrong by one at frame 89 of the RoboCop recording, on an LDIR.
+
+Scope: zen80 v0.5.7 puts R up by three for every repeat of LDIR, LDDR, CPIR, CPDR, INIR, INDR, OTIR and OTDR; the real Z80 re-fetches the two opcode bytes (ED and the second) on each repeat, so it is two. The eight sites are in z80/prefix_ed.go, each under the comment "Increment R for the extra M1 cycle when repeating". rzx.go counts a repeat as two by hand (rzxKind, rzxBlock) so replay does not depend on it, but any program that reads R after a block instruction (LD A,R as a random number, as RoboCop does; copy-protection loaders such as Speedlock, which T-22 may involve: not checked) sees the wrong value. A copy of zen80 with the eight lines removed built and ran the RoboCop replay to the same point as the unpatched one (T-84), so this is not what stops that recording. Fix belongs upstream in github.com/ha1tch/zen80 with a test (R after LDIR of N repeats is R0+2N); when it lands, rzxBlock and its test lines can go. Done when: zen80 is fixed and ZenZX is on the release that has it.
 
 ## audio
 
@@ -182,7 +198,7 @@ Scope: reproduce on a Mac -- the cloud sandbox cannot -- and read how the pictur
 
 Done when: after a resize on macOS, retina or not, the picture is the whole screen area, centred, with the same border on every side, and a test of the placement arithmetic at HiDPI factors 1 and 2 holds it.
 
-Progress, 0.50.0 (2026-11-23). Shipped: the display compares the window's real size (the framebuffer's, in drawing units: `GetRenderWidth/Height` over `GetWindowScaleDPI`; `GetScreenWidth` is not used because `SetWindowSize` sets it to the size asked for whether the system gave it or not) with the size it asked for; when the window has kept another size for three frames it fits the zoom to it, and where the window stays a size the zoom cannot fill it draws the picture into a canvas and puts that in the middle, scaled down in proportion when the window is smaller than it (`picturefit.go`, `display_fit_gui.go`). While the window is the size asked for, nothing changes. Tests: `picturefit_test.go` (arithmetic at HiDPI factors 1 and 2: equal margins, nothing cropped, proportions kept) and `TestGLPictureFitsAWindowOfAnotherSize` (G-14: the window held at four sizes, the picture's border found, checked to fail with the fit taken out). Outstanding: nothing here has run on a Mac, and the cause (the system's own clamping of the window to the usable screen, retina) is read from the platform's known behaviour, not seen. Closure needs a run on macOS, retina and not, with the window dragged and the zoom changed; what ran, where and when is recorded here.
+Progress, 0.50.0 (2026-11-23). Shipped: the display compares the window's real size (the framebuffer's, in drawing units: `GetRenderWidth/Height` over `GetWindowScaleDPI`; `GetScreenWidth` is not used because `SetWindowSize` sets it to the size asked for whether the system gave it or not) with the size it asked for; when the window has kept another size for three frames it fits the zoom to it, and where the window stays a size the zoom cannot fill it draws the picture into a canvas and puts that in the middle, scaled down in proportion when the window is smaller than it (`picturefit.go`, `display_fit_gui.go`). While the window is the size asked for, nothing changes. Tests: `picturefit_test.go` (arithmetic at HiDPI factors 1 and 2: equal margins, nothing cropped, proportions kept) and `TestGLPictureFitsAWindowOfAnotherSize` (G-14: the window held at four sizes, the picture's border found, checked to fail with the fit taken out). Added later the same day: found by running the program under a window manager (Xvfb and a small one, enlarging the window as a Mac's zoom does) and reproducing the report that a maximised window left the picture at the top left on black: the fixed bar's reservation followed the window's width through the bar's text scale and sent the window back, and the zoom the fit chose was asked of the window, which a maximised one may refuse. Both are fixed (`windowkept_gui_test.go`; the display keeps the window it is given and centres the picture in it) and `ZENZX_WINDOW_DEBUG=1` prints what the window reports. Outstanding: nothing here has run on a Mac, and the cause (the system's own clamping of the window to the usable screen, retina) is read from the platform's known behaviour, not seen. Closure needs a run on macOS, retina and not, with the window dragged and the zoom changed; what ran, where and when is recorded here.
 
 ## storage
 
@@ -472,12 +488,12 @@ Theme: next-support · Priority: P3 · Status: ☐
 - **Not done:** none was run in CSpect 3.3.1.0, which is the standard for the picture, or on a Next; `fuji` and `orbit` were not started from the Browser; nothing in them makes a sound.
 - **Done when:** each has been compared with CSpect from the same keys, or the reason it cannot be is written down.
 
-### T-63. SD Card menu: the first slot, per-slot write protection and an on-screen message are missing
+### T-63. SD Card menu: the first slot and per-slot write protection are missing
 
 Theme: next-support · Priority: P3 · Status: ☐
 
 - **Trigger:** 0.24.0, the SD Card menu and the second card slot.
-- **Not there:** changing the card in the first slot from the menu (it means starting the Next again from another card, with its own DivMMC ROM); write protection for each slot separately (`-sdcard-readonly` is for both); a message in the window when a card is put in or taken out, which is printed to the terminal now and is where the remount hint is; ZenScript actions for the second slot, so a headless script can change it.
+- **Not there:** changing the card in the first slot from the menu (it means starting the Next again from another card, with its own DivMMC ROM); write protection for each slot separately (`-sdcard-readonly` is for both); ZenScript actions for the second slot, so a headless script can change it.
 - **Not tried:** the menu's items clicked one by one in a window (their actions are tested, and the menu and its card browser were looked at under Xvfb); a second card with more than one partition; a card the Next writes to from both slots at once.
 - **Done when:** each of these is done or has its own item.
 
@@ -609,6 +625,74 @@ Trigger: 0.36.0 added `-multi`, `-listen` and `-autorun` (docs/link.md). What th
 
 Scope: each of these is a small piece of its own; do them as they are wanted.
 
+### T-89. An exported program has not been run on Windows, or seen opening its window on Linux
+
+Theme: embedding · Priority: P2 · Status: ◐
+
+Trigger: 0.50.0, File > Export (standalone.go, export_gui.go, export_dialog_gui.go).
+
+Scope: the program is the ZenZX it was exported from with the machine appended after it. On Linux the headless program was run (a machine put back from a file is the machine that was exported, field by field, over nine models: standalone_test.go) and the GUI program was started under Xvfb, where its log shows the machine loaded and running at once; the window's picture is not drawn under Xvfb's software OpenGL here, so the program has not been seen on a screen. Run on macOS, 2026-11-24, by the tech team: a program exported there works perfectly (the Mac's model and system version were not recorded; the worry that data appended to a signed executable would invalidate its ad-hoc signature did not arise). Not run: on Windows (the program's .exe; the Windows subsystem and a console-less start). The Next and the Timex machines are not exported, and nor is the tape's position.
+
+Done when: a program exported on Windows, and one on Linux seen on a real screen, has been started by double-click on that system, its window showed the machine as it was exported and running, and what ran, where and when is recorded here (macOS is recorded above).
+
 ---
+
+## formats
+
+### T-84. The RoboCop .rzx goes out of step at frame 5006 of 38881: a loop in a long interrupts-off routine runs about 130 fetches fewer than in the recorder
+
+Theme: formats · Priority: P3 · Status: ☐
+
+Trigger: found 2026-11-23, playing the RoboCop .rzx the user attached (a 128K recording of 38881 frames, about 13 minutes, recorded in another emulator).
+
+Scope: playback stays in step for 5005 frames (about 100 seconds of play; the screen at frame 5000 shows the first level with score 03700 and time 2:37), then stops at frame 5006 with "0 IN reads where 0 were recorded". Frames 5005 and 5006 are one long routine run with the interrupts off (the screen blitter that sets SP from IX and pushes, with the AY register writer called twice and the 128K paging port written from banked code); the recording ends frame 5006 after 8489 fetches, before the IN at 84EF, where ZenZX reaches that IN at fetch 8359: so some loop in that routine runs about 130 fetches fewer here than in the recorder. Two things were found and handled on the way (rzx.go): the interrupt is offered to one instruction boundary only, not held for 32 cycles (frame 4502), and a frame the recorder ended between DD and the opcode of INC IXH is played with the instruction whole and the odd fetch carried into the next frame (frame 4537). Ruled out: R (zen80 patched as in T-83, same frame), the interrupt (the interrupts are off throughout), counting DD/FD half-register opcodes as one fetch (breaks at frame 696). Not ruled out: a flag or instruction detail in zen80 that the blitter's data depends on, port decoding of OUTD for the AY (BC=BFFD after the decrement), 128K paging from banked code, the snapshot's own state. Next step: a second emulator's trace of the same recording around frame 5005, to compare register state at the frame boundaries; ZenZX has none to hand. Done when: the recording plays to its end, or the cause is found and recorded in docs/KNOWN_ISSUES.md as the recorder's own.
+
+### T-85. Formats zentools has that ZenZX does not use: Next and Spectrum screenshots, .pzx tapes, symbol files, saving .szx, ZX0
+
+Theme: formats · Priority: P4 · Status: ☐
+
+Trigger: the user asked, with RZX done, whether ZenZX could take more formats from the shared zentools library, Next screenshots among them. Checked 2026-11-23 against zentools v0.16.1 (the pinned tag): ZenZX imports basic, bdf, build, rzx, snapshot, szx, tap and tzx, and does its own .scr and .nex.
+
+Scope: candidates, none started. (1) Screenshots: saving the screen as a .scr (pkg/scr, 48K-style and Timex modes) and as a .bmp (pkg/scr), and for the Next the Layer 2 bitmap (.nxi), palette (.nxp) and sprite sheet (.spr) formats of pkg/zxn, so a Next screen can be saved in the form its tools read. (2) .pzx tapes (pkg/pzx: read, and convert from .tap). (3) Symbol and map files (pkg/symfile: the CSpect map and other assembler formats), for naming addresses in trace and debug output. (4) Saving .szx (pkg/szx decodes; the encoder is not used here). (5) ZX0-compressed data (pkg/zx0), for loading a compressed .scr or block. Gaps zentools has nothing for, listed so they are not mistaken for omissions: tape recording, .csw and .wav tapes, .pok cheat files, TR-DOS (.trd, .scl) and Microdrive images. Each one that is taken up gets its own item. Done when: each candidate is either filed on its own or dropped here with a reason.
+
+## ux
+
+### T-86. Menu and key-handler messages other than the Storage menu's go to the terminal only; GUI-only users never see them
+
+Theme: ux · Priority: P3 · Status: ☐
+
+Theme: ux · Priority: P3 · Status: ☐
+
+- **Trigger:** 0.50.0, the Storage menu rework, which sends the disc and card messages to a toast through `zx.notice` and `OnNotice`.
+- **Not there:** the same for the rest of the GUI. About 50 `fmt.Println`/`fmt.Printf` calls in `input.go` (tape, snapshot, machine, display and preference handlers) and about 15 in `menubar_gui.go` still write to the terminal only, so a user who never sees the terminal gets no confirmation or refusal from them (the Snapshot menu's Quick Save, Quick Load, Save Timestamped and Save As are done, 0.50.0): tape Play/Stop/Rewind and mode changes, machine switches, paused/resumed, FPS and border toggles, preference changes, and the refusals ("no snapshot to load", model-specific messages).
+- **Not tried:** which messages are worth a toast and which are noise (a toggle already shows its own checkmark); how a burst of messages should queue, since a new toast replaces the one in progress.
+- **Done when:** each handler that refuses or confirms something the user cannot otherwise see goes through `zx.notice`, and the ones left terminal-only are listed here with the reason. The Storage menu screenshot in the manual (`docs/img/next-sd-card-menu.png`) shows the old layout and is taken again at the same time.
+
+
+### T-87. The bar's text scale is made by a wrapper around zenui's renderer; zenui should take a label scale
+
+Theme: ux · Priority: P4 · Status: ☐
+
+Trigger: 0.50.0, the menu bar's text scale (menubarscale.go, menubarscale_gui.go). zenui v0.2.1's MenuBar draws its labels at scale 1 with no option, and its dropdowns at its own scale.
+
+Scope: the bar's labels are made larger by drawing the strip through `barScaleRenderer`, which turns the labels' scale 1 into the bar's scale until the strip's one-pixel bottom line, and leaves the dropdowns alone; and the logo's and the rainbow's sizes are set through the package variables `zenui.RainbowScanlines` and `zenui.RainbowBandWidth` before every draw. Both depend on how MenuBar orders its drawing (the bottom line ends the strip) and on package state. Ask zenui for a label scale on MenuBar (a field or method beside SetScale) and for the rainbow's size as part of the bar's own height, then delete `barScaleRenderer`, its test, and the package-variable writes in `drawBar`. Done when: the bar's scale is passed to zenui, the wrapper is gone, and `TestGLBarScale` and `menubarscale_gui_test.go` pass unchanged.
+
+### T-88. The tape deck's first cut: one machine at a time, no Fast mode, no seeking, nominal 3.5 MHz time, a colour per tape and not per header
+
+Theme: ux · Priority: P3 · Status: ☐
+
+Trigger: 0.50.0, the tape deck (tapedeck.go, tapedeck_gui.go, cassette_vector.go).
+
+Scope: the deck is shown for the machine in front only, not while the machines are tiled (each tile would need its own deck and its own tape), and not in Fast mode (the ROM's loader is trapped, so there are no pulses to count). Its bar and counter are time at a nominal 3.5 MHz (tapeTicksPerSecond), where a 128K runs at 3.5469 MHz. There is no seeking by clicking the bar, no fast forward, and the cassette's colour changes with a new tape and not with each Program header of a tape that has several. The border's bands are worked out from the display's own margins (deckPictureBands); for the Next's wider Layer 2 modes the deck goes where the classic border would be, and that has not been looked at on a real display. The buttons have no tooltips and no keys of their own beyond Alt+P and Alt+R. The slide-in menu bar covers the deck's top band and the machine dock its bottom band while they are out. Done when: each of these is done, or recorded in KNOWN_ISSUES as a limit that stays.
+
+### T-90. Machine > Stop and the Pause/Play row have not been seen in a window with the machine's picture
+
+Theme: ux · Priority: P3 · Status: ☐
+
+Trigger: 0.50.0, Machine > Stop (machinedeck_stop_gui.go, stomp_gui.go, machinemenu_gui.go).
+
+Scope: the menu rows (label and icon), the stop of one of several machines, the stop of the last one (a window with only its background), the starting of a machine again from the dock's New and from the Machine menu, and the animation are covered by tests (stop_gui_test.go, stompicon_gui_test.go, TestGLStomp, G-18). The window has not been looked at as a person would with the machine's picture on it: the picture is not drawn under Xvfb's software OpenGL in this environment, so the dim over it, the leg coming down over a real picture and the dock after the last machine has gone are checked by the pieces and not together.
+
+Done when: Stop has been used on a real display with one machine and with several, in a tiled layout and a single one, and the dock, the menu and the empty window were as described in docs/gui.md; what ran, where and when is recorded here.
 
 ---

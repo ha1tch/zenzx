@@ -23,10 +23,10 @@ have made the journey better, and I'm grateful to them.
   generous, and she has been kind enough to share all of that with us.
 - **Steve Wetherill** — something of a legend in games, in almost any genre and at
   any scale, from boutique studios to titles that reach millions: if you have
-  played video games in the last three or four decades, you have probably played
-  one of his. On the retro side he wrote *Nodes of Yesod* and a good many Spectrum,
+  played video games in the last three or four decades, you or someone you know
+  has played one of his. On the retro side he wrote *Nodes of Yesod* and a good many Spectrum,
   Atari ST and Amiga titles, after cutting his teeth at Software Projects porting
-  *Jet Set Willy* to the Amstrad CPC. He writes a [blog](https://blog.stevewetherill.com)
+  *Manic Miner* and *Jet Set Willy* to the Amstrad CPC. He writes a [blog](https://blog.stevewetherill.com)
   and is serialising his memoir on [Substack](https://stevewetherill.substack.com),
   the story of a journey from 8-bit bedroom coder to global franchises — a terrific
   read, sharp, very funny, and free into the bargain.

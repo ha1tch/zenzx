@@ -31,7 +31,8 @@ type prefRow struct {
 	set     func(int)
 	// off, when it returns text, says why the row cannot be changed now.
 	off func() string
-	// hint is a line under the row, in a dimmer hand, for what the label cannot say.
+	// hint is help text for what the label cannot say. It is hidden until the pointer rests on
+	// the row or on its group's title, and then shows in a box (preferences_tips_gui.go).
 	hint string
 }
 
@@ -71,9 +72,12 @@ type prefsWindow struct {
 	heads   []zenui.Rect
 	areas   [][]zenui.Rect // each row's control
 	labels  [][]zenui.Rect // each choice's label
-	hints   [][]zenui.Rect // each row's hint line, or the line saying why it is off
 	scale   int
 	lineH   int
+
+	// What the pointer is doing (preferences_tips_gui.go).
+	handWanted bool // it is over a tab
+	tip        prefsTip
 }
 
 func newPrefsWindow(sections []prefSection, where string, save func()) *prefsWindow {
@@ -190,9 +194,6 @@ func (w *prefsWindow) layout(r zenui.Renderer, screenW, screenH int) {
 			}
 			rows[si] = append(rows[si], placed{y, h})
 			y += h + 2
-			if row.hint != "" || (row.off != nil && row.off() != "") {
-				y += w.lineH
-			}
 			y += 4
 		}
 		ys[ti] = y + pad/2
@@ -210,11 +211,11 @@ func (w *prefsWindow) layout(r zenui.Renderer, screenW, screenH int) {
 	w.tabArea = zenui.Rect{X: px + pad, Y: py + tabTop, W: inner, H: tabH}
 
 	w.heads = w.heads[:0]
-	w.areas, w.labels, w.hints = nil, nil, nil
+	w.areas, w.labels = nil, nil
 	for si, s := range w.sections {
 		ti := w.tabIndex(s.tab)
 		w.heads = append(w.heads, zenui.Rect{X: px + pad, Y: py + heads[si].y, W: inner, H: heads[si].h})
-		var as, ls, hs []zenui.Rect
+		var as, ls []zenui.Rect
 		for ri, row := range s.rows {
 			p := rows[si][ri]
 			x, aw := px+pad, inner
@@ -225,9 +226,8 @@ func (w *prefsWindow) layout(r zenui.Renderer, screenW, screenH int) {
 			}
 			as = append(as, zenui.Rect{X: x, Y: py + p.y, W: aw, H: p.h})
 			ls = append(ls, label)
-			hs = append(hs, zenui.Rect{X: px + pad, Y: py + p.y + p.h + 2, W: inner, H: w.lineH})
 		}
-		w.areas, w.labels, w.hints = append(w.areas, as), append(w.labels, ls), append(w.hints, hs)
+		w.areas, w.labels = append(w.areas, as), append(w.labels, ls)
 	}
 	w.barArea = zenui.Rect{X: px + pad, Y: py + ph - pad - barH, W: inner, H: barH}
 }
@@ -236,6 +236,8 @@ func (w *prefsWindow) layout(r zenui.Renderer, screenW, screenH int) {
 // saved; the frame ends there, since a setter may have replaced the renderer.
 func (w *prefsWindow) Update(in zenui.Input, r zenui.Renderer, screenW, screenH int) prefsResult {
 	w.layout(r, screenW, screenH)
+	textW := func(s string) int { return r.TextWidth(s, w.scale) }
+	w.hover(in, textW)
 	n := len(w.tabNames)
 	for _, k := range in.Keys {
 		switch k {
@@ -250,7 +252,6 @@ func (w *prefsWindow) Update(in zenui.Input, r zenui.Renderer, screenW, screenH 
 	if _, changed := w.tabs.Update(in, w.tabArea, w.lineH); changed {
 		return prefsOpen // the click that chose the tab is not also a click on what is under it
 	}
-	textW := func(s string) int { return r.TextWidth(s, w.scale) }
 	for si, s := range w.sections {
 		if !w.showing(si) {
 			continue
@@ -311,16 +312,6 @@ func (w *prefsWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 			if c := w.checks[si][ri]; c != nil {
 				c.Draw(r, theme, w.areas[si][ri], w.scale)
 			}
-			note := row.hint
-			if row.off != nil {
-				if why := row.off(); why != "" {
-					note = why
-				}
-			}
-			if note != "" {
-				h := w.hints[si][ri]
-				r.DrawText(note, h.X+w.lineH, h.Y, w.scale, theme.DimText)
-			}
 		}
 	}
 
@@ -332,6 +323,7 @@ func (w *prefsWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 	r.DrawText(kept, w.panel.X+pad, y, w.scale, theme.DimText)
 	r.DrawText("Border and the FPS counter are in the View menu, for the session.", w.panel.X+pad, y+w.lineH, w.scale, theme.DimText)
 	w.buttons.Draw(r, theme, w.barArea, w.scale)
+	w.drawTip(r, screenW, screenH, theme)
 }
 
 // openPrefs opens the Preferences window for the machine zx.
@@ -434,6 +426,9 @@ func (b *appMenuBar) prefSections(zx *ZenZX) []prefSection {
 			{label: "Several machines", get: func() int { return onOff(b.multiOn) },
 				set:  func(v int) { b.multiOn = v == 1 },
 				hint: "Lets the dock's New tile add machines. -multi still starts them."},
+			{label: "Stop animation", get: func() int { return onOff(b.stopAnimation) },
+				set:  func(v int) { b.stopAnimation = v == 1 },
+				hint: "When a machine is stopped, a boot comes down and stamps a small Spectrum flat. Off, the machine goes at once."},
 		}},
 		{"Machines", "Snapshots", []prefRow{
 			{label: "A loaded snapshot", options: []string{"Waits paused", "Plays at once"},
@@ -445,6 +440,16 @@ func (b *appMenuBar) prefSections(zx *ZenZX) []prefSection {
 				},
 				set:  func(i int) { b.snapshotPlay = i == 1 },
 				hint: "What a snapshot does once it is loaded: wait for Play, or run."},
+		}},
+		{"Machines", "Tape", []prefRow{
+			{label: "Tape deck", options: []string{"Off", "Top", "Bottom"},
+				get:  func() int { return int(b.tapeDeck) },
+				set:  func(i int) { b.tapeDeck = tapeDeckPlace(i) },
+				hint: "A cassette, a progress bar and Play, Rewind, Stop and Pause, while a tape loads in Accurate mode: in the border, or over the picture when there is none. The wheel over it resizes it, its corner buttons make it small or send it away, and dragging it carries it, and let go it settles at the top or the bottom, whichever it is nearer."},
+			{label: "Cassette", options: []string{"Small", "Big", "Hidden"},
+				get:  func() int { return int(b.tapeCassette) },
+				set:  func(i int) { b.tapeCassette = tapeCassetteSize(i) },
+				hint: "Small, beside the buttons; big, under them, with the program's name written on its label; or hidden, leaving the buttons."},
 		}},
 		{"Files", "Dropped on a Next at its menu", []prefRow{
 			{label: "A plain drop", options: dropNames,

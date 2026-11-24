@@ -81,10 +81,10 @@ const (
 
 // zoomLevels are the magnification factors the Font menu's "Font zoom
 // X_" items offer -- applied to every dropdown's text/layout, never to
-// the bar strip itself, which always draws at scale 1 regardless (see
-// zenui.MenuBar.Draw). X2 is the default, matching what the bar already
-// rendered at before this setting existed, so picking nothing changes
-// nothing.
+// the bar strip itself, whose text is fitted to the window's width
+// instead (menubarscale.go). X2 is the default, matching what the
+// dropdowns rendered at before this setting existed, so picking nothing
+// changes nothing.
 var zoomLevels = []int{1, 2, 3}
 
 // viewRotateLabel is the View menu's item that moves every machine to the
@@ -105,10 +105,12 @@ const (
 type dialogKind int
 
 const (
-	dialogDisk       dialogKind = iota // Floppy Disk > Open DSK Image...
-	dialogOpenFile                     // File > Open...
-	dialogInsertCard                   // SD Card > Insert Card Image...
-	dialogNewCard                      // SD Card > New Empty Card: names the new image
+	dialogDisk         dialogKind = iota // Floppy Disk > Open DSK Image...
+	dialogOpenFile                       // File > Open...
+	dialogInsertCard                     // SD Card > Insert Card Image...
+	dialogNewCard                        // SD Card > New Empty Card: names the new image
+	dialogSaveSnapshot                   // Snapshot > Save As: names the snapshot file
+	dialogExportBrowse                   // File > Export...: the Browse button's file browser, whose folder and name go into the form
 )
 
 // bar index constants -- Custom ROM (barCustomROM) gets dedicated handling
@@ -163,6 +165,11 @@ type appMenuBar struct {
 	// the size in bytes of the card to be made.
 	dialogKind  dialogKind
 	newCardSize int64
+	saveFormat  string     // for dialogSaveSnapshot, the format chosen (snapshotsaveas.go)
+	export      *exportJob // File > Export...: the machine as it was when the item was picked (export_gui.go)
+	exportAsk   *exportAsk // the Export form, while it is open (export_dialog_gui.go)
+	exportDir   string     // the folder the last export went to, where the next is offered
+	fileMenu    menuSpec   // the File menu's rows, with Export's submenu
 	// openFiles, set by the host, carries out File > Open: the files chosen go the way
 	// files dropped on the window go. quit, also the host's, ends the program the way
 	// closing its window does. Either is nil in a bar with no host (the tests), and the
@@ -175,19 +182,28 @@ type appMenuBar struct {
 	prefs   *prefsWindow
 	dockOn  bool
 	multiOn bool
+	// stopAnimation is whether Machine > Stop plays the animation of a boot stamping the
+	// machine flat, or lets the machine go at once. On by default.
+	stopAnimation bool
 	// dropPlain and dropShift are what a tape, .scr or snapshot dropped on a Next at its
 	// menu is done with, without Shift and with it (planDrop, dropchoice_gui.go).
 	dropPlain, dropShift dropAction
 	// snapshotPlay is whether a snapshot, once loaded, runs at once rather than waiting
 	// paused (the default). It is read through snapshotStartsPlaying (input.go).
 	snapshotPlay bool
+	// tapeDeck is where the tape deck goes, or off (tapedeck.go). Off by default.
+	tapeDeck tapeDeckPlace
+	// tapeCassette is the size of its cassette: small by default.
+	tapeCassette tapeCassetteSize
 	// The bar's fourth menu is Storage: the +3's floppy drive, or the SD cards of a Next
 	// that boots NextZXOS. diskItems is the first's items, storageSpec the second's rows
 	// (items and actions both, see menuspec_gui.go), storageIsSD which it is now, nextCard2
 	// the -sdcard2 option.
-	diskItems   []zenui.Item
+	barK        int // the scale of the bar's own text (menubarscale.go), 0 until it has been drawn
 	storageSpec menuSpec
+	snapSpec    menuSpec // the Snapshot menu's rows, with Save As's submenu
 	storageIsSD bool
+	storageSig  string // what the menu showed when its items were last set
 	nextCard2   string
 
 	// logoMenu is the dropdown of the rainbow (Spectrum theme) / ZSP logo (Dark/Light)
@@ -199,7 +215,10 @@ type appMenuBar struct {
 
 	// logoHand is true while the pointer is a hand because it is over the logo button.
 	logoHand bool
-	logoSpec menuSpec
+	// prefsHand is true while the pointer is a hand because it is over a tab of the
+	// Preferences window (preferences_tips_gui.go).
+	prefsHand bool
+	logoSpec  menuSpec
 	// openDebugger, set by the host, opens the debugger HUD (hud_gui.go) on the front
 	// machine; nil while there is no debugger, which leaves the Developer item disabled.
 	openDebugger func()
@@ -211,6 +230,8 @@ type appMenuBar struct {
 	// be open at a time (both are only reachable through logoMenu,
 	// which itself can't be open at the same time as either).
 	activeModal *zenui.TextModal
+	// modalHand is whether the pointer is a hand because it is over a link in activeModal.
+	modalHand bool
 
 	// nextSetup is the first-start dialog of the Next while it is open (nextsetup_gui.go).
 	// The four settings beside it come from the command line: where the boot files are
@@ -275,6 +296,15 @@ type appMenuBar struct {
 	// nesting at one level (see pkg/machineconfig's Submenu doc
 	// comment for why), so this never needs a third level of its own.
 	machineSubmenuFlags map[int][]string
+	// machineGroupItems are the model rows that follow the Machine menu's head rows
+	// (machinemenu_gui.go).
+	machineGroupItems []zenui.Item
+	// stopMachine stops the front machine, which the deck does with its animation
+	// (machinedeck_gui.go); nil when there is no deck.
+	stopMachine func()
+	// startMachine starts a machine of a model when none is running, and returns it; nil when
+	// one is (the deck's start).
+	startMachine func(model string) *ZenZX
 
 	// cards is the SD Cards window while it is open (sdcards_gui.go).
 	// cardUse tells where a card image is among the window's machines and
@@ -348,7 +378,7 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 	// to before this feature existed. When non-nil, its fields are
 	// already guaranteed valid (settingsconfig.Load never returns a
 	// partially-invalid *Settings), so no re-validation is needed here.
-	initialFontName := fonts.NameSinclair
+	initialFontName := fonts.NameSpleen
 	initialFontZoom := 2
 	initialFixed := false
 	if initialSettings != nil {
@@ -379,9 +409,12 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 		savedFixed:          initialFixed,
 		dockOn:              initialDock,
 		multiOn:             initialMulti,
+		stopAnimation:       initialSettings.StopAnimationOn(),
 		dropPlain:           initialDrop,
 		dropShift:           initialDropShift,
 		snapshotPlay:        initialSettings.SnapshotStartAction() == "play",
+		tapeDeck:            parseTapeDeckPlace(initialSettings.TapeDeckWord(), tapeDeckTop),
+		tapeCassette:        parseTapeCassetteSize(initialSettings.TapeCassetteWord(), cassetteBig),
 		settingsPath:        settingsPath,
 		romDir:              romDir,
 		actions:             make(map[int][]func(zx *ZenZX)),
@@ -396,12 +429,18 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 	// there. Open takes any file the program loads, the way a drop does; Quit is for a
 	// system with no application menu to quit from.
 	fileSpec := b.fileSpec()
+	b.fileMenu = fileSpec
 	fileItems := fileSpec.items()
 	b.actions[barFile] = fileSpec.actions()
 
 	machineActions := []func(zx *ZenZX){
 		func(zx *ZenZX) { zx.Reset(); fmt.Println("Reset") },
 		func(zx *ZenZX) { zx.TogglePause() },
+		func(zx *ZenZX) {
+			if b.stopMachine != nil {
+				b.stopMachine()
+			}
+		},
 	}
 	b.actions[barMachine] = machineActions
 
@@ -419,15 +458,16 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 	}
 
 	groupItems, groupFlags, groupSubFlags := b.buildMachineNodes(machinesRes.Config.Items, initialModel)
-	machineItems := append([]zenui.Item{{Label: "Reset"}, {Label: "Pause/Resume"}}, groupItems...)
-	machineModelFlags := append([]string{"", ""}, groupFlags...)
+	b.machineGroupItems = groupItems
+	machineItems := append(b.machineHead(zx), groupItems...)
+	machineModelFlags := append(make([]string, machineHeadRows), groupFlags...)
 	b.machineModelFlags = machineModelFlags
 	// groupSubFlags is indexed relative to groupItems (0-based); shift
-	// every key by 2 (Reset/Pause/Resume) to match machineItems' own
+	// every key by machineHeadRows (Reset, Pause or Play, Stop) to match machineItems' own
 	// indices, which is what sel.ItemIndex actually reports.
 	b.machineSubmenuFlags = make(map[int][]string, len(groupSubFlags))
 	for i, flags := range groupSubFlags {
-		b.machineSubmenuFlags[i+2] = flags
+		b.machineSubmenuFlags[i+machineHeadRows] = flags
 	}
 
 	tapeSpec := menuSpec{
@@ -440,39 +480,24 @@ func newAppMenuBar(zx *ZenZX, romDir string, initialTheme zenui.ThemeName, initi
 	tapeItems := tapeSpec.items()
 	b.actions[barTape] = tapeSpec.actions()
 
-	// The storage menu on a non-Next machine: the +3's floppy drive. It opens under
-	// the same "Storage" bar label as a Next's SD-card menu, so a "Floppy Disk" Title
-	// heading names the group inside, matching the "SD Card"/"Virtual Floppy" headings
-	// the Next menu uses (refreshStorageMenu).
-	floppySpec := menuSpec{
-		menuTitle("Floppy Disk"),
-		menuRow("Open DSK Image...", func(zx *ZenZX) { b.openDiskDialog(zx) }),
-		menuRow("Insert Blank Disk", func(zx *ZenZX) { zx.handleInsertBlankDisk() }),
-		menuSep(),
-		menuRow("Save Disk", func(zx *ZenZX) { zx.handleSaveDisk() }),
-		menuRow("Save Disk As...", func(zx *ZenZX) { zx.handleSaveDiskAs() }),
-		menuSep(),
-		menuRow("Eject Disk", func(zx *ZenZX) { zx.handleEjectDisk() }),
-		menuRow("Disk Info", func(zx *ZenZX) { b.showInfo("DISK INFO", diskInfoText(zx)) }),
-		menuRow("Manage Disks...", func(zx *ZenZX) { b.openDisks(zx) }),
-	}
-	diskItems := floppySpec.items()
-	b.diskItems = diskItems
-	b.actions[barFloppyDisk] = floppySpec.actions()
+	// The storage menu: the same two sections on every machine, Floppy Disk and SD Card,
+	// live where the model has the hardware and disabled, with the reason, where it has not
+	// (storageMenuSpec, sdcardmenu_gui.go). It is made again as the machine changes.
+	b.storageSpec = b.storageMenuSpec(zx)
+	diskItems := b.storageSpec.items()
+	b.actions[barFloppyDisk] = b.storageSpec.actions()
 
-	snapSpec := menuSpec{
+	b.snapSpec = menuSpec{
 		menuRow("Quick Save", func(zx *ZenZX) { zx.handleQuickSave() }),
 		menuRow("Quick Load", func(zx *ZenZX) { zx.handleQuickLoad() }),
 		menuRow("Save Timestamped", func(zx *ZenZX) { zx.handleAutoSave() }),
+		{label: "Save As", sub: b.saveAsSpec()}, // the format, then the name: snapshotsaveas_gui.go
 		menuSep(),
-		menuRow("Snapshot Info", func(zx *ZenZX) { b.showInfo("SNAPSHOT INFO", snapshotInfoText()) }),
-		menuRow("Run Diagnostics", func(zx *ZenZX) {
-			fmt.Println("\nRunning snapshot diagnostics...")
-			NewDebugSnapshot(zx).RunFullDiagnostics()
-		}),
+		menuRow("Snapshot Info", func(zx *ZenZX) { b.showInfo("SNAPSHOT INFO", snapshotInfoText(zx)) }),
+		menuRow("Run Diagnostics", func(zx *ZenZX) { b.showInfo("DIAGNOSTICS", diagnosticsText(zx, b.currentModel())) }), // diagnostics_gui.go
 	}
-	snapItems := snapSpec.items()
-	b.actions[barSnapshot] = snapSpec.actions()
+	snapItems := b.snapSpec.items()
+	b.actions[barSnapshot] = b.snapSpec.actions()
 
 	// The View menu is made by viewSpec, and made again by refreshViewItems every frame
 	// the bar is shown, so what its checkboxes and zoom items show is never older than the
@@ -583,8 +608,8 @@ func (b *appMenuBar) ApplyFont(name fonts.Name) error {
 }
 
 // ApplyZoom switches the magnification every dropdown's text/layout
-// draws at -- never the bar strip itself, which zenui.MenuBar.Draw
-// always renders at scale 1 regardless of this setting. Takes effect
+// draws at -- never the bar strip itself, whose scale follows the
+// window's width (barScale) regardless of this setting. Takes effect
 // the next time a dropdown is opened (zenui.MenuBar.SetScale's own
 // doc comment explains why an already-open one isn't resized out from
 // under an in-progress interaction).
@@ -613,7 +638,7 @@ func (b *appMenuBar) Active() bool {
 // Help/About/info readers, the Next's first-start dialog, the SD Cards and Floppy Disks
 // windows.
 func (b *appMenuBar) modalOpen() bool {
-	return b.diskDialog != nil || b.activeModal != nil || b.nextSetup != nil || b.cards != nil || b.disks != nil || b.prefs != nil
+	return b.diskDialog != nil || b.exportAsk != nil || b.activeModal != nil || b.nextSetup != nil || b.cards != nil || b.disks != nil || b.prefs != nil
 }
 
 // closeMenus closes every dropdown of the bar, the Help menu included, and abandons a
@@ -713,10 +738,10 @@ var openURL = rl.OpenURL
 // to the right of the bar's own labels, so that the menu can still be reached.
 func (b *appMenuBar) logoHotZone(screenW int) zenui.Rect {
 	if r, ok := b.logoButton(screenW); ok {
-		return zenui.Rect{X: r.X, Y: 0, W: screenW - r.X, H: menuStripHeight}
+		return zenui.Rect{X: r.X, Y: 0, W: screenW - r.X, H: b.stripH()}
 	}
 	x := b.widget.LabelsEndX()
-	return zenui.Rect{X: x, Y: 0, W: screenW - x, H: menuStripHeight}
+	return zenui.Rect{X: x, Y: 0, W: screenW - x, H: b.stripH()}
 }
 
 // helpSpec is the Help menu, in sections: help and about, and the developer tools. (The
@@ -740,12 +765,13 @@ func (b *appMenuBar) helpSpec() menuSpec {
 }
 
 // fileOpenExts are the extensions File > Open offers: everything a drop loads.
-var fileOpenExts = []string{"tap", "tzx", "sna", "z80", "szx", "zxs", "scr", "dsk", "nex"}
+var fileOpenExts = []string{"tap", "tzx", "sna", "z80", "szx", "zxs", "rzx", "scr", "dsk", "nex"}
 
 // fileSpec is the File menu.
 func (b *appMenuBar) fileSpec() menuSpec {
 	return menuSpec{
 		menuRow("Open...", func(zx *ZenZX) { b.openFileDialog() }),
+		menuRow("Export...", func(zx *ZenZX) { b.beginExport(zx) }), // the machine as a program of its own: export_gui.go
 		menuSep(),
 		menuRow("Preferences...", func(zx *ZenZX) { b.openPrefs(zx) }),
 		menuSep(),
@@ -784,7 +810,7 @@ func (b *appMenuBar) openLogoMenu(screenW int) {
 	// opens it to the left of the row, beside the menu rather than over it.
 	b.logoMenu = zenui.NewMenu(zenui.MenuConfig{
 		Items:  b.logoSpec.items(),
-		Anchor: zenui.Rect{X: screenW - rightMargin, Y: 0, W: 0, H: menuStripHeight},
+		Anchor: zenui.Rect{X: screenW - rightMargin, Y: 0, W: 0, H: b.stripH()},
 		Scale:  b.scale,
 	})
 }
@@ -796,11 +822,12 @@ func (b *appMenuBar) openLogoMenu(screenW int) {
 // the window cannot be left disagreeing -- as they were when settings.json said fixed and
 // nothing had yet asked the window to make room.
 func (b *appMenuBar) reconcileFixed(zx *ZenZX) {
-	want := 0
+	want, drawn := 0, 0
 	if b.fixed {
-		want = menuStripHeight
+		want, drawn = b.reserveH(zx.window()), b.stripH()
 		b.show()
 	}
+	zx.window().barOverlay = drawn
 	zx.window().SetReservedTopHeight(want) // a no-op when it is already so
 	if b.fixed != b.savedFixed {
 		b.savedFixed = b.fixed
@@ -810,6 +837,28 @@ func (b *appMenuBar) reconcileFixed(zx *ZenZX) {
 
 // applyFixedState is reconcileFixed, for the callers that have just changed b.fixed.
 func (b *appMenuBar) applyFixedState(zx *ZenZX) { b.reconcileFixed(zx) }
+
+// currentSettings is the preferences as they stand now: what saveSettings writes, and what a
+// standalone program exported now carries.
+func (b *appMenuBar) currentSettings(zx *ZenZX) *settingsconfig.Settings {
+	dock, multi, stop := b.dockOn, b.multiOn, b.stopAnimation // copies: the result is kept
+	return &settingsconfig.Settings{
+		Version:       1,
+		Theme:         string(b.themeName),
+		Font:          string(b.fontName),
+		FontZoom:      b.scale,
+		DisplayScale:  zx.window().screen.multiplier,
+		FixedMenuBar:  b.fixed,
+		Dock:          &dock,
+		Multi:         &multi,
+		StopAnimation: &stop,
+		Drop:          b.dropPlain.String(),
+		DropShift:     b.dropShift.String(),
+		SnapshotStart: snapshotStartWord(b.snapshotPlay),
+		TapeDeck:      b.tapeDeck.String(),
+		TapeCassette:  b.tapeCassette.String(),
+	}
+}
 
 // saveSettings persists the current theme/font/zoom/scale/fixed state
 // to b.settingsPath -- called after every menu action that changes
@@ -824,19 +873,7 @@ func (b *appMenuBar) saveSettings(zx *ZenZX) {
 	if b.settingsPath == "" {
 		return
 	}
-	s := &settingsconfig.Settings{
-		Version:       1,
-		Theme:         string(b.themeName),
-		Font:          string(b.fontName),
-		FontZoom:      b.scale,
-		DisplayScale:  zx.window().screen.multiplier,
-		FixedMenuBar:  b.fixed,
-		Dock:          &b.dockOn,
-		Multi:         &b.multiOn,
-		Drop:          b.dropPlain.String(),
-		DropShift:     b.dropShift.String(),
-		SnapshotStart: snapshotStartWord(b.snapshotPlay),
-	}
+	s := b.currentSettings(zx)
 	b.savedFixed = b.fixed // the file now holds this choice
 	if err := settingsconfig.Save(b.settingsPath, s); err != nil {
 		fmt.Printf("Warning: could not save %s: %v\n", b.settingsPath, err)
@@ -931,7 +968,7 @@ func easeInOutCubic(t float32) float32 {
 // this file needing its own copy of that model list).
 func (b *appMenuBar) openDiskDialog(zx *ZenZX) {
 	if !zx.io.hasFDC {
-		fmt.Println("Open DSK Image: the current model has no floppy controller -- switch to +3 or Spanish +3 first (Machine menu)")
+		zx.notice("This model has no disk drive: switch to a +3 first, from the Machine menu")
 		return
 	}
 	b.diskDialog = zenui.NewDialog(zenui.DialogConfig{
@@ -1065,6 +1102,7 @@ func (b *appMenuBar) refreshCustomROMItems(zx *ZenZX) {
 // itself, dispatching any accepted selection to the right action (or, for
 // Custom ROM, advancing the two-step flow).
 func (b *appMenuBar) Update(zx *ZenZX) {
+	b.barK = b.barScale(int(rl.GetScreenWidth()), int(rl.GetScreenHeight())) // before the strip's height is asked for
 	b.updateLogoCursor()
 	b.reconcileFixed(zx)
 	b.enforceSingleSurface()
@@ -1072,8 +1110,10 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 		if b.prefs.Update(zenuiraylib.Input(), b.renderer, int(rl.GetScreenWidth()), int(rl.GetScreenHeight())) == prefsClosed {
 			b.prefs = nil
 		}
+		b.updatePrefsCursor()
 		return
 	}
+	b.updatePrefsCursor() // the arrow again, if the window went while the pointer was on a tab
 	if b.cards != nil {
 		b.updateCards(zx)
 		return
@@ -1095,7 +1135,9 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	}
 
 	if b.activeModal != nil {
-		if !b.activeModal.Update(zenuiraylib.Input()) {
+		open := b.activeModal.Update(zenuiraylib.Input())
+		setHandCursor(&b.modalHand, open && b.activeModal.OverLink())
+		if !open {
 			b.activeModal = nil
 		}
 		return
@@ -1106,8 +1148,13 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 		case zenui.Accepted:
 			b.acceptDialog(zx, b.diskDialog.Result())
 		case zenui.Cancelled:
-			b.diskDialog, b.dialogKind, b.newCardSize = nil, dialogDisk, 0
+			b.diskDialog, b.dialogKind, b.newCardSize, b.saveFormat = nil, dialogDisk, 0, "" // the Export form, if it was open under it, stays
 		}
+		return
+	}
+
+	if b.exportAsk != nil {
+		b.updateExport(zx, zenuiraylib.Input())
 		return
 	}
 
@@ -1170,13 +1217,14 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	// margin would otherwise trigger. A fixed bar bypasses this
 	// entirely, staying shown regardless of mouse position, until
 	// unfixed via the logo menu.
-	if b.state == barShown && !b.fixed && !b.widget.Active() && my > menuStripHeight+menuBarHideMargin {
+	if b.state == barShown && !b.fixed && !b.widget.Active() && my > int32(b.stripH())+menuBarHideMargin {
 		b.hide()
 	}
 
 	if b.state == barShown {
 		b.refreshCustomROMItems(zx)
 		b.refreshViewItems(zx)
+		b.refreshMachineItems(zx)
 		b.refreshStorageMenu(zx) // Floppy Disk, or SD Card on a Next: sdcardmenu_gui.go
 	}
 
@@ -1193,6 +1241,10 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 
 	input := zenuiraylib.Input()
 	sel, ok := b.widget.Update(input)
+	if ok && zx.stopped && b.needsMachine(sel) {
+		zx.notice("No machine is running")
+		return
+	}
 	if !ok {
 		if input.MousePressed {
 			screenW := int(rl.GetScreenWidth())
@@ -1224,8 +1276,8 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 		return
 	}
 
-	// Machine's model rows (Reset/Pause/Resume are index 0/1, handled
-	// by the generic dispatch below same as always) start at index 2.
+	// Machine's model rows (Reset, Pause or Play, and Stop are index 0 to 2, handled
+	// by the generic dispatch below same as always) start at index machineHeadRows.
 	// A row is either a flat model (direct index lookup into
 	// machineModelFlags) or a submenu (its own index has an entry in
 	// machineSubmenuFlags, and sel.SubIndex picks which of that
@@ -1236,22 +1288,8 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	// place (Menu.Update's own itemEnabled already excludes them), so
 	// these checks are a second, belt-and-braces guard, not the
 	// primary one.
-	if sel.BarIndex == barMachine && sel.ItemIndex >= 2 {
-		var flag string
-		if sub, ok := b.machineSubmenuFlags[sel.ItemIndex]; ok {
-			if sel.SubIndex >= 0 && sel.SubIndex < len(sub) {
-				flag = sub[sel.SubIndex]
-			}
-		} else if sel.ItemIndex < len(b.machineModelFlags) {
-			flag = b.machineModelFlags[sel.ItemIndex]
-		}
-		if flag == "next" && b.needsOwnCard(zx) {
-			return // the SD Cards window is open: the machine becomes a Next when a card is chosen
-		}
-		if flag != "" {
-			b.switchModel(zx, flag)
-			b.setCurrentModel(flag)
-		}
+	if sel.BarIndex == barMachine && sel.ItemIndex >= machineHeadRows {
+		b.pickMachineModel(zx, sel)
 		return
 	}
 
@@ -1268,8 +1306,18 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 		return
 	}
 
-	if sel.BarIndex == barFloppyDisk && b.storageIsSD {
+	if sel.BarIndex == barFloppyDisk {
 		b.storageSelected(zx, sel.ItemIndex, sel.SubIndex)
+		return
+	}
+	// The File menu is a menuSpec, which the flat dispatch below cannot reach.
+	if sel.BarIndex == barFile {
+		b.fileMenu.pick(zx, sel.ItemIndex, sel.SubIndex)
+		return
+	}
+	// The Snapshot menu has a submenu, Save As, which the flat dispatch below cannot reach.
+	if sel.BarIndex == barSnapshot {
+		b.snapSpec.pick(zx, sel.ItemIndex, sel.SubIndex)
 		return
 	}
 
@@ -1281,9 +1329,15 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 // acceptDialog carries out the file browser's answer: path is the file chosen, and what
 // the browser was open for (dialogKind) says what is done with it.
 func (b *appMenuBar) acceptDialog(zx *ZenZX, path string) {
-	kind, size := b.dialogKind, b.newCardSize
-	b.diskDialog, b.dialogKind, b.newCardSize = nil, dialogDisk, 0
+	kind, size, format := b.dialogKind, b.newCardSize, b.saveFormat
+	b.diskDialog, b.dialogKind, b.newCardSize, b.saveFormat = nil, dialogDisk, 0, ""
 	switch kind {
+	case dialogSaveSnapshot:
+		zx.saveSnapshotAs(path, format)
+		return
+	case dialogExportBrowse:
+		b.exportBrowsed(path)
+		return
 	case dialogNewCard:
 		b.newCard(zx, path, size)
 		return
@@ -1297,11 +1351,11 @@ func (b *appMenuBar) acceptDialog(zx *ZenZX, path string) {
 		return
 	}
 	if n, taken := b.diskTakenElsewhere(zx, path); taken {
-		fmt.Printf("Open DSK Image: %s is in the drive of machine %d; a disc file is in one machine at a time\n", path, n)
+		zx.notice("%s is in the drive of machine %d: a disc file is in one machine at a time", filepath.Base(path), n)
 	} else if err := zx.io.LoadDisk(path); err != nil {
-		fmt.Printf("Open DSK Image: could not load %s: %v\n", path, err)
+		zx.notice("The disk %s could not be loaded: %v", filepath.Base(path), err)
 	} else {
-		fmt.Printf("Loaded disk: %s\n", path)
+		zx.notice("The disk %s is in the drive", filepath.Base(path))
 	}
 }
 
@@ -1357,13 +1411,16 @@ func (b *appMenuBar) Draw(screenW, screenH int) {
 		b.diskDialog.Draw(b.renderer, screenW, screenH, b.theme)
 		return
 	}
+	if b.exportAsk != nil {
+		b.exportAsk.draw(b.renderer, screenW, screenH, b.theme)
+		return
+	}
 	if b.logoMenu != nil {
 		// The bar itself still needs to be drawn underneath (its own
 		// hot zone is what the menu is anchored to), unlike diskDialog
 		// and activeModal, which cover the whole screen with their own
 		// backdrop.
-		barY := int(float32(-menuStripHeight) * (1 - b.progress))
-		b.widget.Draw(b.renderer, screenW, screenH, barY, menuStripHeight, b.theme)
+		barY := b.drawBar(screenW, screenH)
 		b.paintLogoButton(screenW, barY)
 		b.logoMenu.Draw(b.renderer, screenW, screenH, b.theme)
 		return
@@ -1371,7 +1428,6 @@ func (b *appMenuBar) Draw(screenW, screenH int) {
 	if b.state == barHidden && !b.widget.Active() {
 		return
 	}
-	barY := int(float32(-menuStripHeight) * (1 - b.progress))
-	b.widget.Draw(b.renderer, screenW, screenH, barY, menuStripHeight, b.theme)
+	barY := b.drawBar(screenW, screenH)
 	b.paintLogoButton(screenW, barY)
 }

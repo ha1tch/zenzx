@@ -59,6 +59,7 @@ type TapeState struct {
 	Filename   string      // Current tape filename
 	Mode       TapeMode    // Current loading mode
 	Playing    bool        // Is tape playing?
+	Paused     bool        // Playing was held by the tape deck's Pause button: the tape is stopped where it is, and Pause or Play lets it go on
 	Position   int         // Current position (block index or pulse index)
 	EdgeOffset int         // Sub-pulse position for accurate mode
 	EarLevel   bool        // Current EAR output level
@@ -114,6 +115,8 @@ type Tape struct {
 	zx *ZenZX      // Reference to main emulator
 	st *TapeState  // Current tape state
 	fl *FastLoader // Fast loader implementation (optional)
+
+	clock tapeClock // the length of the pulses played so far, for the tape deck's bar (tapedeck.go)
 }
 
 // NewTape creates a new tape manager
@@ -153,6 +156,7 @@ func (t *Tape) LoadFile(filename string) error {
 	t.st.Filename = filename
 	t.st.Position = 0
 	t.st.Playing = false
+	t.st.Paused = false
 
 	return nil
 }
@@ -161,6 +165,7 @@ func (t *Tape) LoadFile(filename string) error {
 func (t *Tape) Play() {
 	if t.st != nil && t.st.Loaded {
 		t.st.Playing = true
+		t.st.Paused = false
 	}
 }
 
@@ -168,6 +173,21 @@ func (t *Tape) Play() {
 func (t *Tape) Stop() {
 	if t.st != nil {
 		t.st.Playing = false
+		t.st.Paused = false
+	}
+}
+
+// Pause holds a playing tape where it is, as a recorder's Pause key does, and lets a held tape
+// go on. A tape that is stopped stays stopped: Pause has nothing to hold.
+func (t *Tape) Pause() {
+	if t.st == nil || !t.st.Loaded {
+		return
+	}
+	switch {
+	case t.st.Paused:
+		t.st.Playing, t.st.Paused = true, false
+	case t.st.Playing:
+		t.st.Playing, t.st.Paused = false, true
 	}
 }
 

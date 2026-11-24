@@ -18,7 +18,8 @@ import (
 // program reads the one a person who reads the repository does. The window is a
 // zenui.TextModal, which reads a plain subset of markdown and does not wrap, so the
 // file is turned into that here: paragraphs joined and wrapped, each person's name a
-// heading, links as their text (and their address where the text is not the address).
+// heading, links as their text (and their address where the text is not the address), and
+// clickable: they stay "[seen text](address)" for the window, which draws the seen text.
 
 //go:embed ACKNOWLEDGEMENTS.md
 var acknowledgementsSource string
@@ -37,7 +38,7 @@ var (
 )
 
 func newAcknowledgementsModal() *zenui.TextModal {
-	return zenui.NewTextModal("ACKNOWLEDGEMENTS", acknowledgementsModalText(acknowledgementsSource), false)
+	return zenui.NewTextModal("ACKNOWLEDGEMENTS", acknowledgementsModalText(acknowledgementsSource), false).WithLinks(openLink)
 }
 
 // acknowledgementsModalText turns the markdown of ACKNOWLEDGEMENTS.md into what a
@@ -78,17 +79,17 @@ func acknowledgementsModalText(md string) string {
 			out = append(out, "# "+ackPlain(it.text), "")
 		case "entry":
 			out = append(out, "## "+ackPlain(it.head))
-			out = append(out, zenui.WrapText(ackPlain(it.text), acknowledgementsCols, "")...)
+			out = append(out, zenui.WrapLinkedText(ackPlain(it.text), acknowledgementsCols, "")...)
 			out = append(out, "")
 		default:
-			out = append(out, zenui.WrapText(ackPlain(it.text), acknowledgementsCols, "")...)
+			out = append(out, zenui.WrapLinkedText(ackPlain(it.text), acknowledgementsCols, "")...)
 			out = append(out, "")
 		}
 	}
 	return strings.TrimRight(strings.Join(out, "\n"), "\n")
 }
 
-// ackPlain is a piece of markdown as plain ASCII text.
+// ackPlain is a piece of markdown as plain ASCII text, with its links as "[seen](address)".
 func ackPlain(s string) string {
 	s = ackLink.ReplaceAllStringFunc(s, func(m string) string {
 		p := ackLink.FindStringSubmatch(m)
@@ -97,10 +98,11 @@ func ackPlain(s string) string {
 		if i := strings.Index(host, "/"); i >= 0 {
 			host = host[:i]
 		}
-		if strings.Contains(text, host) {
-			return text // the text is the address, or has it in it
+		seen := text
+		if !strings.Contains(text, host) { // the text is the address, or has it in it, or it is not
+			seen = text + " (" + url + ")"
 		}
-		return text + " (" + url + ")"
+		return "[" + seen + "](" + url + ")" // still a link, for the window to make clickable
 	})
 	s = ackEmphasis.ReplaceAllString(s, "$1")
 	s = strings.NewReplacer("—", "-", "–", "-", "’", "'", "‘", "'", "“", `"`, "”", `"`).Replace(s)

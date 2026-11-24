@@ -77,6 +77,8 @@ func (zx *ZenZX) toMachineState() *snapshot.MachineState {
 // fromMachineState restores emulator state from a neutral MachineState produced
 // by a zentools snapshot decoder.
 func (zx *ZenZX) fromMachineState(s *snapshot.MachineState) {
+	zx.rzxStop("") // a snapshot loaded gives up a recording that is playing
+
 	// CPU registers.
 	zx.cpu.SetAF(s.CPU.AF)
 	zx.cpu.SetBC(s.CPU.BC)

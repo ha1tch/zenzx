@@ -220,31 +220,7 @@ func (ds *DebugSnapshot) CheckROMLocation() {
 	if pc < 0x4000 {
 		sayln("Executing from ROM")
 
-		// Known ROM locations in 48K ROM
-		knownLocations := map[uint16]string{
-			0x0000: "RESET - Cold start",
-			0x0008: "ERROR-1 - Error restart",
-			0x0010: "PRINT-A-1 - Print character",
-			0x0018: "GET-CHAR - Get current character",
-			0x0020: "NEXT-CHAR - Get next character",
-			0x0028: "FP-CALC - Floating point calculator",
-			0x0030: "BC-SPACES - Create BC spaces",
-			0x0038: "MASK-INT - Maskable interrupt",
-			0x0048: "KEY-INT - Keyboard interrupt routine",
-			0x0066: "NMI - Non-maskable interrupt",
-			0x11CB: "START/NEW - Basic initialization",
-			0x1219: "RAM-CHECK - Memory check routine",
-		}
-
-		// Find nearest known location
-		var nearest uint16
-		var nearestName string
-		for addr, name := range knownLocations {
-			if addr <= pc && addr > nearest {
-				nearest = addr
-				nearestName = name
-			}
-		}
+		nearest, nearestName := nearestROMRoutine(pc)
 
 		if nearestName != "" {
 			sayf("Near: %04X %s (+%d bytes)\n", nearest, nearestName, pc-nearest)
@@ -257,6 +233,33 @@ func (ds *DebugSnapshot) CheckROMLocation() {
 			sayf("  [%04X]: %02X\n", pc+i, b)
 		}
 	}
+}
+
+// romRoutines are the 48K ROM's best-known entry points.
+var romRoutines = map[uint16]string{
+	0x0000: "RESET - Cold start",
+	0x0008: "ERROR-1 - Error restart",
+	0x0010: "PRINT-A-1 - Print character",
+	0x0018: "GET-CHAR - Get current character",
+	0x0020: "NEXT-CHAR - Get next character",
+	0x0028: "FP-CALC - Floating point calculator",
+	0x0030: "BC-SPACES - Create BC spaces",
+	0x0038: "MASK-INT - Maskable interrupt",
+	0x0048: "KEY-INT - Keyboard interrupt routine",
+	0x0066: "NMI - Non-maskable interrupt",
+	0x11CB: "START/NEW - Basic initialization",
+	0x1219: "RAM-CHECK - Memory check routine",
+}
+
+// nearestROMRoutine is the best-known ROM routine at or below pc: its address and name, or
+// "" when pc is below them all.
+func nearestROMRoutine(pc uint16) (addr uint16, name string) {
+	for a, n := range romRoutines {
+		if a <= pc && (name == "" || a > addr) {
+			addr, name = a, n
+		}
+	}
+	return addr, name
 }
 
 // btoi converts bool to int for display

@@ -5,6 +5,7 @@ package zenzx
 import (
 	_ "embed"
 
+	rl "github.com/gen2brain/raylib-go/raylib"
 	"github.com/ha1tch/zenui"
 )
 
@@ -21,9 +22,16 @@ var aboutTextTemplate string
 // that the other windows of this program share (zenui.ScaleAlpha,
 // ModalPanelOpacity, ModalBackdropDarkening).
 
-// newHelpModal and newAboutModal make the two windows.
-func newHelpModal() *zenui.TextModal { return zenui.NewTextModal("HELP", helpText, false) }
+// openLink opens a link of one of these windows in the system's browser. The windows ask for
+// links only in text that is this program's own (zenui's WithLinks), and zenui makes a link of
+// nothing but a web address.
+var openLink = rl.OpenURL // a variable, so that a test can see what is opened
+
+// newHelpModal and newAboutModal make the two windows. Their addresses are links.
+func newHelpModal() *zenui.TextModal {
+	return zenui.NewTextModal("HELP", helpText, false).WithLinks(openLink)
+}
 
 func newAboutModal(aboutText string) *zenui.TextModal {
-	return zenui.NewTextModal("ABOUT", aboutText, true)
+	return zenui.NewTextModal("ABOUT", aboutText, true).WithLinks(openLink)
 }

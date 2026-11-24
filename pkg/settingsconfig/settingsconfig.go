@@ -42,6 +42,9 @@ type Settings struct {
 	// on, so a missing key behaves as the program always did.
 	Dock  *bool `json:"dock,omitempty"`
 	Multi *bool `json:"multi,omitempty"`
+	// StopAnimation is whether stopping a machine plays the animation (a boot stamps a small
+	// Spectrum flat) or the machine just goes. Optional like Dock, and on by default.
+	StopAnimation *bool `json:"stopAnimation,omitempty"`
 	// Drop and DropShift are what a tape, a .scr or a snapshot given to a Next at its menu
 	// is done with -- "ask", "copy" (to the SD card) or "run" -- by a plain drop and by a
 	// drop with Shift held. Optional like Dock, and "ask" and "run" by default.
@@ -51,6 +54,31 @@ type Settings struct {
 	// machine waits for Play or F2) or "play" (it runs at once). Optional like Drop, and
 	// "paused" by default.
 	SnapshotStart string `json:"snapshotStart,omitempty"`
+	// TapeDeck is where the tape deck (the cassette, a bar and the buttons of a recorder,
+	// shown while a tape loads in Accurate mode) goes -- "off", "top" or "bottom", of the
+	// border, or of the picture when there is no border. Optional like Drop, and "top" by
+	// default.
+	TapeDeck string `json:"tapeDeck,omitempty"`
+	// TapeCassette is the size of the tape deck's cassette -- "small" (beside the buttons),
+	// "big" (under them, with the title written large on its label) or "hidden". Optional
+	// like TapeDeck, and "big" by default.
+	TapeCassette string `json:"tapeCassette,omitempty"`
+}
+
+// TapeCassetteWord is TapeCassette with its default, "big".
+func (s *Settings) TapeCassetteWord() string {
+	if s == nil || s.TapeCassette == "" {
+		return "big"
+	}
+	return s.TapeCassette
+}
+
+// TapeDeckWord is TapeDeck with its default, "top".
+func (s *Settings) TapeDeckWord() string {
+	if s == nil || s.TapeDeck == "" {
+		return "top"
+	}
+	return s.TapeDeck
 }
 
 // SnapshotStartAction is SnapshotStart with its default, "paused".
@@ -80,6 +108,11 @@ func (s *Settings) DropShiftAction() string {
 // DockOn is Dock with its default: on unless the file says off.
 func (s *Settings) DockOn() bool { return s == nil || s.Dock == nil || *s.Dock }
 
+// StopAnimationOn is StopAnimation with its default: on unless the file says off.
+func (s *Settings) StopAnimationOn() bool {
+	return s == nil || s.StopAnimation == nil || *s.StopAnimation
+}
+
 // MultiOn is Multi with its default: on unless the file says off.
 func (s *Settings) MultiOn() bool { return s == nil || s.Multi == nil || *s.Multi }
 
@@ -92,5 +125,10 @@ type Result struct {
 	Settings *Settings
 	FromDisk bool
 	DiskPath string
-	Warning  string
+	// Warning is a file that could not be used, or could not be written, as the caller should
+	// say it. Note is a file with nothing in it that was recreated, which is only worth a line.
+	// Recreated is whether the file was written from the default by Load.
+	Warning   string
+	Note      string
+	Recreated bool
 }

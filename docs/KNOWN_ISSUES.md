@@ -8,6 +8,17 @@ and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
 
 ## Limits
 
+- **The tape deck is a first cut (T-88).** It is shown for one machine at a time, not while the
+  machines are tiled, and not in Fast mode, where the ROM's loader is short-circuited and there
+  is no tape to watch. The bar and the counter are time at a nominal 3.5 MHz (a 128K runs at 3.5469),
+  so a tape's length is a second or so out in the minute; there is no seeking by clicking the bar,
+  no fast forward, and a tape with several programs keeps its cassette (the colour changes with a
+  new tape, not with each header). The border's bands are worked out from the display's own
+  margins, and for the Next's wider Layer 2 modes the deck is put where the classic border would
+  be. A big cassette is always over the picture, and covers a good part of it. The slide-in menu
+  bar covers the deck in the top band, and the machine dock the bottom one,
+  while they are out.
+
 - **A sandbox may have no GUI system libraries.** With Mesa (GLX), the
   X11, Wayland and ALSA development packages and Xvfb installed, the GUI
   links and runs there on a virtual display with software OpenGL
@@ -28,6 +39,18 @@ and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
 - **The headless build has no input.** Keyboard interaction in headless
   runs goes through zenscript keyboard injection (`docs/zenscript.md`),
   not host input.
+- **`.rzx` recordings are played, not made, and only some play to the end.** Playback needs the
+  recording's own model started first (an opened snapshot never switches the machine), and is
+  not built for the Next. Encrypted recordings and ones whose snapshot is a separate file are
+  refused; signatures are skipped, not checked. The format fixes what the recorder's CPU did
+  (how many opcodes ran before each frame interrupt, what each `IN` read) but not what its
+  interrupt line did, so the rules in `rzx.go` were found by playing real recordings: the
+  interrupt is offered at one instruction boundary and lost if it cannot be taken there, and a
+  frame the recorder ended between a prefix and its opcode is played with the instruction
+  whole. A recording that makes the emulation do something the recorder's did not goes out of
+  step, which is noticed at the end of the frame and ends the playback with a message; the
+  machine then runs on by itself. The one real recording tried (RoboCop, 38881 frames) plays
+  5005 frames; why it then goes out of step is T-84.
 - **The +2A shares the +3 ROM set** (including the unused +3DOS) but has
   no floppy controller; `-model plus2a` deliberately does not enable the
   FDC.
@@ -60,7 +83,7 @@ and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
 on `github.com/ha1tch/zenimate`'s CI. The split between platforms is a
 consequence of the pinned dependency versions, not a design choice:
 
-- **raylib-go v0.60.0** ships a `purego` backend (selected automatically
+- **raylib-go v0.60.1** ships a `purego` backend (selected automatically
   whenever `CGO_ENABLED=0`) that embeds a prebuilt native `raylib`
   shared library per `GOOS`/`GOARCH` (linux, darwin, windows; amd64 and
   arm64) and extracts it to the user cache directory at first run. No
@@ -179,12 +202,12 @@ pointing the test at a real captured image locally.
 - **Invocation:** `ZENZX_NEXT_FILES=next go test -tags headless -run 'TestNextBootCacheOnTheRealFirmware|TestNextSettledCache' -v .` (about 7, 8 and 15 seconds)
 - **Last exercised:** 2026-11-23 env:sandbox — at 0.50.0 (re-release): all three pass on the 26.11 boot files, and again after the ROM patch list added its entries to the cache's key
 
-### G-14. The interface's drawing, in a window: toasts, the FPS counter, the Play button and the audio overlay (`TestGLToastOverTheDemos`, `TestGLFPSCounter`, `TestGLPlayButton`, `TestGLAudioDebugOverlay`, `TestGLPictureFitsAWindowOfAnotherSize`, `TestGLPreferencesTabs`; prefs_gl_test.go, toast_gl_test.go, fps_gl_test.go, playbutton_gl_test.go, audiodebug_gl_test.go, display_fit_gl_test.go)
+### G-14. The interface's drawing, in a window: toasts, the FPS counter, the Play button and the audio overlay (`TestGLToastOverTheDemos`, `TestGLFPSCounter`, `TestGLPlayButton`, `TestGLAudioDebugOverlay`, `TestGLPictureFitsAWindowOfAnotherSize`, `TestGLPictureFrame`, `TestGLBlankBackground`, `TestGLExportForm`, `TestGLBarScale`, `TestGLPreferencesTabs`, `TestGLPreferencesTips`; prefs_gl_test.go, prefs_tips_gl_test.go, toast_gl_test.go, fps_gl_test.go, playbutton_gl_test.go, audiodebug_gl_test.go, display_fit_gl_test.go, pictureframe_gl_test.go, blankframe_gl_test.go, export_form_gl_test.go, barscale_gl_test.go)
 
 - **Gate:** as G-03: `ZENZX_GL_TESTS` set, the GUI build, a display (Xvfb with software OpenGL is enough). Skipped when unset. The pictures the demos' tests draw over are `docs/img/next-*.png`.
-- **Invariant:** a toast's face is white inside a black stroke on a darkened box with round corners that is darker towards its bottom edge, and it is never wider than half the window, whatever the message and window (one notch smaller, then in lines); the FPS counter is hidden until asked for and is drawn with the interface's BDF font, at the bottom right; the Play button is the debugger's sprite enlarged by whole pixels (every sprite pixel a solid square), centred, on a face with round corners that is brighter hovered and darker pressed, the sprite a pixel down and right when pressed; the audio debug overlay's bar is the health's colour as far as the buffer's level and its figures are drawn in the face's glyphs, one notch smaller when a line would not fit the window; with the window held at a size other than the one the display asked for (as a system that will not resize it does), the picture is whole and in the middle, the same margin on both sides, at four sizes: the size asked for (nothing changes), a little larger (the zoom stays, centred), too small for the zoom (the zoom that fits, centred) and smaller than the picture at its least (scaled down, in proportion). The test is checked to fail with the fit taken out. The Preferences window is drawn on each of its three tabs in two themes and two window sizes: the chosen tab alone is filled in the selection colour and the controls of the tab that is open are on screen. It does not stand in for a Mac: the system's own window sizes and the retina factor are not in the sandbox (T-75).
-- **Invocation:** `Xvfb :99 -screen 0 1280x1024x24 &` then `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ZENZX_GL_TESTS=1 ZENZX_TOAST_SHOTS=shots ZENZX_PLAY_SHOTS=shots go test -run 'TestGLToast|TestGLFPSCounter|TestGLPlayButton|TestGLAudioDebugOverlay|TestGLPictureFits|TestGLPreferencesTabs' -v .` (about 8 seconds; `ZENZX_PREFS_SHOTS=shots` keeps the Preferences pictures). The two folder variables are optional: the pictures the tests draw over the demos go there, to be looked at.
-- **Last exercised:** 2026-11-23 env:sandbox — at 0.50.0 (re-release): all six pass under Xvfb with software OpenGL; `TestGLPictureFitsAWindowOfAnotherSize` fails at three of its four sizes with the fit taken out
+- **Invariant:** a toast's face is white inside a black stroke on a darkened box with round corners that is darker towards its bottom edge, and it is never wider than half the window, whatever the message and window (one notch smaller, then in lines); the FPS counter is hidden until asked for and is drawn with the interface's BDF font, at the bottom right; the Play button is the debugger's sprite enlarged by whole pixels (every sprite pixel a solid square), centred, on a face with round corners that is brighter hovered and darker pressed, the sprite a pixel down and right when pressed; the audio debug overlay's bar is the health's colour as far as the buffer's level and its figures are drawn in the face's glyphs, one notch smaller when a line would not fit the window; with the window held at a size other than the one the display asked for (as a system that will not resize it does), the picture is whole and in the middle, the same margin on both sides, at four sizes: the size asked for (nothing changes), a little larger (the zoom stays, centred), too small for the zoom (the zoom that fits, centred) and smaller than the picture at its least (scaled down, in proportion). The test is checked to fail with the fit taken out. The frame round that picture is a gradient from 80% grey (#333333) under the bar to 90% grey (#1A1A1A) at the bottom of the window, with the same grey in every channel, darkening all the way down, and the five beveled lines across it are a dark row with a light row under it, 28% of black and 18% of white, evenly spaced; the picture's shadow darkens it beside and above the picture and not away from it; the picture's own first pixel is not touched by it (`TestGLPictureFrame`; `ZENZX_FRAME_SHOTS=dir` keeps the picture it reads). With no machine in the window the same gradient and lines fill it, the same all the way across, with no shadow, the bar's band black and the waiting figure alone in the middle (`TestGLBlankBackground`). The Export form is drawn in two themes, with and without the reason for a refused answer: its explanation in the text colour, and the reason in the accent colour (`TestGLExportForm`; `ZENZX_EXPORT_SHOTS=dir` keeps the pictures). The menu bar is drawn at ten window sizes in two themes: its text is X1 below 950 pixels wide, X2 from 950 and X3 from 1425 (in Spleen, the default face), but only where the window is high enough (256 for X2, 384 for X3), and the strip is 24, 32 and 48 pixels high with the text taking half of it or less (`TestGLBarScale`; `ZENZX_BAR_SHOTS=dir` keeps the pictures). The Preferences window is drawn on each of its three tabs in two themes and two window sizes: the chosen tab alone is filled in the selection colour and the controls of the tab that is open are on screen. The Preferences window's help box is drawn with the pointer at rest on a row and on a group's title: the window's text colour with the panel's text, on the screen, and absent with the pointer on nothing (`TestGLPreferencesTips`). It does not stand in for a Mac: the system's own window sizes and the retina factor are not in the sandbox (T-75).
+- **Invocation:** `Xvfb :99 -screen 0 1280x1024x24 &` then `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ZENZX_GL_TESTS=1 ZENZX_TOAST_SHOTS=shots ZENZX_PLAY_SHOTS=shots go test -run 'TestGLToast|TestGLFPSCounter|TestGLPlayButton|TestGLAudioDebugOverlay|TestGLPictureFit|TestGLPictureFrame|TestGLBlankBackground|TestGLExportForm|TestGLBarScale|TestGLPreferencesTabs|TestGLPreferencesTips' -v .` (about 10 seconds; `ZENZX_PREFS_SHOTS=shots` keeps the Preferences pictures). The two folder variables are optional: the pictures the tests draw over the demos go there, to be looked at.
+- **Last exercised:** 2026-11-23 env:sandbox — at 0.50.0 (re-release): all nine pass under Xvfb with software OpenGL (the Preferences window's help box is the window's text colour with the panel's text, in Dark and Spectrum at two sizes, and absent with the pointer on nothing; the frame: #333333 under the bar, #1A1A1A at the bottom, the shadow beside the picture); `TestGLPictureFitsAWindowOfAnotherSize` fails at three of its four sizes with the fit taken out
 
 ### G-15. A Next that is reset restarts its firmware and loses the program's state (`TestNextResetRestartsTheFirmware`, reset_next_hw_test.go)
 
@@ -199,3 +222,18 @@ pointing the test at a real captured image locally.
 - **Invariant:** `-rom-bin` on a Next that boots from its card does not act before the firmware has loaded its ROMs, and acts when the firmware leaves config mode (NextREG 0x03 choosing the machine, then the soft reset): after the hand-over the patch's bytes are in bank 0 and what the firmware loaded is round them. The unit tests of the config-mode sequence, a hard reset applying the list again and a soft reset leaving ROM alone need no firmware and run with the ordinary suite (`rom_patches_test.go`); this is the guard for a firmware that leaves config mode some other way.
 - **Invocation:** `ZENZX_NEXT_FILES=next go test -tags headless -run TestNextROMPatchesOverTheFirmware -v .` (about 7 seconds)
 - **Last exercised:** 2026-11-23 env:sandbox — at 0.50.0 (re-release): passes on the 26.11 boot files
+
+### G-17. The tape deck, in a window (`TestGLTapeDeck`, `TestGLTapeDeckChip`, `TestGLTapeDeckMorph`; tapedeck_gl_test.go, tapedeck_chip_gl_test.go, tapedeck_morph_gl_test.go)
+
+- **Gate:** as G-14: `ZENZX_GL_TESTS` set, the GUI build, a display (Xvfb with software OpenGL is enough). Skipped when unset.
+- **Invariant:** the deck is drawn, with a small cassette, in the top and the bottom band of a border at zoom 2 and 3, and floating over the picture at zoom 1 and 3, and with a big cassette (under the buttons, its label holding the title) and a hidden one (buttons, bar, counter and the name's row) floating: its panel is on the backdrop; the title is in ink on the cassette's label in the label's rectangle (or in the name row when the cassette is too small for it); the bar is filled to the fraction played and not beyond (nothing at 0, to its end at 1); each of the twelve colours of cassette has a body colour of its own and the same paper on its label; and a Play that is on does not look like one that is off; the corner buttons (minimise and close) have their dash and cross drawn wherever the layout gives the deck room for them; and the chip (the deck made small), at the right end of the top and the bottom band and floating, has its mini cassette, a play button that is a pause button while the tape plays, the counter, a close cross and a hairline of progress filled to the fraction played; and the deck at five moments of a move (full to the chip, small cassette to big) has its panel drawn at every one and nothing of it outside the panel.
+- **Invocation:** `Xvfb :99 -screen 0 1280x1024x24 &` then `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ZENZX_GL_TESTS=1 ZENZX_DECK_SHOTS=shots go test -run TestGLTapeDeck -v .` (about 2 seconds; `ZENZX_DECK_SHOTS` keeps the pictures)
+- **Last exercised:** 2026-11-23 env:sandbox — at 0.50.0 (re-release): all three pass under Xvfb (the third, the move, new, after the deck's drag and moves were added); before that, both pass under Xvfb with software OpenGL; the first fails (the bar at half, a full bar) with the bar's fill taken out
+
+### G-18. The stop animation, in a window (`TestGLStomp`; stomp_gl_test.go)
+
+- **Gate:** as G-14: `ZENZX_GL_TESTS` set, the GUI build, a display (Xvfb with software OpenGL is enough). Skipped when unset.
+- **Invariant:** the animation that plays when a machine is stopped is drawn in a window: nothing is in view at the start; the ground comes up from below the window, with the bin and the small Spectrum on it, to its place, on the dimmed picture; the leg is at the top edge (or the boot it ends in) and reaches further down as time goes on; when the boot has landed the icon is a fraction of its height, with the boot on it; when the boot has gone back up the leg is gone and the remains are still there, on the ground in its place; the ground then goes back down with the bin and the remains; and when the animation is over nothing of the icon or the ground is left.
+- **Invocation:** `Xvfb :99 -screen 0 1280x1024x24 &` then `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ZENZX_GL_TESTS=1 ZENZX_STOMP_SHOTS=shots go test -run TestGLStomp -v .` (under a second; `ZENZX_STOMP_SHOTS` keeps the contact sheet of twelve moments)
+- **Last exercised:** 2026-11-24 env:sandbox — at 0.50.0 (re-release): passes under Xvfb with software OpenGL, with the Spectrum icon drawn with the rainbow
+

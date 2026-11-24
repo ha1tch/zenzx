@@ -46,6 +46,20 @@ jobs:
       - name: Importable as a library
         run: sh scripts/check_import.sh
 
+      - name: The download page's builder
+        run: python3 -W error scripts/test_build_site.py
+
+      - name: The binary checker
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" -W error scripts/test_check_binaries.py
+
+      - name: The raylib-go call layer (purego)
+        run: |
+          python3 -W error scripts/test_check_purego_ffi.py
+          python3 scripts/check_purego_ffi.py
+
       - name: Register consistency
         run: repoman register check
 

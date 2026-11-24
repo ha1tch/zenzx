@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ha1tch/zentools/pkg/tap"
 	"github.com/ha1tch/zenzx/pkg/nextcard"
 )
 
@@ -76,14 +75,7 @@ func (zx *ZenZX) tapeProgram() string {
 	if zx.tape.st.Position == 0 {
 		return ""
 	}
-	for _, b := range zx.tape.st.Blocks {
-		if b.IsHeader && b.HeaderType == tap.TypeProgram {
-			if n := programName(b.HeaderName); n != "" {
-				return n
-			}
-		}
-	}
-	return ""
+	return zx.tape.firstProgramName()
 }
 
 // systemStartUp reports whether a file on a card is one NextZXOS runs by

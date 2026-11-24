@@ -42,7 +42,7 @@ func RunHeadless(args []string) {
 	customROMsDir := fs.String("custom-roms-dir", CustomROMDir, "Directory scanned by -custom-roms-menu")
 	romDir := fs.String("romdir", "./rom", "Directory containing ROM files")
 	snapshot := fs.String("snapshot", "", "Load snapshot on startup")
-	snapshotFormat := fs.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only)")
+	snapshotFormat := fs.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only), rzx (a recording to play, load only)")
 	tapeFile := fs.String("tape", "", "Load tape file (.tap or .tzx)")
 	tapeMode := fs.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
 	binFile := fs.String("bin", "", "Load a raw binary blob directly into memory")
@@ -75,6 +75,8 @@ func RunHeadless(args []string) {
 	nextBootCacheFlag := fs.String("next-boot-cache", "off", nextBootCacheHelp)
 
 	frames := fs.Int("frames", 100, framesHelp)
+	exportProgram := fs.String("export-program", "", "At the end of the run, write the machine as a standalone program at this path: one file that starts as the machine is now (the 48K, 128K, +2, +2A and +3 families and their Spanish models). It is made from this program, or from the ZenZX named by -export-stub")
+	exportStub := fs.String("export-stub", "", "With -export-program: the ZenZX to make the program from, to make one for another system (a Windows ZenZX makes a Windows program). A program with a window comes from the windowed ZenZX")
 	multiFlag := fs.String("multi", "", multiHelp)
 	listenFlag := fs.String("listen", "", listenHelp)
 	listenHost := fs.String("listen-host", "127.0.0.1", listenHostHelp)
@@ -93,6 +95,10 @@ func RunHeadless(args []string) {
 	mouse := fs.String("mouse", "auto", "Mouse emulation: auto (kempston on a Next, none on the other models), none, kempston or amx")
 	showVersion := fs.Bool("version", false, "Print version and exit")
 	fs.Parse(args)
+	if err := startProgram(model, snapshot, snapshotFormat); err != nil { // a standalone program starts as its machine
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 	if err := romBin.check(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -710,6 +716,15 @@ func RunHeadless(args []string) {
 		if err := zx.io.SaveDisk(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to save disk on exit: %v\n", err)
 		}
+	}
+
+	if *exportProgram != "" {
+		out := ProgramFileName(*exportProgram)
+		if err := zx.ExportProgramFrom(*model, out, *exportStub); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: the program could not be exported: %v\n", err)
+			os.Exit(1)
+		}
+		logf(*quiet, "Exported the machine as a program: %s", out)
 	}
 
 	if sched != nil {

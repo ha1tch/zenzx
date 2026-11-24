@@ -5,6 +5,7 @@ package zenzx
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ha1tch/zenui"
@@ -27,7 +28,30 @@ func TestStorageMenuFollowsTheMachine(t *testing.T) {
 	if got := b.widget.LabelFor(barFloppyDisk); got != storageLabel || b.storageIsSD {
 		t.Fatalf("on a 48K the menu label is %q (storageIsSD=%v)", got, b.storageIsSD)
 	}
-	floppyItems := len(b.widget.ItemsFor(barFloppyDisk))
+	// Both sections are there on a model with neither a drive nor cards, and nothing in them
+	// does anything: a row that can only say "no drive" is not shown as live.
+	none := b.widget.ItemsFor(barFloppyDisk)
+	for _, title := range []string{"Floppy Disk", "SD Card"} {
+		if !hasSection(none, title) || len(liveRows(none, title)) != 0 {
+			t.Errorf("a 48K's %q section: present %v, live rows %v", title, hasSection(none, title), liveRows(none, title))
+		}
+	}
+
+	// The +3's drive makes its section live, and only that one.
+	zx.io.EnableFDC()
+	b.refreshStorageMenu(zx)
+	plus3 := b.widget.ItemsFor(barFloppyDisk)
+	if len(liveRows(plus3, "Floppy Disk")) == 0 || len(liveRows(plus3, "SD Card")) != 0 {
+		t.Errorf("a +3's rows: floppy %v, SD %v", liveRows(plus3, "Floppy Disk"), liveRows(plus3, "SD Card"))
+	}
+	if b.storageIsSD {
+		t.Error("a +3 is not a Next")
+	}
+	zx.io.DisableFDC()
+	b.refreshStorageMenu(zx)
+	if len(liveRows(b.widget.ItemsFor(barFloppyDisk), "Floppy Disk")) != 0 {
+		t.Error("the floppy section stayed live with the controller off")
+	}
 
 	// A Next with its boot chain: placeholders for the files are enough for the menu.
 	dir := t.TempDir()
@@ -43,6 +67,14 @@ func TestStorageMenuFollowsTheMachine(t *testing.T) {
 		t.Fatalf("on a Next that boots from its card the menu label is %q (storageIsSD=%v)", got, b.storageIsSD)
 	}
 	items := b.widget.ItemsFor(barFloppyDisk)
+	// The menu is for the person using it: no tracker item numbers, and no notes about what
+	// the emulator does not do yet, which belong in the log and the register.
+	for _, it := range items {
+		low := strings.ToLower(it.Label)
+		if strings.Contains(it.Label, "T-") || strings.Contains(low, "not emulated") || strings.Contains(low, "yet") {
+			t.Errorf("the Storage menu has the development note %q", it.Label)
+		}
+	}
 	if len(items) != len(b.storageSpec) || len(b.storageSpec.actions()) != len(items) {
 		t.Fatalf("%d items, %d rows, %d actions", len(items), len(b.storageSpec), len(b.storageSpec.actions()))
 	}
@@ -57,16 +89,16 @@ func TestStorageMenuFollowsTheMachine(t *testing.T) {
 		t.Fatalf("the SD Card menu has no %q row", label)
 		return -1
 	}
-	// Index 0 is the "SD Card" title, so slot 2 is item 2 and Remove is item 6.
-	if items[0].Label != "SD Card" || !items[0].Title {
-		t.Errorf("item 0 should be the SD Card title, got %q (title %v)", items[0].Label, items[0].Title)
+	// The same two sections as on any model: the card one live, the floppy one a disabled
+	// signpost for the NextZXOS disc images (T-72).
+	if !hasSection(items, "SD Card") || len(liveRows(items, "SD Card")) == 0 {
+		t.Error("a Next's SD Card section is not live")
 	}
-	if items[2].Label != "Slot 2: empty" || !items[6].Disabled {
-		t.Errorf("with nothing in slot 2: %q, Remove disabled %v", items[2].Label, items[6].Disabled)
+	if !hasSection(items, "Floppy Disk") || len(liveRows(items, "Floppy Disk")) != 0 {
+		t.Errorf("a Next's Floppy Disk section should be a disabled signpost (T-72), live rows %v", liveRows(items, "Floppy Disk"))
 	}
-	// The Virtual Floppy section is present and every item in it is disabled (T-72).
-	if !hasDisabledVirtualFloppy(items) {
-		t.Error("the Next storage menu should carry a disabled Virtual Floppy section (T-72)")
+	if items[row("Slot 2: empty")].Label != "Slot 2: empty" || !items[row("Remove Card from Slot 2")].Disabled {
+		t.Errorf("with nothing in slot 2, Remove should be disabled")
 	}
 
 	// Insert ZenZX's Card makes the card, with the examples, and puts it in (action 5).
@@ -80,8 +112,8 @@ func TestStorageMenuFollowsTheMachine(t *testing.T) {
 	}
 	b.refreshStorageMenu(zx)
 	items = b.widget.ItemsFor(barFloppyDisk)
-	if items[2].Label != "Slot 2: "+ownCardName || items[6].Disabled {
-		t.Errorf("with the card in: %q, Remove disabled %v", items[2].Label, items[6].Disabled)
+	if items[row("Slot 2: "+ownCardName)].Disabled != true || items[row("Remove Card from Slot 2")].Disabled {
+		t.Errorf("with the card in, slot 2 should be named and Remove live")
 	}
 	// The boot card is not accepted for the second slot.
 	b.insertCard(zx, filepath.Join(dir, nextcard.CardName))
@@ -127,31 +159,98 @@ func TestStorageMenuFollowsTheMachine(t *testing.T) {
 	}
 	zx.RemoveSecondCard()
 
-	// Away from the Next the Floppy Disk contents are back, as they were, under the same
-	// "Storage" label, and the slot is empty.
+	// Away from the Next the menu is the drive-less one again, under the same "Storage" label.
 	b.storageSpec.pick(zx, row("Insert ZenZX's Card (Examples)"), -1)
 	zx.detachNextBootChain()
 	if zx.SecondCard() != "" {
 		t.Error("the second card stayed after the Next was left")
 	}
 	b.refreshStorageMenu(zx)
-	if got := b.widget.LabelFor(barFloppyDisk); got != storageLabel || len(b.widget.ItemsFor(barFloppyDisk)) != floppyItems {
-		t.Fatalf("after the Next the menu label is %q with %d items", got, len(b.widget.ItemsFor(barFloppyDisk)))
+	if got := b.widget.LabelFor(barFloppyDisk); got != storageLabel || len(liveRows(b.widget.ItemsFor(barFloppyDisk), "SD Card")) != 0 {
+		t.Fatalf("after the Next the menu label is %q, SD rows %v", got, liveRows(b.widget.ItemsFor(barFloppyDisk), "SD Card"))
 	}
 }
 
-// hasDisabledVirtualFloppy reports whether items carries the Virtual Floppy title and at
-// least one disabled item after it -- the signpost section for the unimplemented NextZXOS
-// disc-image mounting (T-72).
-func hasDisabledVirtualFloppy(items []zenui.Item) bool {
-	for i, it := range items {
-		if it.Title && it.Label == "Virtual Floppy" {
-			for _, rest := range items[i+1:] {
-				if rest.Disabled {
-					return true
-				}
+// What the disk actions say goes to the host as well as the console: a window has no console
+// in front of it, and the host shows it as a toast.
+func TestDiskActionsSpeakToTheHost(t *testing.T) {
+	zx := testZX()
+	var said []string
+	zx.OnNotice = func(msg string) { said = append(said, msg) }
+	expect := func(want string) {
+		t.Helper()
+		if len(said) != 1 || said[0] != want {
+			t.Fatalf("said %q, want %q", said, want)
+		}
+		said = nil
+	}
+
+	zx.handleEjectDisk()
+	expect("This model has no disk drive")
+	zx.handleSaveDisk()
+	expect("There is nothing to save: the disk has not changed")
+
+	zx.io.EnableFDC()
+	zx.handleEjectDisk()
+	expect("There is no disk in the drive") // a new drive is empty
+	zx.handleInsertBlankDisk()
+	expect("A blank formatted disk is in the drive")
+	zx.handleEjectDisk()
+	expect("The disk is ejected")
+	zx.handleEjectDisk()
+	expect("There is no disk in the drive")
+}
+
+// A section the machine cannot use is one line, N/A: a 48K without a drive, a +3 with its
+// controller switched off.
+func TestStorageMenuMarksAnAbsentSectionNA(t *testing.T) {
+	zx := testZX()
+	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.text.Unload()
+	note := func() string {
+		for _, it := range b.storageMenuSpec(zx).items() {
+			if it.Disabled && strings.TrimSpace(it.Label) == "N/A" {
+				return it.Label
 			}
+		}
+		return ""
+	}
+	if got := note(); got != sectionAbsent {
+		t.Errorf("48K: %q", got)
+	}
+	zx.memory.Enable128K()
+	zx.memory.EnablePlus3()
+	if got := note(); got != sectionAbsent {
+		t.Errorf("+3 without its controller: %q", got)
+	}
+}
+
+// hasSection reports whether items has a title row of that name.
+func hasSection(items []zenui.Item, title string) bool {
+	for _, it := range items {
+		if it.Title && it.Label == title {
+			return true
 		}
 	}
 	return false
+}
+
+// liveRows are the labels of the rows that do something in the section that starts at the
+// title row: the rows after it up to the next title, leaving out the disabled ones and the
+// dividers.
+func liveRows(items []zenui.Item, title string) []string {
+	var rows []string
+	in := false
+	for _, it := range items {
+		switch {
+		case it.Title:
+			in = it.Label == title
+		case in && it.Label != "" && !it.Disabled:
+			rows = append(rows, it.Label)
+		}
+	}
+	return rows
 }

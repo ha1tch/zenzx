@@ -4,7 +4,7 @@ A ZX Spectrum emulator in Go, built on the [zen80](https://github.com/ha1tch/zen
 
 | Machines | |
 |---|---|
-| ZX Spectrum 48K, 128K, +2, +2A, +3 | Tape, snapshots, AY sound, the +3's disc drive |
+| ZX Spectrum 48K, 128K, +2, +2A, +3 | Tape, snapshots, `.rzx` recordings (played), AY sound, the +3's disc drive |
 | Timex Sinclair 2068 | Its own timing, screen modes, sound and joystick ports |
 | ZX Spectrum Next | Boots NextZXOS from the distribution's SD card: Layer 2, tilemap, sprites, the copper, the DMA with DMA+, 4 MB, 28 MHz |
 
@@ -17,6 +17,13 @@ with zenimate and zenplay; the rounded shapes of its machine dock are drawn by
 Several machines can run at once, each reachable over a TCP socket and each autoloading a
 program, as in `zenzx -multi 4:48k,48k,128k,next -listen 16384 -autorun hello.bas`. See
 [`docs/link.md`](docs/link.md).
+
+## ZX Spectrum
+
+| | |
+|---|---|
+| ![Manic Miner, mid-game in the Central Cavern](docs/img/manic-miner.png) | ![RoboCop, mid-game on the first street](docs/img/robocop.png) |
+| Manic Miner, in the Central Cavern | RoboCop, on the first level |
 
 ## ZX Spectrum Next
 
@@ -36,7 +43,7 @@ compares with CSpect and jnext, the two emulators the picture is checked against
 ZenZX comes with three examples of its own for the Next, written in Z80N assembly with
 [zenas](https://github.com/ha1tch/zenas) and built with [zentools](https://github.com/ha1tch/zentools)'
 `zx`, from pictures in the public domain. `zenzx -next-examples` puts them on a card for the
-Next's second slot, where NextZXOS shows them as drive D; in the GUI the SD Card menu does
+Next's second slot, where NextZXOS shows them as drive D; in the GUI the Storage menu's SD Card section does
 the same. [`examples/next`](examples/next/README.md) has their sources and how they are
 made, and [`next`](next/README.md) is the folder for the Next's cards and ROMs.
 
@@ -46,6 +53,9 @@ made, and [`next`](next/README.md) is the folder for the Next's cards and ROMs.
 | gallop -- Muybridge's horse over a Bierstadt painting | fuji -- clouds behind Hokusai's Red Fuji | orbit -- the Moon and Phobos before the Earth |
 
 ## Building
+
+Prebuilt programs for Linux, macOS and Windows are on [the release page](https://github.com/ha1tch/zenzx/releases)
+and at [ha1tch.github.io/zenzx](https://ha1tch.github.io/zenzx/).
 
 Go 1.26.5 or later. The GUI also needs a C compiler and the raylib and oto system libraries
 (OpenGL, X11 or Wayland, ALSA on Linux).
@@ -89,6 +99,7 @@ differently per machine and, for a Next, by whether it is sitting at its NextZXO
 | `.tap` / `.tzx` | load tape | load tape | load tape | **ask**: copy to SD, or load & run |
 | `.scr` | paint screen | paint screen | paint screen | **ask**: copy to SD, or load & run |
 | `.sna` / `.z80` / `.szx` / `.zxs` | restore snapshot | restore snapshot | restore snapshot | **ask**: copy to SD, or load & run |
+| `.rzx` | play the recording (start the model it was made on first) | play the recording | not supported | not supported |
 | `.dsk` | needs a +3 | mount & boot | needs a +3 | **copy to SD** (ZenZX doesn't mount Next disc images yet — T-72) |
 | `.nex` | not applicable | not applicable | **run**, after asking to reset the busy Next | **ask**: copy to SD, or run it |
 | **Shift held** | — | — | — | by default skip the prompt and **run** (same as *Load & Run*); a preference |

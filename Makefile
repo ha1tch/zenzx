@@ -183,9 +183,19 @@ check-gomod:
 sync:
 	repoman syncver set $(VERSION)
 
+## check-purego: raylib-go's cgo-free calls pass the arguments they were prepared for (else the GUI panics on macOS and Windows)
+.PHONY: check-purego
+check-purego:
+	python3 scripts/check_purego_ffi.py
+
+## check-binaries: structural checks on the programs in $(DIST) (needs LIEF: pip install lief, pip3 on a Mac; override with BINARY_FLAGS, e.g. BINARY_FLAGS="--skip minos"; --help lists them)
+.PHONY: check-binaries
+check-binaries:
+	python3 tools/check_binaries.py $(DIST) $(BINARY_FLAGS)
+
 ## check: the full local pre-commit gate
 .PHONY: check
-check: fmt-check vet check-gomod check-register cross test
+check: fmt-check vet check-gomod check-register check-purego cross test
 	@echo "✓ all checks passed"
 
 ## release: run the full repoman release pipeline (usage: make release RELEASE_VERSION=0.5.0)

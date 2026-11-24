@@ -23,8 +23,8 @@ func TestMachineMenuFlatListStructure(t *testing.T) {
 		t.Fatalf("machineconfig.Load: %v", err)
 	}
 
-	if got := len(b.actions[barMachine]); got != 2 {
-		t.Errorf("len(actions[barMachine]) = %d, want 2 (Reset/Pause-Resume only)", got)
+	if got := len(b.actions[barMachine]); got != 3 {
+		t.Errorf("len(actions[barMachine]) = %d, want 3 (Reset, Pause or Play, Stop only)", got)
 	}
 
 	// A "submenu" node occupies exactly one top-level slot (its own
@@ -33,7 +33,7 @@ func TestMachineMenuFlatListStructure(t *testing.T) {
 	// simply len(nodes) at the top level, regardless of whether any
 	// node happens to be a submenu.
 	nodes := machinesRes.Config.Items
-	wantTotal := 2 + len(nodes) // Reset, Pause/Resume, then one row per top-level node
+	wantTotal := machineHeadRows + len(nodes) // Reset, Pause or Play, Stop, then one row per top-level node
 	items := b.widget.ItemsFor(barMachine)
 	if len(items) != wantTotal {
 		t.Fatalf("len(ItemsFor(barMachine)) = %d, want %d", len(items), wantTotal)
@@ -45,7 +45,7 @@ func TestMachineMenuFlatListStructure(t *testing.T) {
 	// Confirm every top-level node's own flag/label/checkmark landed
 	// at its correct flat index.
 	for j, node := range nodes {
-		i := j + 2
+		i := j + machineHeadRows
 		wantLabel := strings.Repeat("  ", node.Indent) + node.Label
 		switch node.Type {
 		case machineconfig.Separator:
@@ -200,14 +200,14 @@ func TestApplyFontUpdatesFontChecked(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	if !*b.fontChecked[fonts.NameSinclair] {
-		t.Fatal("setup: Sinclair should start checked")
+	if !*b.fontChecked[fonts.NameSpleen] {
+		t.Fatal("setup: Spleen should start checked")
 	}
 
 	// Pick some other bundled font to switch to.
 	var other fonts.Name
 	for _, n := range fonts.All {
-		if n != fonts.NameSinclair {
+		if n != fonts.NameSpleen {
 			other = n
 			break
 		}
@@ -220,8 +220,8 @@ func TestApplyFontUpdatesFontChecked(t *testing.T) {
 		t.Fatalf("ApplyFont(%s): %v", other, err)
 	}
 
-	if *b.fontChecked[fonts.NameSinclair] {
-		t.Error("Sinclair still checked after switching fonts")
+	if *b.fontChecked[fonts.NameSpleen] {
+		t.Error("Spleen still checked after switching fonts")
 	}
 	if !*b.fontChecked[other] {
 		t.Errorf("%s not checked after ApplyFont", other)

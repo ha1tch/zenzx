@@ -82,8 +82,8 @@ partitions.
 
 | Verb | Arguments | Description |
 |------|-----------|-------------|
-| `snapshot` | `<path> [format]` | Load a snapshot (`.sna`, `.z80`, `.szx`, `.zxs`). Format defaults to auto-detection. |
-| `snapshot-save` | `<path> [format]` | Save the current machine state to a snapshot. Format defaults to the path extension, or `zxs`. `.szx` cannot be saved. |
+| `snapshot` | `<path> [format]` | Load a snapshot (`.sna`, `.z80`, `.szx`, `.zxs`), or start playing a recording (`.rzx`, on the model it was made on). Format defaults to auto-detection. |
+| `snapshot-save` | `<path> [format]` | Save the current machine state to a snapshot. Format defaults to the path extension, or `zxs`. `.szx` and `.rzx` cannot be saved. |
 | `bin` | `<path> [loadAddr] [startAddr]` | Load a raw binary blob into memory. `loadAddr` defaults to `0x8000`; `startAddr` defaults to the load address. Addresses accept `0x` hex or decimal. |
 | `sym` | `<path>` | Load a pasmo/zenas-format `.sym` file, mapping label names to addresses. Loading a second file replaces the table entirely. `wait-mem` and `expect-mem` resolve symbol names against the most recently loaded table; without one loaded, they accept only literal addresses. |
 | `scr` | `<path>` | Load a raw `.scr` screen dump onto the display. |
