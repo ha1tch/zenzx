@@ -1,0 +1,21 @@
+{
+  "schema": "gorepoman.workspace.board/1",
+  "name": "nextreg-jnext-comparison",
+  "title": "NextREG fixes from jnext comparison (2026-09-15)",
+  "subtitle": "T-33/T-34 (zenzx register), plus the T-28 MMU-0xFF-slots addendum. The zen80 NextregWrite hook itself is already fixed and tested upstream (not tracked here -- zen80 has no register).",
+  "scope": {"projects": []},
+  "axis": "dependency_order",
+  "columns": [
+    {"label": "Now -- unblocked"},
+    {"label": "Next -- needs Now items first"}
+  ],
+  "overflow": {"hidden": false},
+  "legend": [
+    {
+      "name": "external blocker: zen80 release",
+      "color": "orange",
+      "applies_when": {"id": "T-33"}
+    }
+  ],
+  "footer": "zen80 side (github.com/ha1tch/zen80): NEXTREG opcode fix landed in the working tree 2026-09-15 -- Z80.NextregWrite hook added, z80nNextregNN/A use it with port-pair fallback, stale reasoning comment corrected, 4 new regression tests added, full z80 package test suite green. Not committed/tagged yet, and zen80 carries no repoman register of its own, so it has no board row -- but T-33 cannot close until a tagged zen80 release exists and zenzx's go.mod/go.sum are bumped to it."
+}

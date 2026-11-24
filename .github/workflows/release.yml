@@ -1,0 +1,440 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  headless-binaries:
+    # The headless build has no cgo dependency at all (no raylib, no
+    # oto), so it cross-compiles cleanly for every target from one
+    # runner.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+          - { goos: freebsd, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION from tag and sync
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" > VERSION
+          repoman syncver set "$VERSION"
+
+      - name: Build
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          out="dist/zenzx-${GOOS}-${GOARCH}-headless"
+          mkdir -p "$out"
+          go build -trimpath -tags headless -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" \
+              -o "${out}/zenzx-headless${ext}" ./cmd/zenzx-headless
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          # ZenZX's own demo card (gallop, fuji, orbit), beside the program in
+          # `next/`, where the boot files download to. Built with a host-native
+          # headless binary, so the cross-built target binary need not run here.
+          mkdir -p "$out"/next
+          GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
+              -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the binaries
+        # Structure only (tools/check_binaries.py): the right format, processor, Windows
+        # subsystem, libraries and minimum macOS version, and no build path inside.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
+
+      - name: Archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="zenzx-${VERSION}-${GOOS}-${{ matrix.goarch }}-headless"
+          cd dist
+          if [ "$GOOS" = "windows" ]; then
+            zip -q -r "${base}.zip" "zenzx-${GOOS}-${{ matrix.goarch }}-headless"
+            echo "asset=dist/${base}.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "${base}.tar.gz" "zenzx-${GOOS}-${{ matrix.goarch }}-headless"
+            echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: zenzx-${{ matrix.goos }}-${{ matrix.goarch }}-headless
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+  gui-binaries-cross:
+    # Cgo-free GUI targets: raylib-go's purego backend embeds a
+    # prebuilt native library per GOOS/GOARCH, and oto has no cgo
+    # dependency on darwin or windows, so these are complete,
+    # self-contained binaries built cross-platform from one runner --
+    # not a type-check. Linux is covered separately (see below): oto's
+    # Linux backend needs cgo + ALSA with no purego alternative here.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION from tag and sync
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" > VERSION
+          repoman syncver set "$VERSION"
+
+      - name: Build the GUI
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ext=""
+          # Windows: the GUI subsystem, so that starting zenzx.exe opens its window and no
+          # console window behind it (cmd/zenzx/console_windows.go attaches to a console
+          # that started it, so -help and the like still print there).
+          gui=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; gui=" -H=windowsgui"; fi
+          out="dist/zenzx-${GOOS}-${GOARCH}"
+          mkdir -p "$out"
+          go build -trimpath -ldflags "-s -w${gui} -X github.com/ha1tch/zenzx.version=${VERSION}" \
+              -o "${out}/zenzx${ext}" ./cmd/zenzx
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          # ZenZX's own demo card (gallop, fuji, orbit), beside the program in
+          # `next/`, where the boot files download to. Built with a host-native
+          # headless binary (the card is the same on every platform), so the
+          # cross-built target binary need not run here.
+          mkdir -p "$out"/next
+          GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
+              -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the binaries
+        # Structure only (tools/check_binaries.py): the right format, processor, Windows
+        # subsystem, libraries and minimum macOS version, and no build path inside.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
+
+      - name: Archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="zenzx-${VERSION}-${GOOS}-${{ matrix.goarch }}"
+          cd dist
+          if [ "$GOOS" = "windows" ]; then
+            zip -q -r "${base}.zip" "zenzx-${GOOS}-${{ matrix.goarch }}"
+            echo "asset=dist/${base}.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "${base}.tar.gz" "zenzx-${GOOS}-${{ matrix.goarch }}"
+            echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: zenzx-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+  gui-binaries-linux-amd64:
+    # Native cgo build: oto's Linux backend requires ALSA via cgo, with
+    # no purego alternative in the pinned oto version.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
+      - name: Install GUI dev libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            build-essential pkg-config \
+            libgl1-mesa-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libasound2-dev libwayland-dev \
+            libxkbcommon-dev wayland-protocols
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION from tag and sync
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" > VERSION
+          repoman syncver set "$VERSION"
+
+      - name: Build the GUI
+        env:
+          CGO_ENABLED: '1'
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          out="dist/zenzx-linux-amd64"
+          mkdir -p "$out"
+          go build -trimpath -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${out}/zenzx" ./cmd/zenzx
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          mkdir -p "$out"/next
+          GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
+              -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the binaries
+        # Structure only (tools/check_binaries.py): the right format, processor, Windows
+        # subsystem, libraries and minimum macOS version, and no build path inside.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
+
+      - name: Archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="zenzx-${VERSION}-linux-amd64"
+          cd dist
+          tar -czf "${base}.tar.gz" "zenzx-linux-amd64"
+          echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: zenzx-linux-amd64
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+  gui-binaries-linux-arm64:
+    # Native cgo build on GitHub's arm64-hosted runner (GA, free on
+    # public repositories -- see GitHub's runner documentation for
+    # private-repository availability and cost).
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-arm64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
+      - name: Install GUI dev libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            build-essential pkg-config \
+            libgl1-mesa-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libxinerama-dev libasound2-dev libwayland-dev \
+            libxkbcommon-dev wayland-protocols
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set VERSION from tag and sync
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$VERSION" > VERSION
+          repoman syncver set "$VERSION"
+
+      - name: Build the GUI
+        env:
+          CGO_ENABLED: '1'
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          out="dist/zenzx-linux-arm64"
+          mkdir -p "$out"
+          go build -trimpath -ldflags "-s -w -X github.com/ha1tch/zenzx.version=${VERSION}" -o "${out}/zenzx" ./cmd/zenzx
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          mkdir -p "$out"/next
+          GOOS= GOARCH= CGO_ENABLED=0 go run -tags headless ./cmd/zenzx-headless \
+              -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the binaries
+        # Structure only (tools/check_binaries.py): the right format, processor, Windows
+        # subsystem, libraries and minimum macOS version, and no build path inside.
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
+
+      - name: Archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="zenzx-${VERSION}-linux-arm64"
+          cd dist
+          tar -czf "${base}.tar.gz" "zenzx-linux-arm64"
+          echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: zenzx-linux-arm64
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+  release:
+    needs:
+      - headless-binaries
+      - gui-binaries-cross
+      - gui-binaries-linux-amd64
+      - gui-binaries-linux-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all archives
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+  pages:
+    # The page of programs at https://ha1tch.github.io/zenzx/: the GUI program for
+    # every platform as a raw executable, with checksums.txt and runners.json (what a
+    # ZenZX client reads to fetch the program for another platform). It is made from
+    # the archives the jobs above built for this tag -- the release's own bytes, not a
+    # second build -- and only once all of them have built, so the page never has a
+    # platform missing or a build that no release has. tools/build_site.py stops, and
+    # nothing is deployed, if a platform is absent or a program is not one.
+    needs:
+      - gui-binaries-cross
+      - gui-binaries-linux-amd64
+      - gui-binaries-linux-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download the GUI archives
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          pattern: zenzx-*
+          merge-multiple: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Build the page
+        run: python3 tools/build_site.py --version "${GITHUB_REF_NAME#v}" --archives dist --out zenzx_site
+
+      - name: Upload the page
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: zenzx_site
+
+  deploy:
+    # Needs the repository's Pages source set to "GitHub Actions" (Settings > Pages),
+    # once.
+    needs: pages
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

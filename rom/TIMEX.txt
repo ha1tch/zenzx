@@ -1,0 +1,60 @@
+------------------------------------------------------------
+Timex Sinclair 2068 ROM Images -- Provenance Note
+------------------------------------------------------------
+
+ts2068-0.rom  16384 bytes  Home ROM   sha256 6338f94b2ee5000b81a64a4f055b8f1d2db6e669e52cafc11233ff63896fae1
+ts2068-1.rom   8192 bytes  Extension ROM  sha256 e52e861bd30c144f174a596233c6f3e5804cff170fdc50d44ba61a1683b8174
+
+Sizes match the T/S 2068 Technical Manual's description exactly (16K
+mask-programmed 23128 for the Home ROM at 0000H-3FFFH, 8K mask-programmed
+2364 for the Extension ROM at 0000H-1FFFH in the Extension bank). Both
+files contain the expected boot copyright strings ("1982 Sinclair
+Research Ltd", "1983 Timex Computer Cor[poration]") and sensible Z80
+code at their reset vectors, not placeholder or corrupt data.
+
+Copyright status
+-----------------
+These ROM images are copyrighted works, embedding notices for both
+Sinclair Research Ltd (1982) and Timex Computer Corporation (1983) --
+consistent with the TS2068 Home ROM being a combined work: a Sinclair
+Spectrum-derived BASIC core plus Timex's own additions (T/S 2000
+BASIC's extra keywords -- DELETE, FREE, ON ERR, RESET, SOUND, STICK --
+and the SCLD/cartridge/sound-chip support routines).
+
+Three separate statements bear on redistribution, one per relevant
+rights-holder, none of them a formal clearance letter addressed to this
+project specifically:
+
+- **Sinclair-authored code**: covered by Amstrad's well-documented
+  redistribution permission for Spectrum ROM code (see SINCLAIR.txt),
+  *as far as it goes*. Cliff Lawson of Amstrad, who issued that
+  statement, was explicit about its scope on Usenet (comp.sys.amstrad.8bit,
+  1999): "We only hold the copyright for code that was written by
+  Sinclair or Amstrad for the Spectrum machines" -- and, asked
+  specifically about the Timex deal: "I haven't a clue about the Timex
+  deal as it was done in the days before Amstrad were ever involved."
+  So Amstrad's grant does not, on its own words, extend to Timex's own
+  additions.
+- **Timex-authored code** (T/S 2000 BASIC, the SCLD/cartridge support):
+  World of Spectrum's licence page for Sinclair BASIC states plainly
+  that "the TS2000 BASIC rights stayed with Timex" and "Timex permits
+  distribution" (https://worldofspectrum.net/legacy-info/sinclair-basic/).
+  This is a purposeful statement from the field's long-standing
+  reference archive, applying the same standard it uses for the other
+  three rights-holders on the same page (Nine Tiles' GPL grant, Amstrad's
+  quoted statement) -- but unlike Amstrad's statement, it isn't a
+  directly quotable, dated primary letter; there is no known citable
+  original Timex communication behind it.
+- **Sinclair Research's own remaining interest** (if any, alongside
+  Amstrad's): the same World of Spectrum page notes "Sinclair has not
+  stated its position, but has not sought to prevent distribution."
+
+Taken together this is a materially better-supported position than "no
+statement exists" -- multiple named rights-holders are on record,
+through a source the preservation community treats as authoritative,
+as either permitting or not objecting to distribution of their
+respective contributions. It falls short of the single clean,
+citable, dated Amstrad-for-Spectrum-ROMs precedent this project already
+relies on for SINCLAIR.txt. Included here on that combined basis.
+Worth revisiting if this project or its assets are ever redistributed
+in a context where the distinction matters.

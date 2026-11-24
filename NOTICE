@@ -1,0 +1,37 @@
+ZenZX
+Copyright (c) 2026 haitch
+
+This product includes software developed by haitch.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+---
+
+The widget toolkit, its raylib adapter and the Spectrum palettes are
+github.com/ha1tch/zenui (zenui, zenui/zenuiraylib, zenui/zxpalette) and
+the BDF font reader is github.com/ha1tch/zentools (pkg/bdf): same
+author, likewise Apache 2.0. Until 0.27.0 this tree carried its own
+copies of the four (pkg/zenui, pkg/zenuiraylib, pkg/zxpalette, pkg/bdf),
+which came from github.com/ha1tch/zenimate and grew here.
+
+The Help and About window is zenui's TextModal, which was written here
+after zenimate's own helpModal (cmd/zenimate-gui/helpmodal.go, same
+author, likewise Apache 2.0) and moved to zenui for its 0.2.0.
+
+pkg/fonts/sinclair.bdf is the ZX Spectrum 48K ROM's own character set;
+see pkg/fonts/LICENSE-Sinclair.txt for the Amstrad/Cliff Lawson
+permission it carries, the same basis rom/SINCLAIR.txt already
+documents for the ROM images in rom/.
+
+github.com/ha1tch/queryfy (same author) validates machines.json,
+Apache 2.0.
+
+github.com/ha1tch/blipper (same author), Apache 2.0 -- pkg/nextdisk
+imports its fatfs subpackage (a standalone FAT16/FAT32 driver with no
+dependency of its own beyond the standard library) to read files off
+a FAT disk image, in support of T-33's ZX Spectrum Next boot-chain
+work. Nothing else from blipper is used.

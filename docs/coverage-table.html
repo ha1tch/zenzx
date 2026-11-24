@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>zenzx — hardware coverage vs. the Spectrum family, v0.4.26</title>
+<style>
+  :root {
+    --ink: #1c2128;
+    --ink-soft: #4b5563;
+    --paper: #fbfaf7;
+    --line: #e2e0da;
+    --mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+    --green-bg: #dcf5e3; --green-ink: #14532d; --green-line: #a7d9b5;
+    --yellow-bg: #fdefc0; --yellow-ink: #7a4a00; --yellow-line: #e8cf7a;
+    --pink-bg: #fbdfe1; --pink-ink: #7f1d1d; --pink-line: #e6afb4;
+    --gray-bg: #eef0f2; --gray-ink: #6b7280; --gray-line: #d7dbe0;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .stripe {
+    height: 6px;
+    background: linear-gradient(90deg,
+      #1a1a1a 0 12.5%, #0033cc 12.5% 25%, #cc0000 25% 37.5%,
+      #cc9900 37.5% 50%, #00994d 50% 62.5%, #6600cc 62.5% 75%,
+      #00aacc 75% 87.5%, #eeeeee 87.5% 100%);
+  }
+
+  header {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 28px 20px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 8px;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .sub {
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    max-width: 74ch;
+    line-height: 1.55;
+    margin: 0 0 22px;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    padding: 14px 18px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+
+  .swatch {
+    width: 15px; height: 15px; border-radius: 3px; flex: none;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+
+  .swatch.green { background: var(--green-bg); border-color: var(--green-line); }
+  .swatch.yellow { background: var(--yellow-bg); border-color: var(--yellow-line); }
+  .swatch.pink { background: var(--pink-bg); border-color: var(--pink-line); }
+  .swatch.gray { background: var(--gray-bg); border-color: var(--gray-line); }
+
+  .table-wrap {
+    max-width: 1180px;
+    margin: 24px auto 0;
+    padding: 0 28px 60px;
+    overflow-x: auto;
+  }
+
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    min-width: 1102px;
+    table-layout: fixed;
+    font-size: 13px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  th, td {
+    padding: 9px 11px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    line-height: 1.4;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--ink);
+    color: #f2f1ec;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+    z-index: 2;
+    border-bottom: none;
+  }
+
+  tbody th {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 12.5px;
+    z-index: 1;
+    border-right: 1px solid var(--line);
+  }
+
+  thead th:first-child { position: sticky; left: 0; z-index: 3; }
+  thead th:last-child { position: sticky; right: 0; z-index: 3; }
+
+  tbody tr:not(.group-row) td:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    border-left: 1px solid var(--line);
+  }
+
+  .group-row td, .group-row th {
+    background: #f0efe9;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    font-weight: 700;
+    padding: 6px 11px;
+    border-right: none;
+  }
+
+  .g { background: var(--green-bg); color: var(--green-ink); }
+  .y { background: var(--yellow-bg); color: var(--yellow-ink); }
+  .p { background: var(--pink-bg); color: var(--pink-ink); }
+  .n { background: var(--gray-bg); color: var(--gray-ink); font-style: italic; }
+  .u { background: var(--gray-bg); color: var(--gray-ink); font-weight: 600; border: 1px dashed var(--gray-line); }
+
+  .note {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    margin-left: 4px;
+    opacity: 0.75;
+  }
+
+  tr:last-child td, tr:last-child th { border-bottom: none; }
+
+  .footnotes {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 28px 60px;
+  }
+
+  .footnotes h2 {
+    font-family: var(--mono);
+    font-size: 14px;
+    margin: 0 0 12px;
+  }
+
+  .footnotes ol {
+    padding-left: 20px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+
+  .footnotes li { margin-bottom: 8px; }
+
+  .footnotes code {
+    font-family: var(--mono);
+    background: #f0efe9;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--ink);
+  }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 21px; }
+    header { padding: 28px 18px 16px; }
+    .table-wrap { padding: 0 18px 40px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stripe"></div>
+
+<header>
+  <p class="eyebrow">zenzx · github.com/ha1tch/zenzx</p>
+  <h1>Hardware coverage vs. the Spectrum-family field</h1>
+  <p class="sub">
+    Every cell below is assessed against zenzx v0.4.26 as it actually stands, not as
+    a wishlist. Green means the configuration works today and is tested. Yellow means
+    it partly works — the underlying feature is real but a documented, tracked piece
+    is still missing. Pink means the real machine has this and zenzx currently has
+    nothing for it. Gray marked "Not applicable" means the real machine simply
+    doesn't have this feature, so there is nothing to support — not a gap. Gray
+    marked "Unconfirmed" (dashed border) is a genuinely different thing: research
+    couldn't establish whether the real machine has this or not, so no judgement is
+    made either way — not the same claim as "doesn't have it."
+  </p>
+  <div class="legend">
+    <div class="legend-item"><span class="swatch green"></span> Supported &amp; verified</div>
+    <div class="legend-item"><span class="swatch yellow"></span> Partial — real gap tracked</div>
+    <div class="legend-item"><span class="swatch pink"></span> Not supported at all</div>
+    <div class="legend-item"><span class="swatch gray"></span> Not applicable — machine doesn't have this</div>
+    <div class="legend-item"><span class="swatch gray" style="border-style:dashed;font-weight:600;"></span> Unconfirmed — genuinely don't know either way</div>
+  </div>
+</header>
+
+<div class="table-wrap">
+<table>
+<colgroup>
+  <col style="width:154px">
+  <col style="width:96px">
+  <col style="width:88px">
+  <col style="width:88px">
+  <col style="width:92px">
+  <col style="width:72px">
+  <col style="width:96px">
+  <col style="width:90px">
+  <col style="width:326px">
+</colgroup>
+<thead>
+<tr>
+  <th>Machine</th>
+  <th>Model</th>
+  <th>Sinclair joystick</th>
+  <th>Kempston joystick</th>
+  <th>Mouse support</th>
+  <th>AY sound chip</th>
+  <th>Hi-colour / enhanced video</th>
+  <th>Memory paging</th>
+  <th>Other</th>
+</tr>
+</thead>
+<tbody>
+
+<tr class="group-row"><td colspan="9">Sinclair-made</td></tr>
+<tr>
+  <th>ZX Spectrum 16K/48K</th>
+  <td class="g">48k<br>spanish48k</td>
+  <td class="g">Interface 2 add-on works<span class="note">1</span></td>
+  <td class="g">Kempston add-on works<span class="note">1</span></td>
+  <td class="g">Kempston Mouse add-on works</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="g">tape (fast+accurate), snapshots</td>
+</tr>
+<tr>
+  <th>Sinclair 128 "Toastrack"</th>
+  <td class="g">128k<br>spanish128k</td>
+  <td class="g">Interface 2 add-on works</td>
+  <td class="g">Kempston add-on works</td>
+  <td class="g">Kempston Mouse add-on works</td>
+  <td class="g">0xFFFD/0xBFFD, built in</td>
+  <td class="n">Not applicable</td>
+  <td class="g">8×16K banks, dual ROM</td>
+  <td class="p">contention timing<span class="note">2</span></td>
+</tr>
+
+<tr class="group-row"><td colspan="9">Amstrad-produced</td></tr>
+<tr>
+  <th>ZX Spectrum +2 (grey)</th>
+  <td class="g">plus2<br>spanishplus2</td>
+  <td class="g">sinclair-both, auto-default</td>
+  <td class="g">add-on override works</td>
+  <td class="g">add-on, works</td>
+  <td class="g">0xFFFD/0xBFFD</td>
+  <td class="n">Not applicable</td>
+  <td class="g">8×16K banks (128-style)</td>
+  <td class="p">contention timing</td>
+</tr>
+<tr>
+  <th>ZX Spectrum +2A/+2B</th>
+  <td class="g">plus2a</td>
+  <td class="g">sinclair-both, auto-default</td>
+  <td class="g">add-on override works</td>
+  <td class="g">add-on, works</td>
+  <td class="g">0xFFFD/0xBFFD</td>
+  <td class="n">Not applicable</td>
+  <td class="g">+3-style paging (0x1FFD)</td>
+  <td class="n">Not applicable</td>
+</tr>
+<tr>
+  <th>ZX Spectrum +3/+3B</th>
+  <td class="g">plus3<br>spanishplus3</td>
+  <td class="g">sinclair-both, auto-default</td>
+  <td class="g">add-on override works</td>
+  <td class="g">add-on, works</td>
+  <td class="g">0xFFFD/0xBFFD</td>
+  <td class="n">Not applicable</td>
+  <td class="g">+3-style paging (0x1FFD)</td>
+  <td class="g">FDC / +3DOS disk emulated</td>
+</tr>
+
+<tr class="group-row"><td colspan="9">Timex 2000 series</td></tr>
+<tr>
+  <th>Timex Sinclair 2068</th>
+  <td class="g">ts2068</td>
+  <td class="u">Unconfirmed<span class="note">3</span></td>
+  <td class="g">own AY-reg-14 ports<span class="note">4</span></td>
+  <td class="g">AMX Mouse, not Kempston protocol<span class="note">5</span></td>
+  <td class="g">0xF5/0xF6, own ports</td>
+  <td class="y">dynamic port-driven works, real CHNG_VID service doesn't<span class="note">6</span></td>
+  <td class="y">chunk-0 only, no 8-chunk Dock<span class="note">7</span></td>
+  <td class="g">tape (fast+accurate) verified against real ROM</td>
+</tr>
+<tr>
+  <th>Timex Computer 2068 (TC2068)</th>
+  <td class="p">not modeled</td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p">PAL variant of TS2068, separate ROM — same underlying mechanisms as TS2068 above (joystick, AY, hi-colour, paging), just not wired to this ROM/timing</td>
+</tr>
+<tr>
+  <th>Timex Computer 2048 (TC2048)</th>
+  <td class="p">not modeled</td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="n">Not applicable</td>
+  <td class="p"></td>
+  <td class="n">Not applicable</td>
+  <td class="p">the one Timex model with a genuine built-in Kempston port</td>
+</tr>
+<tr>
+  <th>Unipolbrit Komputer 2086</th>
+  <td class="p">not modeled</td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p"></td>
+  <td class="p">modified TC2068, one port replaced by Centronics — same underlying mechanisms as TS2068</td>
+</tr>
+
+<tr class="group-row"><td colspan="9">Microdigital (Brazil)</td></tr>
+<tr>
+  <th>Microdigital TK90X</th>
+  <td class="p">not modeled</td>
+  <td class="p"></td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="p">own ROM, PAL-M/PAL-N timing not modeled</td>
+</tr>
+<tr>
+  <th>Microdigital TK95</th>
+  <td class="p">not modeled</td>
+  <td class="p"></td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="p">own ROM, custom ULA-equivalent IC</td>
+</tr>
+
+<tr class="group-row"><td colspan="9">Czerweny (Argentina)</td></tr>
+<tr>
+  <th>Czerweny CZ 2000</th>
+  <td class="p">not modeled<span class="note">8</span></td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="p">rebadged Timex-Portugal board</td>
+</tr>
+<tr>
+  <th>Czerweny CZ Spectrum</th>
+  <td class="p">not modeled</td>
+  <td class="p"></td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="p">composite out, own board/case not modeled</td>
+</tr>
+<tr>
+  <th>Czerweny CZ Spectrum Plus</th>
+  <td class="p">not modeled</td>
+  <td class="p"></td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="n">Not applicable</td>
+  <td class="p">Spanish BASIC messages not modeled</td>
+</tr>
+
+<tr class="group-row"><td colspan="9">Modern reimplementations (non-Next)</td></tr>
+<tr>
+  <th>ZX-Uno</th>
+  <td class="p">platform itself not modeled</td>
+  <td class="g">base cores match existing -model support<span class="note">9</span></td>
+  <td class="g">base cores match existing support</td>
+  <td class="g">base cores match existing support</td>
+  <td class="p">dual-AY Turbosound not implemented</td>
+  <td class="p">ULAplus / Radastan not implemented</td>
+  <td class="g">base cores match existing support</td>
+  <td class="p">DivMMC/ESXDOS storage layer not modeled</td>
+</tr>
+<tr>
+  <th>ZXTRES</th>
+  <td class="p">platform itself not modeled</td>
+  <td class="g">base cores match existing support</td>
+  <td class="g">base cores match existing support</td>
+  <td class="g">base cores match existing support</td>
+  <td class="p">dual-AY Turbosound not implemented</td>
+  <td class="p">ULAplus / Radastan not implemented</td>
+  <td class="g">base cores match existing support</td>
+  <td class="p">DisplayPort/DivMMC not modeled</td>
+</tr>
+<tr>
+  <th>Omni 128HQ (Harlequin)</th>
+  <td class="p">not modeled<span class="note">10</span></td>
+  <td class="g">base 128K/+3 config matches existing support</td>
+  <td class="g">base config matches existing support</td>
+  <td class="g">base config matches existing support</td>
+  <td class="g">base config matches existing support</td>
+  <td class="n">Not applicable</td>
+  <td class="g">base config matches existing support</td>
+  <td class="p">dual-SD DivMMC not modeled</td>
+</tr>
+<tr>
+  <th>ESPectrum</th>
+  <td class="p">platform itself not modeled<span class="note">11</span></td>
+  <td class="g">base capability matches existing support</td>
+  <td class="g">base capability matches existing support</td>
+  <td class="g">Kempston Mouse via PS/2, base capability matches existing support</td>
+  <td class="g">128K/+2A/Pentagon targets match existing support</td>
+  <td class="n">Not applicable</td>
+  <td class="g">128K/+2A-style matches existing support</td>
+  <td class="p">memory contention (T-16), Betadisk/TR-DOS, floating bus, snow effect, Fuller joystick protocol, and Microdigital TK90X/TK95 targets are all real, confirmed ESPectrum features zenzx doesn't have<span class="note">12</span></td>
+</tr>
+<tr>
+  <th>The Spectrum (Retro Games Ltd)</th>
+  <td class="p">not modeled<span class="note">13</span></td>
+  <td class="g">selectable in-device menu, base capability matches</td>
+  <td class="g">selectable in-device menu, base capability matches</td>
+  <td class="u">Unconfirmed</td>
+  <td class="g">AY-3-8912, confirmed via genuine internal ROM files<span class="note">14</span></td>
+  <td class="n">Not applicable</td>
+  <td class="g">128K/+2A-style, confirmed — runs the genuine +2A ROM set internally</td>
+  <td class="p">Cursor joystick protocol selectable in-device (T-13, still open in zenzx); no +3/FDC support found in any source</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+<div class="footnotes">
+<h2>Notes</h2>
+<ol>
+  <li>zenzx's <code>-joystick</code>/<code>-mouse</code> flags accept an explicit override on any
+    model regardless of what's built in, matching how real third-party interfaces plugged into
+    any Spectrum's edge connector historically — Interface 2 (Sinclair protocol) and the Kempston
+    interface were both usable on machines with no built-in port of their own, not just the ones
+    that eventually got one built in.</li>
+  <li>Memory contention isn't modeled for any machine in this table — filed as the general,
+    non-machine-specific <code>T-16</code>. Not repeated as a pink cell throughout since it's a
+    single project-wide gap, not a per-machine one.</li>
+  <li>Unlike the Kempston-via-Twister case below, no source found this session specifically
+    documents Sinclair-protocol (keyboard-remap) joysticks being commonly used on TS2068 via the
+    Twister bus adapter — plausible by the same bus-bridging logic, but not established the way
+    the Kempston case is, so marked as genuinely unconfirmed rather than either credited or ruled
+    out.</li>
+  <li>TS2068's built-in joystick ports use its own AY-register-14 mechanism, not Kempston or
+    Sinclair protocol — implemented and tested this session (Stage 4). Confirmed this session
+    that Kempston add-on interfaces were historically usable on TS2068 too, via a "Twister" bus
+    adapter; zenzx's explicit <code>-joystick kempston</code> override works there as well.</li>
+  <li>TS2068's real historical mouse support was AMX Mouse, not Kempston Mouse — confirmed
+    directly from a genuine AMX Art tape disassembly this session (<code>T-14</code>), including
+    the interrupt-driven X/Y mechanism and end-to-end register tracing. zenzx implements and
+    tests this; the earlier version of this table incorrectly graded TS2068 against Kempston
+    Mouse specifically (a protocol it never had) rather than against what it actually needed.</li>
+  <li>Hi-colour mode itself works and is tested end-to-end (dynamic port-<code>FFH</code>
+    switching, matching how real software actually engaged it). What's specifically incomplete is
+    the documented Extension ROM <code>CHNG_VID</code> service call route, which hit an
+    undiagnosed divergence and was set aside as <code>T-15</code> once real software was confirmed
+    not to depend on it.</li>
+  <li>Chunk-0 Home/Extension ROM banking is implemented and verified (Stage 1). Full 8-chunk
+    Dock/cartridge banking was explicitly out of scope from the original development plan, not
+    an oversight.</li>
+  <li>The CZ 2000 is architecturally a rebadged, unmodified Timex-Portugal 48K board — existing
+    <code>-model=48k</code> may run its software with reasonable fidelity even without a
+    dedicated model, but the specific machine (its exact ROM/board) isn't modeled.</li>
+  <li>"Base cores match existing support" means zenzx's current 48K/128K/Pentagon-adjacent
+    emulation covers what these platforms emulate as their standard modes — not that zenzx
+    emulates the platform itself. The platform-specific enhancements (extra video modes, second
+    AY, storage layer) are separately and genuinely unimplemented.</li>
+  <li>The Omni ships on the Superfo Harlequin board — discrete 74HC logic, not FPGA. Functionally
+    closest to the existing 128K/+3 configurations already modeled; the specific product and its
+    integrated DivMMC storage aren't.</li>
+  <li>ESPectrum (EremusOne's actively-maintained fork, 347 GitHub stars, 46 forks — genuinely
+    significant open-source traction) is a software emulator on commodity ESP32 hardware, not a
+    custom-silicon reimplementation — closer in kind to zenzx itself than to the FPGA platforms
+    above. Confirmed directly from its own README: targets 48K, 128K, +2A (sharing the +3 ROM,
+    matching the real hardware fact this table already establishes for the Amstrad line),
+    Pentagon 128, and Microdigital TK90X/TK95.</li>
+  <li>Several of these are genuine, confirmed gaps worth naming rather than folding into an
+    already-tracked item: floating bus emulation, snow effect, Betadisk/TR-DOS, and the Fuller
+    joystick protocol have no equivalent in zenzx at all currently. Memory contention specifically
+    is the same gap already tracked as <code>T-16</code> — ESPectrum implementing it is
+    independent confirmation that it's a real, expected feature for a Spectrum emulator at this
+    level of fidelity, not a nice-to-have.</li>
+  <li>The Spectrum (Retro Games Ltd, £89.99, released 22 Nov 2024) is a closed-source, officially
+    licensed consumer product — software emulation confirmed (not FPGA) by contemporary press
+    coverage, though Retro Games Ltd has not published detailed technical documentation the way
+    the open-source projects above have. In-device menu lets any connected USB controller be set
+    to Kempston, Sinclair, or Cursor interface emulation, confirmed by Video Games Chronicle's
+    review. Emulates 16K/48K/128K; no +3 or floppy support found in any source checked.</li>
+  <li>Confirmed directly, not inferred: The Spectrum's own support FAQ (retro32.com) lists its
+    internal ROM filenames verbatim — <code>48.rom</code>, <code>128-0.rom</code>,
+    <code>128-1.rom</code> for "128K Universal" mode, and <code>plus3-1.rom</code>/
+    <code>plus3-2.rom</code>/<code>plus3-3.rom</code> for a "+2A" mode. It runs genuine, unmodified
+    Sinclair/Amstrad ROM images internally, not a from-scratch reimplementation — which settles
+    AY directly (the 128K ROM requires it to boot) and confirms paging goes beyond generic 128K to
+    the real +2A/+3-style extended scheme specifically, since that ROM set depends on it. A
+    hands-on review separately confirms an explicit "128K/+2" mode selector in the device's own
+    menu.</li>
+</ol>
+</div>
+
+</body>
+</html>
