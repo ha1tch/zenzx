@@ -1,4 +1,0 @@
-# Intermediate build artifacts from zenas. world.tap is NOT ignored: the
-# prebuilt tape ships with the example so it runs without an assembler.
-world.bin
-world.sym
