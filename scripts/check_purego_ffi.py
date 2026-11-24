@@ -81,10 +81,20 @@ def audit(src):
 def selected_file():
     """raylib_purego.go of the raylib-go version this module selects, or None."""
     here = os.path.dirname(os.path.abspath(__file__))
-    r = subprocess.run(["go", "list", "-m", "-f", "{{.Dir}}", "github.com/gen2brain/raylib-go/raylib"],
-                       cwd=os.path.join(here, ".."), capture_output=True, text=True)
-    d = r.stdout.strip()
-    if r.returncode != 0 or not d:
+    mod = "github.com/gen2brain/raylib-go/raylib"
+    root = os.path.join(here, "..")
+
+    def listed():
+        r = subprocess.run(["go", "list", "-m", "-f", "{{.Dir}}", mod], cwd=root, capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else ""
+
+    d = listed()
+    if not d:
+        # Not in the module cache: the cgo-free core build (headless) never needs raylib-go, so on
+        # a fresh machine (CI) nothing has fetched it. Fetch just this module, then ask again.
+        subprocess.run(["go", "mod", "download", mod], cwd=root, capture_output=True, text=True)
+        d = listed()
+    if not d:
         return None
     return os.path.join(d, "raylib_purego.go")
 

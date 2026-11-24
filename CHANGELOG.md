@@ -68,6 +68,8 @@ rework, and a documentation sweep.
 - **A guard on raylib-go's cgo-free calls** (`scripts/check_purego_ffi.py`, `make check-purego`,
   and a CI step). It compares, for every function the library prepares, the number of argument
   types with every call made through it, which the library checks only when the call is made.
+  It fetches raylib-go itself when the module cache lacks it, as on a fresh CI machine, where the
+  cgo-free core build never needs it (the step used to stop there with "no raylib_purego.go").
 - **A tape deck, from the Preferences window.** Machines > Tape > **Tape deck**, Top by default,
   Off or Bottom: while a tape loads in Accurate (or Turbo) mode, a cassette, a bar that fills as
   the tape plays, a counter and the buttons of a tape recorder in the order such recorders had
