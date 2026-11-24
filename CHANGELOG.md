@@ -70,6 +70,10 @@ rework, and a documentation sweep.
   types with every call made through it, which the library checks only when the call is made.
   It fetches raylib-go itself when the module cache lacks it, as on a fresh CI machine, where the
   cgo-free core build never needs it (the step used to stop there with "no raylib_purego.go").
+- **The workflows use the Node 24 versions of the GitHub actions they call** (checkout 5, setup-go 6,
+  setup-python 6, upload-artifact 6, download-artifact 7, upload-pages-artifact 5, deploy-pages 5,
+  action-gh-release 3). GitHub removed Node 20 from its runners in September 2026; the old versions
+  ran on Node 24 anyway, with a warning on every job.
 - **A tape deck, from the Preferences window.** Machines > Tape > **Tape deck**, Top by default,
   Off or Bottom: while a tape loads in Accurate (or Turbo) mode, a cassette, a bar that fills as
   the tape plays, a counter and the buttons of a tape recorder in the order such recorders had

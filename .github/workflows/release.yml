@@ -26,8 +26,8 @@ jobs:
           - { goos: windows, goarch: arm64 }
           - { goos: freebsd, goarch: amd64 }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 
@@ -99,7 +99,7 @@ jobs:
             echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: zenzx-${{ matrix.goos }}-${{ matrix.goarch }}-headless
           path: ${{ env.asset }}
@@ -122,8 +122,8 @@ jobs:
           - { goos: windows, goarch: amd64 }
           - { goos: windows, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 
@@ -200,7 +200,7 @@ jobs:
             echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: zenzx-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.asset }}
@@ -211,8 +211,8 @@ jobs:
     # no purego alternative in the pinned oto version.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 
@@ -279,7 +279,7 @@ jobs:
           tar -czf "${base}.tar.gz" "zenzx-linux-amd64"
           echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: zenzx-linux-amd64
           path: ${{ env.asset }}
@@ -291,8 +291,8 @@ jobs:
     # private-repository availability and cost).
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
 
@@ -359,7 +359,7 @@ jobs:
           tar -czf "${base}.tar.gz" "zenzx-linux-arm64"
           echo "asset=dist/${base}.tar.gz" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: zenzx-linux-arm64
           path: ${{ env.asset }}
@@ -374,13 +374,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           generate_release_notes: true
@@ -399,16 +399,16 @@ jobs:
       - gui-binaries-linux-arm64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download the GUI archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: dist
           pattern: zenzx-*
           merge-multiple: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -416,7 +416,7 @@ jobs:
         run: python3 tools/build_site.py --version "${GITHUB_REF_NAME#v}" --archives dist --out zenzx_site
 
       - name: Upload the page
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: zenzx_site
 
@@ -437,4 +437,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
