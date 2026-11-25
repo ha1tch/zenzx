@@ -70,7 +70,9 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 | T-90 | Machine > Stop and the Pause/Play row have not been seen in a window with the machine's picture | ux | P3 | ☐ | — |
 | T-91 | Export for another platform: fetch and verify the other system's stub, a Runs-on row in the Export form, and the signed-manifest CI stages | export | P3 | ☐ | — |
 | T-92 | The Windows program does not start for two testers | windows | P1 | ☐ | — |
-| T-93 | Installers: .deb (amd64, arm64), .msi (amd64, arm64) and .dmg with a ZenZX.app, built in the release workflow | packaging | P3 | ☐ | — |
+| T-93 | Installers: .deb (amd64, arm64), .msi (amd64, arm64) and .dmg with a ZenZX.app, built in the release workflow | packaging | P3 | ◐ | — |
+| T-94 | A file named on the command line is ignored: it must open, so that installers can register file types | ux | P3 | ☐ | — |
+| T-95 | A Windows 7 program, in addition to the Windows 10 ones (needs a patched Go toolchain) | windows | P2 | ◐ | — |
 
 ## timing
 
@@ -698,6 +700,16 @@ Scope: the menu rows (label and icon), the stop of one of several machines, the 
 
 Done when: Stop has been used on a real display with one machine and with several, in a tiled layout and a single one, and the dock, the menu and the empty window were as described in docs/gui.md; what ran, where and when is recorded here.
 
+### T-94. A file named on the command line is ignored: it must open, so that installers can register file types
+
+Theme: ux · Priority: P3 · Status: ☐
+
+Trigger: 2026-11-25, while scoping installers (T-93): a file association, or double-clicking a tape or snapshot in the file manager, starts `zenzx <file>`; ZenZX parses its flags and ignores any other word on the command line (`fs.Parse(args)` in `zenzx_gui.go`, no use of `fs.Args()`).
+
+Scope: take one file name on the command line and open it as File > Open does (a tape, snapshot, disk, .nex or .scr; the drop handler already decides what each kind does, `dropchoice_gui.go`), on the first machine; say so with a toast if the file cannot be read or is not a kind ZenZX opens. Then the installers can register the file types: `MimeType=` in the .desktop file with a MIME package, `CFBundleDocumentTypes` in the macOS Info.plist (and the app must also take the file from the open-document event, which macOS delivers instead of an argument), and a ProgId with Open-with verbs in the MSI.
+
+Done when: a file named on the command line opens, on all three systems, and the installers register the types, each shown to work by double-clicking a file on that system.
+
 ## export
 
 ### T-91. Export for another platform: fetch and verify the other system's stub, a Runs-on row in the Export form, and the signed-manifest CI stages
@@ -724,11 +736,21 @@ Scope: found by reading, not run: github.com/jupiterrider/ffi v0.7.0 embeds libf
 Done when: the cause is found from a tester's log, fixed, and the program has been started by the testers or on a Windows machine with a screen; what ran, where and when is recorded here. (Started with `-version` on the GitHub runners, amd64 and arm64: 2026-11-25, G-19.)
 
 
+### T-95. A Windows 7 program, in addition to the Windows 10 ones (needs a patched Go toolchain)
+
+Theme: windows · Priority: P2 · Status: ◐
+
+Trigger: 2026-11-25, a tester (Rodolfo) is on Windows 7. Go 1.21 and later need Windows 10 or Server 2016 or newer (go.dev/wiki/MinimumRequirements), and ZenZX is built with Go 1.26, so the Windows programs cannot start there; this very likely explains one of the two reports in T-92, and the testers' `ver` output will confirm it.
+
+Scope: a separate Windows 7 program (windows/amd64 only: Windows 7 has no ARM64 and ZenZX has no 32-bit build), in addition to the Windows 10 programs. It needs a patched Go toolchain, because the standard runtime imports a function that Windows 7 lacks: `ProcessPrng` from bcryptprimitives.dll (checked on the 0.50.0 program, which has both names; the patched build has neither). `GetSystemTimePreciseAsFileTime` (from golang.org/x/sys) and the `Nt...WaitCompletionPacket` names (the runtime) are looked up at run time with a fallback and are in the patched build as well, so they are not what stops it; an earlier version of this item listed them as blockers. The libraries inside the program are not the problem: raylib.dll imports only KERNEL32, USER32, GDI32, WINMM and SHELL32, and libffi-8.dll only KERNEL32, none of them a function that Windows 7 lacks. Candidates: github.com/XTLS/go-win7 (patched source for 1.26, VERSION go1.26.11, release `current`, go-win7-win6-1.26.zip, SHA-256 0ad6b6a8c0da1e9854b26b1e83318fd0e95ef5362b7243efcd5065d4e8dbdbaa on 2026-11-25) and github.com/MetaCubeX/go (patches for 1.21 to 1.26). Both are third-party patches to the compiler and runtime, so using one means building a release program with a compiler other than Go's own; that trust is a decision for the tech team. Decision, 2026-11-25: the tech team accepts the patched toolchain (XTLS/go-win7, go-win7-win6-1.26.zip, SHA-256 above). Done, 2026-11-25: the toolchain built from that source on the Linux machine of the session (Go 1.24.7 as bootstrap, go1.26.11 out, 4 minutes); the 0.50.0 GUI program built with it (windows/amd64, the Release flags, 33 s) has no `ProcessPrng` and no `bcryptprimitives`, passes `tools/check_binaries.py --os windows --arch amd64 --kind gui --forbid ProcessPrng --forbid bcryptprimitives` (the standard build fails it), and started under Wine 9.0 set to Windows 7 (version 6.1) and showed the boot screen with the menu bar. `.github/workflows/windows7.yml` (called by release.yml after the release, or run by hand for a tag) builds the program the same way, checks it, makes `zenzx-<version>-windows7-amd64.zip` and a `.msi` of it, installs the .msi on a current Windows, and attaches both (guard G-21). Not done: that workflow has not run; the page does not list the Windows 7 files; and no one has started the program on a real Windows 7 machine, which only the tester can do (Wine does not prove it: it implements the functions that Windows 7 lacks).
+
+Done when: a Windows 7 program is built in CI beside the others (named so that the page and the release say it is for Windows 7), checked for `ProcessPrng`, and has been started by a Windows 7 user, with what ran, where and when recorded here.
+
 ## packaging
 
 ### T-93. Installers: .deb (amd64, arm64), .msi (amd64, arm64) and .dmg with a ZenZX.app, built in the release workflow
 
-Theme: packaging · Priority: P3 · Status: ☐
+Theme: packaging · Priority: P3 · Status: ◐
 
 Trigger: 2026-11-25, after the Windows start-up reports (T-92): people who are not comfortable with a bare executable need a normal way to install the emulator.
 
@@ -737,6 +759,8 @@ Scope: an installer for each system, built in the release workflow from the prog
 - Linux, `.deb` for amd64 and arm64: `dpkg-deb` on the Linux runners; the program in `/usr/bin`, a `.desktop` file, an icon, MIME types for the machine files (.z80, .sna, .tap, .tzx, .nex and the like), `Depends:` on the libraries the program loads (ALSA, X11) and glibc 2.38 or later, which `check_binaries.py` already measures. Check: install in a clean Ubuntu and a clean Debian container, run `-version`, remove, confirm nothing is left.
 - Windows, `.msi` for amd64 and arm64: WiX 4 (a dotnet tool, runs on `windows-latest` and `windows-11-arm`); Start Menu shortcut, file associations, an uninstaller, a per-user install by default so that it needs no administrator. Check: `msiexec /i /qn`, start `-version` from the install folder, `msiexec /x`, list what is left. The program stays unsigned until a certificate exists, so SmartScreen warns about the MSI as it does about the program.
 - macOS, `.dmg` holding a `ZenZX.app` (Info.plist, an `.icns` icon, document types), universal when the two builds are joined with `lipo`; `hdiutil` on the macOS runner. A drag-to-Applications image, not a package. Check: mount, copy, start `-version` from inside the bundle. Without notarisation Gatekeeper blocks the app on first start (right-click Open), and this needs a Mac to see (T-89).
+
+Departures from the scope above, 2026-11-25 (what was built): the `.deb` is written by `tools/package.py` with the standard library (an ar archive of two tars), not with `dpkg-deb`, so that it can be made and tested on any machine; the `.msi` is built with WiX 3.14 (MS-RL, a pinned download checked by SHA-256), not WiX 4, because 4 and later carry the open-source maintenance fee terms and because 3.14 has an ARM64 target (`wixl`, the free MSI builder, has none); there are no file associations or MIME types in any of the three, because ZenZX ignores a file named on its command line (T-94) and an association would start the emulator with nothing in it. The installers are made by `.github/workflows/installers.yml` from the release's own archives, after the release is published (called from release.yml, or run by hand for an existing tag), and are attached only when all of them have passed; a failure leaves the release untouched. Written and tested here: `tools/package.py`, `scripts/test_package.py` (a CI step), the `.deb` installed, run and removed in a Linux container. Not yet run: the workflow itself, the `.msi` (never built: WiX runs only on Windows) and the `.dmg` (hdiutil runs only on macOS). Not done: the page does not link the installers; the manual does not say how to install them; no signing (SmartScreen and Gatekeeper warn).
 
 The icon is the Spectrum in `assets/icon/` (`speccy01.zani`), already made as `.ico`, `.icns` and square PNGs from 64 to 1024 pixels, enlarged by whole numbers with no smoothing; the installers use those files and nothing is to be redrawn. Not decided by the tech team and needed before installers are worth shipping to people who avoid warnings: Authenticode signing for Windows, and an Apple Developer ID with notarisation for macOS. Both have a yearly cost and an identity attached. The `.deb` needs neither.
 

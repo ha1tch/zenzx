@@ -10,5 +10,5 @@ The application icon: a Spectrum, 64 by 40 pixels.
   zenzx.icns      For macOS: 64, 128, 256, 512 and 1024.
 
 Everything except the first two files is made by `python3 scripts/make_icons.py` from speccy.png,
-and `python3 scripts/make_icons.py check` says whether they are up to date. To change the icon,
+and `python3 scripts/make_icons.py check` says whether they hold the same pictures as what it would make (the bytes may differ from one machine to another: zlib builds compress differently). To change the icon,
 change speccy.png (and speccy01.zani with it) and run the script.

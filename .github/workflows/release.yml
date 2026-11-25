@@ -385,6 +385,28 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
+  installers:
+    # The .deb, .msi and .dmg of this release, made from the programs published above and attached
+    # to the release (installers.yml). It runs after the release is published, and a failure in
+    # it leaves the release, the page and the deployment as they are.
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/installers.yml
+    with:
+      tag: ${{ github.ref_name }}
+
+  windows7:
+    # The Windows 7 program and its .msi, built with a patched Go toolchain (windows7.yml, T-95) and
+    # attached to the release. It runs after the release is published, and a failure in it leaves
+    # the release, the page and the deployment as they are.
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/windows7.yml
+    with:
+      tag: ${{ github.ref_name }}
+
   pages:
     # The page of programs at https://ha1tch.github.io/zenzx/: the GUI program for
     # every platform as a raw executable, with checksums.txt and runners.json (what a

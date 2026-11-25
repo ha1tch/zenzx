@@ -10,6 +10,8 @@ import os
 import struct
 import sys
 import unittest
+import zlib
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import make_icons as mi  # noqa: E402
@@ -68,10 +70,40 @@ class Icons(unittest.TestCase):
         self.assertEqual(seen, [b"icp6", b"ic07", b"ic08", b"ic09", b"ic10"])
         self.assertEqual(pos, len(d))
 
-    def test_the_files_in_the_tree_are_what_the_script_makes(self):
+    def test_the_files_in_the_tree_hold_what_the_script_makes(self):
         for rel, data in self.files.items():
             with open(os.path.join(mi.DIR, rel), "rb") as f:
-                self.assertEqual(f.read(), data, rel)
+                self.assertTrue(mi.equivalent(rel, f.read(), data), rel)
+
+    def recompressed(self, level=None, strategy=None):
+        """The same files with their pictures compressed another way, as another zlib would."""
+        real = mi.zlib.compress
+
+        def other(data, *_):
+            c = zlib.compressobj(level if level is not None else 9, zlib.DEFLATED, 15, 8,
+                                 strategy if strategy is not None else zlib.Z_DEFAULT_STRATEGY)
+            return c.compress(data) + c.flush()
+
+        with mock.patch.object(mi.zlib, "compress", other):
+            files = mi.build()
+        self.assertIs(mi.zlib.compress, real)
+        return files
+
+    def test_another_compressor_makes_other_bytes_but_the_same_pictures(self):
+        for kw in ({"level": 1}, {"level": 6}, {"strategy": zlib.Z_FILTERED}, {"strategy": zlib.Z_RLE}):
+            other = self.recompressed(**kw)
+            differing = [r for r in other if other[r] != self.files[r]]
+            self.assertTrue(differing, "%r made the same bytes, so this does not test anything" % kw)
+            for rel in other:
+                self.assertTrue(mi.equivalent(rel, other[rel], self.files[rel]), (kw, rel))
+
+    def test_a_changed_pixel_is_not_equivalent(self):
+        w, h, rows = mi.read_png(self.files["png/zenzx-64.png"])
+        rows[20][30] = (1, 2, 3, 255)
+        bent = mi.write_png(rows)
+        self.assertFalse(mi.equivalent("png/zenzx-64.png", bent, self.files["png/zenzx-64.png"]))
+        self.assertFalse(mi.equivalent("zenzx.ico", mi.ico([(64, bent)]), self.files["zenzx.ico"]))
+        self.assertFalse(mi.equivalent("png/zenzx-64.png", b"not a png", self.files["png/zenzx-64.png"]))
 
 
 if __name__ == "__main__":

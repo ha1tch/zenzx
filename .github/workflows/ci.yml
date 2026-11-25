@@ -65,6 +65,9 @@ jobs:
           python3 -W error scripts/test_make_icons.py
           python3 scripts/make_icons.py check
 
+      - name: The installer tool
+        run: python3 -W error scripts/test_package.py
+
       - name: Register consistency
         run: repoman register check
 

@@ -1,0 +1,220 @@
+name: Windows 7
+
+# A Windows 7 program for a release, beside the Windows 10 ones: zenzx-<version>-windows7-amd64.zip
+# and a .msi of it. Windows 7 is not a system Go supports (Go 1.21 and later need Windows 10), so
+# the program is built with XTLS/go-win7, Go's own source with patches that put back what Windows 7
+# needs; it is a third-party compiler, and the tech team has decided to use it (T-95). The source
+# is a fixed download, checked against its SHA-256 below, and built here with the Go on the runner.
+#
+# amd64 only: Windows 7 has no ARM64 build and ZenZX has no 32-bit one.
+#
+# Run by the Release workflow once the release is published, and by hand for a release that already
+# exists (Actions > Windows 7 > Run workflow, the tag such as v0.50.0). A failure leaves the release
+# as it was. The runners cannot run Windows 7, so the program is checked here for the one function
+# that stops it (ProcessPrng, a hard import since Go 1.24) and installed on a current Windows;
+# whether it starts on Windows 7 is for a person with the machine (guard G-21). The program is built
+# from the release's own source (the tag); the tools that wrap it (tools/package.py, the icon) are the
+# ones at the commit this workflow runs at.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release to make the Windows 7 program for, such as v0.50.0"
+        required: true
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag }}
+  GH_TOKEN: ${{ github.token }}
+  # go-win7-win6-1.26.zip, release "current" of github.com/XTLS/go-win7: Go 1.26.11 with the Windows 7
+  # patches. When the project replaces the file, the SHA-256 stops matching and the job says so;
+  # the new file is then looked at and the line below changed on purpose.
+  GOWIN7_URL: https://github.com/XTLS/go-win7/releases/download/current/go-win7-win6-1.26.zip
+  GOWIN7_SHA256: 0ad6b6a8c0da1e9854b26b1e83318fd0e95ef5362b7243efcd5065d4e8dbdbaa
+
+jobs:
+  build:
+    name: Build with the patched Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: The patched toolchain
+        run: |
+          set -euo pipefail
+          curl -sSL --fail -o gowin7.zip "$GOWIN7_URL"
+          echo "${GOWIN7_SHA256}  gowin7.zip" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/gowin7"
+          unzip -q gowin7.zip -d "$RUNNER_TEMP/gowin7"
+          cd "$RUNNER_TEMP/gowin7/src"
+          GOROOT_BOOTSTRAP="$(go env GOROOT)" ./make.bash
+          "$RUNNER_TEMP/gowin7/bin/go" version
+          echo "GO7=$RUNNER_TEMP/gowin7/bin/go" >> "$GITHUB_ENV"
+
+      - name: Install repoman (gorepoman)
+        run: |
+          curl -L https://github.com/ha1tch/gorepoman/releases/latest/download/repoman-linux-amd64 -o /usr/local/bin/repoman
+          chmod +x /usr/local/bin/repoman
+          repoman version
+
+      - name: Set VERSION from the tag and sync
+        # As the Release workflow does, so that the documents in the archive say the same.
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          printf '%s' "$VERSION" > VERSION
+          repoman syncver set "$VERSION"
+
+      - name: Build the GUI program for Windows 7
+        env:
+          CGO_ENABLED: '0'
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          out="dist/zenzx-windows7-amd64"
+          mkdir -p "$out"
+          GOOS=windows GOARCH=amd64 "$GO7" build -trimpath \
+              -ldflags "-s -w -H=windowsgui -X github.com/ha1tch/zenzx.version=${VERSION}" \
+              -o "${out}/zenzx.exe" ./cmd/zenzx
+          cp -r rom "$out"/
+          cp README.md CHANGELOG.md LICENSE NOTICE "$out"/ 2>/dev/null || true
+          mkdir -p "$out"/docs "$out"/next
+          cp docs/MANUAL.md docs/zenscript.md "$out"/docs/
+          # The demo card is the same on every system: made by a program for this runner.
+          GOOS= GOARCH= "$GO7" run -tags headless ./cmd/zenzx-headless -next-examples-card "$out"/next/zenzx-card.img
+
+      - name: Check the program
+        # The same structural checks as the Windows 10 program, and the two names of the function
+        # Windows 7 lacks must not be in it (the standard build has both; see T-95).
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py --os windows --arch amd64 --kind gui \
+              --forbid ProcessPrng --forbid bcryptprimitives dist
+
+      - name: Archive
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          cd dist
+          zip -q -r "zenzx-${VERSION}-windows7-amd64.zip" zenzx-windows7-amd64
+          ls -l
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: windows7-zip
+          path: dist/*.zip
+          if-no-files-found: error
+
+  msi:
+    name: .msi, installed on a current Windows
+    needs: build
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5     # the tools (tools/package.py, the icon) from the commit this workflow runs at
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: windows7-zip
+          path: dl
+
+      - name: WiX 3.14
+        run: |
+          $url = 'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip'
+          $sha = '6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31'
+          Invoke-WebRequest $url -OutFile wix.zip
+          $got = (Get-FileHash wix.zip -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $sha) { throw "wix314-binaries.zip has SHA-256 $got, expected $sha" }
+          Expand-Archive wix.zip -DestinationPath wix
+
+      - name: Make the package
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          New-Item -ItemType Directory out | Out-Null
+          python tools/package.py msi-source --archive "dl/zenzx-$v-windows7-amd64.zip" --version $v --arch x64 --out msi
+          if ($LASTEXITCODE -ne 0) { throw 'msi-source failed' }
+          & .\wix\candle.exe -nologo -arch x64 -out msi\zenzx.wixobj msi\zenzx.wxs
+          if ($LASTEXITCODE -ne 0) { throw 'candle failed' }
+          & .\wix\light.exe -nologo -sice:ICE38 -sice:ICE43 -sice:ICE57 -sice:ICE64 -sice:ICE91 `
+              -out "out\zenzx-$v-windows7-amd64.msi" msi\zenzx.wixobj
+          if ($LASTEXITCODE -ne 0) { throw 'light failed' }
+          Get-ChildItem out | Format-Table Name, Length
+
+      - name: Install it, run it, remove it
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          $msi = (Resolve-Path "out\zenzx-$v-windows7-amd64.msi").Path
+          $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', 'install.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "the installation failed ($($p.ExitCode); see install.log)" }
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\ZenZX\zenzx.exe'
+          if (-not (Test-Path $exe)) { throw "$exe is not there" }
+          $run = Start-Process -FilePath $exe -ArgumentList '-version' -Wait -PassThru `
+                   -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          Get-Content out.txt; Get-Content err.txt
+          if ($run.ExitCode -ne 0) { throw 'the installed program did not start' }
+          if ((Get-Content out.txt -Raw).Trim() -ne "ZenZX $v") { throw "it printed something other than 'ZenZX $v'" }
+          $p = Start-Process msiexec.exe -ArgumentList '/x', "`"$msi`"", '/qn', '/l*v', 'uninstall.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "the removal failed ($($p.ExitCode); see uninstall.log)" }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\ZenZX')) { throw 'the install folder is left behind' }
+          'installed, run and removed; nothing left'
+
+      - name: The logs (also when it failed)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows7-msi-logs
+          path: '*.log'
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: windows7-msi
+          path: out/*.msi
+          if-no-files-found: error
+
+  attach:
+    # Only when both passed.
+    name: Attach to the release
+    needs: [build, msi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: windows7-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums and upload
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          cd dist
+          rm -f *.log
+          ls -l
+          test "$(ls | wc -l)" -eq 2     # the .zip and the .msi
+          sha256sum * > "zenzx-${VERSION}-windows7.sha256"
+          cat "zenzx-${VERSION}-windows7.sha256"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber *

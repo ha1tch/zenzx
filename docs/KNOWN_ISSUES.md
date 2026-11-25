@@ -244,3 +244,17 @@ pointing the test at a real captured image locally.
 - **Invocation:** Actions > Windows smoke > Run workflow (the page is `https://ha1tch.github.io/zenzx` unless another is given).
 - **Last exercised:** 2026-11-25, amd64 on `windows-latest`, against the 0.50.0 page: passed (the program started with `-version` and exited 0). arm64 on `windows-11-arm`: passed the same day. (T-92 is what it was written for.)
 
+### G-20. The installers of a release (`.github/workflows/installers.yml`)
+
+- **Gate:** run after a release is published (called by release.yml) or by hand from the Actions tab; needs the Ubuntu, Windows, Windows ARM and macOS runners.
+- **Invariant:** the `.deb` (amd64, arm64), `.msi` (amd64, arm64) and `.dmg` of a release are built from its published programs, each is installed, started with `-version` and removed on a runner of its own system, and only then are all five attached to the release with a checksum file.
+- **Invocation:** Actions > Installers > Run workflow, with the tag (such as `v0.50.0`).
+- **Last exercised:** never
+
+### G-21. The Windows 7 program of a release (`.github/workflows/windows7.yml`)
+
+- **Gate:** run after a release is published (called by release.yml) or by hand from the Actions tab; the program can only be started on a real Windows 7 machine, which the runners are not.
+- **Invariant:** the Windows 7 program built from the release tag with the patched toolchain has no `ProcessPrng` or `bcryptprimitives`, passes the binary checks, is made into a `.msi` that installs, runs with `-version` and removes cleanly on a current Windows, and is attached to the release with a checksum file; and a person on Windows 7 starts it and sees the window.
+- **Invocation:** Actions > Windows 7 > Run workflow, with the tag (such as `v0.50.0`); then give the `.zip` or `.msi` from the release to a Windows 7 user.
+- **Last exercised:** never (the program was built and started under Wine set to Windows 7 on 2026-11-25, which is not a Windows 7 run)
+

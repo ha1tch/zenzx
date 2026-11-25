@@ -73,12 +73,31 @@ rework, and a documentation sweep.
   Its passing line now starts with the check's name and not with the path of the library file: a
   line that began with `.../raylib_purego.go:` was turned by GitHub into a failure annotation on
   the `core` job, though the step had passed.
+- **A Windows 7 program** (`.github/workflows/windows7.yml`, T-95): Go does not support Windows 7 (Go 1.21 and
+  later need Windows 10), so the program is built with XTLS/go-win7, Go's own source with patches that
+  restore Windows 7 (a fixed download, checked against its SHA-256: a third-party compiler, accepted by
+  the tech team), and attached to the release as `zenzx-<version>-windows7-amd64.zip` and a `.msi`, beside
+  the Windows 10 programs. windows/amd64 only. It is checked for `ProcessPrng`, the one function the
+  standard build imports that Windows 7 lacks, and the `.msi` is installed on a current Windows. Built
+  here and started under Wine set to Windows 7; it has not been started on a real Windows 7 machine,
+  and the workflow has not run (guard G-21).
+- **Installers** (`tools/package.py`, `.github/workflows/installers.yml`, `docs/proposals/installers.md`): a
+  `.deb` for Linux (amd64, arm64), a `.msi` for Windows (amd64, arm64) and a `.dmg` for macOS (both
+  processors in one), each made from the release's own programs after it is published, installed,
+  run and removed on a runner of its own system, and attached to the release with checksums only if
+  all five passed. `scripts/test_package.py` tests the tool (a CI step). The `.deb` has been installed,
+  run and removed in a Linux container; the `.msi` (WiX 3.14) and the `.dmg` have not been built yet,
+  and the workflow has not yet run (guard G-20). No file types are registered, because ZenZX ignores
+  a file named on its command line (T-94), and nothing is signed. A Windows 7 program is T-95.
 - **The application icon** (`assets/icon/`): the Spectrum drawn in `speccy01.zani` (64 by 40), as
   `speccy.png`, enlarged by whole numbers with no smoothing to square pictures of 64 to 1024
   pixels, and as `zenzx.ico` (Windows) and `zenzx.icns` (macOS). `scripts/make_icons.py` makes
   them from the picture with the standard library alone, and a CI step tests them and checks that
-  the files in the tree are what it makes. Nothing in the program uses the icon yet: it is the
-  picture the installers (T-93) will carry.
+  the files in the tree hold what it makes. The check compares the pictures and not the bytes:
+  zlib and zlib-ng compress the same pixels into different, equally valid PNG data, and the first
+  version, which compared bytes, failed on GitHub's runner (793 bytes of picture data there, 795
+  here). Nothing in the program uses the icon yet: it is the picture the installers (T-93) will
+  carry.
 - **A workflow that starts the published Windows programs on real Windows** (`.github/workflows/windows-smoke.yml`,
   run by hand: Actions > Windows smoke). It takes each Windows program from the page, checks its SHA-256 against
   `runners.json`, starts it with `-version` on `windows-latest` and `windows-11-arm`, and lists what it wrote to

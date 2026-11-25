@@ -1,0 +1,291 @@
+name: Installers
+
+# The installers of a release: a .deb for Linux (amd64, arm64), a .msi for Windows (amd64, arm64) and
+# a .dmg for macOS (one image for both processors). Each is made from the release's own programs
+# (the archives the Release workflow published), not from a second build, and is installed, run and
+# removed on a runner of its own system before it is attached to the release.
+#
+# Run by the Release workflow once the release is published, and by hand for a release that already
+# exists (Actions > Installers > Run workflow, the tag such as v0.50.0). A failure here leaves the
+# release as it was: nothing is attached unless every installer passed. The programs come from the
+# release; the tools that wrap them (tools/package.py, the icon) from the commit the workflow runs
+# at, so that a release made before they existed can still get installers.
+#
+# Not signed: SmartScreen on Windows and Gatekeeper on macOS warn about an unsigned installer.
+# What each one does and does not do is in docs/proposals/installers.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release to make installers for, such as v0.50.0"
+        required: true
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  deb:
+    name: .deb ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v5     # the tools come from the commit this workflow runs at; the programs, from the release
+
+      - name: The release's program
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dl \
+            --pattern "zenzx-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
+          ls -l dl
+
+      - name: Make the package
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          # the time of the release's commit, so that the same release makes the same package
+          export SOURCE_DATE_EPOCH="$(date -d "$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG}" --jq .commit.committer.date)" +%s)"
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+          python3 tools/package.py deb --archive "dl/zenzx-${VERSION}-linux-${{ matrix.arch }}.tar.gz" \
+            --version "$VERSION" --arch "${{ matrix.arch }}" --out out
+          dpkg-deb -I out/*.deb
+          dpkg-deb -c out/*.deb
+
+      - name: Install it, run it, remove it
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ./out/zenzx_*.deb desktop-file-utils
+          test "$(zenzx -version)" = "ZenZX ${VERSION}"
+          test -x /usr/bin/zenzx
+          test -f /usr/share/icons/hicolor/256x256/apps/zenzx.png
+          desktop-file-validate /usr/share/applications/zenzx.desktop
+          dpkg -s zenzx | grep -E '^(Status|Version|Architecture):'
+          sudo apt-get remove -y -qq zenzx
+          test ! -e /usr/bin/zenzx
+          test ! -e /usr/share/applications/zenzx.desktop
+          test ! -e /usr/share/icons/hicolor/256x256/apps/zenzx.png
+          echo "installed, run and removed; nothing left"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: installer-deb-${{ matrix.arch }}
+          path: out/*.deb
+          if-no-files-found: error
+
+  msi-build:
+    # WiX 3.14 (Microsoft Reciprocal License), downloaded from its release and checked against a
+    # fixed SHA-256. candle and light are Windows programs, so this runs on Windows; the ARM64
+    # package is made here too, from the ARM64 program, and installed on an ARM runner below.
+    name: .msi build
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5     # the tools come from the commit this workflow runs at; the programs, from the release
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: WiX 3.14
+        run: |
+          $url = 'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip'
+          $sha = '6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31'
+          Invoke-WebRequest $url -OutFile wix.zip
+          $got = (Get-FileHash wix.zip -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $sha) { throw "wix314-binaries.zip has SHA-256 $got, expected $sha" }
+          Expand-Archive wix.zip -DestinationPath wix
+          & .\wix\candle.exe -help | Select-Object -First 3
+
+      - name: The release's programs
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          foreach ($a in 'amd64', 'arm64') {
+            gh release download $env:TAG --repo $env:GITHUB_REPOSITORY --dir dl --pattern "zenzx-$v-windows-$a.zip"
+          }
+          Get-ChildItem dl | Format-Table Name, Length
+
+      - name: Make the packages
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          New-Item -ItemType Directory out | Out-Null
+          foreach ($pair in @(@('amd64', 'x64'), @('arm64', 'arm64'))) {
+            $a, $w = $pair
+            python tools/package.py msi-source --archive "dl/zenzx-$v-windows-$a.zip" --version $v --arch $w --out "msi-$a"
+            if ($LASTEXITCODE -ne 0) { throw "msi-source $a failed" }
+            & .\wix\candle.exe -nologo -arch $w -out "msi-$a\zenzx.wixobj" "msi-$a\zenzx.wxs"
+            if ($LASTEXITCODE -ne 0) { throw "candle $a failed" }
+            & .\wix\light.exe -nologo -sice:ICE38 -sice:ICE43 -sice:ICE57 -sice:ICE64 -sice:ICE91 `
+                -out "out\zenzx-$v-windows-$a.msi" "msi-$a\zenzx.wixobj"
+            if ($LASTEXITCODE -ne 0) { throw "light $a failed" }
+          }
+          Get-ChildItem out | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: msi-built-${{ github.run_id }}
+          path: out/*.msi
+          if-no-files-found: error
+
+  msi-verify:
+    name: .msi ${{ matrix.arch }} installed on ${{ matrix.runner }}
+    needs: msi-build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: windows-latest }
+          - { arch: arm64, runner: windows-11-arm }
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: msi-built-${{ github.run_id }}
+          path: msi
+
+      - name: Install it
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          $msi = (Resolve-Path "msi\zenzx-$v-windows-${{ matrix.arch }}.msi").Path
+          $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/qn', '/l*v', 'install.log' -Wait -PassThru
+          "msiexec exit code $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw 'the installation failed (see install.log)' }
+
+      - name: What it put there, and run it
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\ZenZX\zenzx.exe'
+          if (-not (Test-Path $exe)) { throw "$exe is not there" }
+          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'ZenZX.lnk'
+          if (-not (Test-Path $lnk)) { throw "no Start menu shortcut at $lnk" }
+          $p = Start-Process -FilePath $exe -ArgumentList '-version' -Wait -PassThru `
+                 -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          "exit code $($p.ExitCode)"; Get-Content out.txt; Get-Content err.txt
+          if ($p.ExitCode -ne 0) { throw 'the installed program did not start' }
+          if ((Get-Content out.txt -Raw).Trim() -ne "ZenZX $v") { throw "it printed something other than 'ZenZX $v'" }
+
+      - name: Remove it
+        run: |
+          $v = $env:TAG.TrimStart('v')
+          $msi = (Resolve-Path "msi\zenzx-$v-windows-${{ matrix.arch }}.msi").Path
+          $p = Start-Process msiexec.exe -ArgumentList '/x', "`"$msi`"", '/qn', '/l*v', 'uninstall.log' -Wait -PassThru
+          "msiexec exit code $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw 'the removal failed (see uninstall.log)' }
+          $left = @()
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\ZenZX'
+          if (Test-Path $dir) { $left += $dir }
+          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'ZenZX.lnk'
+          if (Test-Path $lnk) { $left += $lnk }
+          if ($left) { throw "left behind: $($left -join ', ')" }
+          'removed; nothing left'
+
+      - name: The logs (also when it failed)
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: msi-logs-${{ matrix.arch }}
+          path: '*.log'
+          if-no-files-found: ignore
+
+  dmg:
+    name: .dmg universal
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5     # the tools come from the commit this workflow runs at; the programs, from the release
+
+      - name: The release's programs
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          for a in amd64 arm64; do
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dl --pattern "zenzx-${VERSION}-darwin-${a}.tar.gz"
+            mkdir -p "x/$a"
+            tar -xzf "dl/zenzx-${VERSION}-darwin-${a}.tar.gz" -C "x/$a"
+          done
+          find x -name zenzx -type f
+
+      - name: One program for both processors
+        run: |
+          set -euo pipefail
+          lipo -create "$(find x/amd64 -name zenzx -type f)" "$(find x/arm64 -name zenzx -type f)" -output zenzx-universal
+          lipo -info zenzx-universal
+
+      - name: The app and the disk image
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          python3 tools/package.py app --program zenzx-universal --version "$VERSION" --out out
+          # An ad hoc signature (no certificate): what Apple silicon needs to start a program at all.
+          codesign --force --deep --sign - out/ZenZX.app
+          codesign --verify --deep --strict --verbose=2 out/ZenZX.app
+          python3 tools/package.py dmg --app out/ZenZX.app --out "out/zenzx-${VERSION}-macos-universal.dmg"
+          ls -l out
+
+      - name: Open the image, run the program from it
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/zv" "out/zenzx-${VERSION}-macos-universal.dmg"
+          test -d "$RUNNER_TEMP/zv/ZenZX.app"
+          test -L "$RUNNER_TEMP/zv/Applications"
+          lipo -info "$RUNNER_TEMP/zv/ZenZX.app/Contents/MacOS/zenzx"
+          codesign --verify --deep --strict "$RUNNER_TEMP/zv/ZenZX.app"
+          plutil -lint "$RUNNER_TEMP/zv/ZenZX.app/Contents/Info.plist"
+          test "$("$RUNNER_TEMP/zv/ZenZX.app/Contents/MacOS/zenzx" -version)" = "ZenZX ${VERSION}"
+          hdiutil detach "$RUNNER_TEMP/zv"
+          echo "opened, checked and run from the image"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: installer-dmg
+          path: out/*.dmg
+          if-no-files-found: error
+
+  attach:
+    # Only when every installer above passed.
+    name: Attach to the release
+    needs: [deb, msi-verify, dmg]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: installer-*
+          path: dist
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: msi-built-${{ github.run_id }}
+          path: dist
+
+      - name: Checksums and upload
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          cd dist
+          ls -l
+          test "$(ls | wc -l)" -eq 5     # two .deb, two .msi, one .dmg
+          sha256sum * > "zenzx-${VERSION}-installers.sha256"
+          cat "zenzx-${VERSION}-installers.sha256"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber *

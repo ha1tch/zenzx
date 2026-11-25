@@ -15,8 +15,10 @@ Linux takes the PNG files (hicolor/<size>x<size>/apps/zenzx.png). No sizes below
 there is no whole-number way down from 64 that keeps all of the picture.
 
 Usage: python3 scripts/make_icons.py          write the files
-       python3 scripts/make_icons.py check    exit 1 if the files in assets/icon differ from what
-                                              this would write
+       python3 scripts/make_icons.py check    exit 1 if the files in assets/icon hold different
+                                              pictures from what this would write (the bytes are
+                                              not compared: zlib builds compress the same pixels
+                                              into different, equally valid PNG data)
 
 Standard library only (Python 3.8 or later).
 
@@ -59,7 +61,7 @@ def read_png(data):
     for y in range(h):
         f = raw[y * (stride + 1)]
         cur = bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
-        for i in range(stride):
+        for i in (range(stride) if f else ()):
             a = cur[i - bpp] if i >= bpp else 0
             b = prev[i]
             c = prev[i - bpp] if i >= bpp else 0
@@ -76,8 +78,9 @@ def read_png(data):
                 cur[i] = (cur[i] + pr) & 255
             elif f != 0:
                 raise ValueError("bad PNG filter")
-        rows.append([tuple(cur[x * bpp:(x + 1) * bpp]) + ((255,) if bpp == 3 else ())
-                     for x in range(w)])
+        px = [tuple(cur[x * bpp:(x + 1) * bpp]) for x in range(w)] if bpp == 4 else \
+            [tuple(cur[x * 3:x * 3 + 3]) + (255,) for x in range(w)]
+        rows.append(px)
         prev = cur
     return w, h, rows
 
@@ -137,6 +140,37 @@ def build():
     return files
 
 
+def contents(rel, data):
+    """What a file holds, apart from how its pictures happen to be compressed."""
+    if rel.endswith(".png"):
+        return read_png(data)
+    if rel.endswith(".ico"):
+        head = struct.unpack("<HHH", data[:6])
+        pics = []
+        for i in range(head[2]):
+            w, h, c, r, planes, bits, size, off = struct.unpack("<BBBBHHII", data[6 + 16 * i:22 + 16 * i])
+            pics.append((w, h, c, r, planes, bits, read_png(data[off:off + size])))
+        return head, pics
+    if rel.endswith(".icns"):
+        pics, pos = [], 8
+        while pos < len(data):
+            kind, n = struct.unpack(">4sI", data[pos:pos + 8])
+            pics.append((kind, read_png(data[pos + 8:pos + n])))
+            pos += n
+        return data[:4], pics
+    return data
+
+
+def equivalent(rel, a, b):
+    """True if two files hold the same pictures. Bytes are not compared: the same pixels are
+    compressed into different, equally valid PNG data by different zlib builds (zlib, zlib-ng),
+    so a machine other than the one that made the files would otherwise see them as changed."""
+    try:
+        return contents(rel, a) == contents(rel, b)
+    except (ValueError, struct.error, zlib.error):
+        return False
+
+
 def main(argv):
     files = build()
     if argv[1:] == ["check"]:
@@ -144,7 +178,7 @@ def main(argv):
         for rel, data in sorted(files.items()):
             try:
                 with open(os.path.join(DIR, rel), "rb") as f:
-                    same = f.read() == data
+                    same = equivalent(rel, f.read(), data)
             except OSError:
                 same = False
             if not same:
