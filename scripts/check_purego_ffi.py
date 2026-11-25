@@ -112,7 +112,10 @@ def main(argv):
         if n == 0:
             print("check_purego_ffi: %s has no prepared functions; the library's layout has changed" % p, file=sys.stderr)
             return 2
-        print("%s: %d prepared functions, %d called with the wrong number of arguments" % (p, n, len(bad)))
+        # The line does not begin with the file's path: GitHub's Go log matcher reads "<file>.go: ..." as a
+        # compiler error and put this line on the job as a failure, though the check had passed.
+        print("check_purego_ffi: %d prepared functions, %d called with the wrong number of arguments (%s)"
+              % (n, len(bad), p))
         for line, cname, prepared, called in bad:
             print("  line %d  %s: prepared with %d arguments, called with %d" % (line, cname, prepared, called))
         if bad:

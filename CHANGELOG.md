@@ -70,6 +70,9 @@ rework, and a documentation sweep.
   types with every call made through it, which the library checks only when the call is made.
   It fetches raylib-go itself when the module cache lacks it, as on a fresh CI machine, where the
   cgo-free core build never needs it (the step used to stop there with "no raylib_purego.go").
+  Its passing line now starts with the check's name and not with the path of the library file: a
+  line that began with `.../raylib_purego.go:` was turned by GitHub into a failure annotation on
+  the `core` job, though the step had passed.
 - **A workflow that starts the published Windows programs on real Windows** (`.github/workflows/windows-smoke.yml`,
   run by hand: Actions > Windows smoke). It takes each Windows program from the page, checks its SHA-256 against
   `runners.json`, starts it with `-version` on `windows-latest` and `windows-11-arm`, and lists what it wrote to
