@@ -73,6 +73,12 @@ rework, and a documentation sweep.
   Its passing line now starts with the check's name and not with the path of the library file: a
   line that began with `.../raylib_purego.go:` was turned by GitHub into a failure annotation on
   the `core` job, though the step had passed.
+- **The application icon** (`assets/icon/`): the Spectrum drawn in `speccy01.zani` (64 by 40), as
+  `speccy.png`, enlarged by whole numbers with no smoothing to square pictures of 64 to 1024
+  pixels, and as `zenzx.ico` (Windows) and `zenzx.icns` (macOS). `scripts/make_icons.py` makes
+  them from the picture with the standard library alone, and a CI step tests them and checks that
+  the files in the tree are what it makes. Nothing in the program uses the icon yet: it is the
+  picture the installers (T-93) will carry.
 - **A workflow that starts the published Windows programs on real Windows** (`.github/workflows/windows-smoke.yml`,
   run by hand: Actions > Windows smoke). It takes each Windows program from the page, checks its SHA-256 against
   `runners.json`, starts it with `-version` on `windows-latest` and `windows-11-arm`, and lists what it wrote to

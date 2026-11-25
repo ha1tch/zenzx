@@ -60,6 +60,11 @@ jobs:
           python3 -W error scripts/test_check_purego_ffi.py
           python3 scripts/check_purego_ffi.py
 
+      - name: The application icon files
+        run: |
+          python3 -W error scripts/test_make_icons.py
+          python3 scripts/make_icons.py check
+
       - name: Register consistency
         run: repoman register check
 

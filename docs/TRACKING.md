@@ -69,7 +69,8 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 | T-89 | An exported program has not been run on Windows, or seen opening its window on Linux | embedding | P2 | ◐ | — |
 | T-90 | Machine > Stop and the Pause/Play row have not been seen in a window with the machine's picture | ux | P3 | ☐ | — |
 | T-91 | Export for another platform: fetch and verify the other system's stub, a Runs-on row in the Export form, and the signed-manifest CI stages | export | P3 | ☐ | — |
-| T-92 | The Windows program does not start for two testers; windows/arm64 cannot start at all (no embedded libffi for it) | windows | P1 | ☐ | — |
+| T-92 | The Windows program does not start for two testers | windows | P1 | ☐ | — |
+| T-93 | Installers: .deb (amd64, arm64), .msi (amd64, arm64) and .dmg with a ZenZX.app, built in the release workflow | packaging | P3 | ☐ | — |
 
 ## timing
 
@@ -712,15 +713,36 @@ Done when: S0 to S5 are done and an export for each system has been made from an
 
 ## windows
 
-### T-92. The Windows program does not start for two testers; windows/arm64 cannot start at all (no embedded libffi for it)
+### T-92. The Windows program does not start for two testers
 
 Theme: windows · Priority: P1 · Status: ☐
 
 Trigger: 0.50.0 release, reports from two testers (2026-11-25): the program does not start on Windows; no message, as the GUI program has no console and the failure is a panic in a dependency's init.
 
-Scope: found by reading, not run: github.com/jupiterrider/ffi v0.7.0 embeds libffi only for windows/amd64 (embed_windows_amd64.go; there is no arm64 file), so on windows/arm64 its init panics unless libffi-8.dll is installed; the amd64 program's two embedded libraries (raylib.dll, libffi-8.dll) import only system DLLs and are extracted to %LocalAppData%\github.com\... and loaded; their init runs before main, so console_windows.go's AttachConsole is too late to show the panic. Run under Wine 9.0 (a fresh profile, so the libraries are extracted on the first run) on 2026-11-25: the windows/amd64 program built from this source and the one published on the page (SHA-256 a15dfb4c, as runners.json gives it) both start, show the menu bar and the Spectrum's boot screen. So the cause is not in the program's own start-up on amd64; it is something on the testers' machines (Windows version, antivirus or SmartScreen, a profile folder that cannot be written, or the processor being ARM) until their log says otherwise. A console build of both Windows programs and instructions went to the testers to get the message, and `.github/workflows/windows-smoke.yml` (run by hand, guard G-19) starts the published programs on GitHub's Windows runners. (Wine needed a clean environment: with the session's own variables it aborted at its start.)
+Scope: found by reading, not run: github.com/jupiterrider/ffi v0.7.0 embeds libffi only for windows/amd64 (embed_windows_amd64.go; there is no arm64 file), so on windows/arm64 its init panics unless libffi-8.dll is installed; the amd64 program's two embedded libraries (raylib.dll, libffi-8.dll) import only system DLLs and are extracted to %LocalAppData%\github.com\... and loaded; their init runs before main, so console_windows.go's AttachConsole is too late to show the panic. Run under Wine 9.0 (a fresh profile, so the libraries are extracted on the first run) on 2026-11-25: the windows/amd64 program built from this source and the one published on the page (SHA-256 a15dfb4c, as runners.json gives it) both start, show the menu bar and the Spectrum's boot screen. So the cause is not in the program's own start-up on amd64; it is something on the testers' machines (Windows version, antivirus or SmartScreen, a profile folder that cannot be written, or the processor being ARM) until their log says otherwise. A console build of both Windows programs and instructions went to the testers to get the message, and `.github/workflows/windows-smoke.yml` (run by hand, guard G-19) starts the published programs on GitHub's Windows runners. (Wine needed a clean environment: with the session's own variables it aborted at its start.) Run on GitHub's `windows-latest` runner on 2026-11-25 (guard G-19, the 0.50.0 page): the amd64 program started with `-version` and exited 0, so on a clean Windows machine the libraries are written out and loaded and the program reaches its options. What that does not show is a window: the runner has no screen or graphics card. The cause for the testers is therefore on their side of the start (the window and graphics driver, a profile folder that cannot be written, antivirus or SmartScreen, or an ARM processor) until their log says which. The windows/arm64 program also started with `-version` and exited 0 on `windows-11-arm` the same day, so the reading above, that its init panics for lack of an embedded libffi, was wrong or incomplete for the version in use: the arm64 program starts on a clean Windows ARM machine. It is not known why (not examined); the claim that arm64 cannot start is withdrawn.
 
-Done when: the cause is found from a tester's log or a run on Windows, fixed, and the program has been started on Windows (amd64 and arm64, or arm64 withdrawn from the page and the release with the reason recorded here); what ran, where and when is recorded here.
+Done when: the cause is found from a tester's log, fixed, and the program has been started by the testers or on a Windows machine with a screen; what ran, where and when is recorded here. (Started with `-version` on the GitHub runners, amd64 and arm64: 2026-11-25, G-19.)
+
+
+## packaging
+
+### T-93. Installers: .deb (amd64, arm64), .msi (amd64, arm64) and .dmg with a ZenZX.app, built in the release workflow
+
+Theme: packaging · Priority: P3 · Status: ☐
+
+Trigger: 2026-11-25, after the Windows start-up reports (T-92): people who are not comfortable with a bare executable need a normal way to install the emulator.
+
+Scope: an installer for each system, built in the release workflow from the programs it already makes, listed on the page and attached to the release beside the raw programs (which stay: they are what `runners.json`, the smoke workflow and the export stubs use).
+
+- Linux, `.deb` for amd64 and arm64: `dpkg-deb` on the Linux runners; the program in `/usr/bin`, a `.desktop` file, an icon, MIME types for the machine files (.z80, .sna, .tap, .tzx, .nex and the like), `Depends:` on the libraries the program loads (ALSA, X11) and glibc 2.38 or later, which `check_binaries.py` already measures. Check: install in a clean Ubuntu and a clean Debian container, run `-version`, remove, confirm nothing is left.
+- Windows, `.msi` for amd64 and arm64: WiX 4 (a dotnet tool, runs on `windows-latest` and `windows-11-arm`); Start Menu shortcut, file associations, an uninstaller, a per-user install by default so that it needs no administrator. Check: `msiexec /i /qn`, start `-version` from the install folder, `msiexec /x`, list what is left. The program stays unsigned until a certificate exists, so SmartScreen warns about the MSI as it does about the program.
+- macOS, `.dmg` holding a `ZenZX.app` (Info.plist, an `.icns` icon, document types), universal when the two builds are joined with `lipo`; `hdiutil` on the macOS runner. A drag-to-Applications image, not a package. Check: mount, copy, start `-version` from inside the bundle. Without notarisation Gatekeeper blocks the app on first start (right-click Open), and this needs a Mac to see (T-89).
+
+The icon is the Spectrum in `assets/icon/` (`speccy01.zani`), already made as `.ico`, `.icns` and square PNGs from 64 to 1024 pixels, enlarged by whole numbers with no smoothing; the installers use those files and nothing is to be redrawn. Not decided by the tech team and needed before installers are worth shipping to people who avoid warnings: Authenticode signing for Windows, and an Apple Developer ID with notarisation for macOS. Both have a yearly cost and an identity attached. The `.deb` needs neither.
+
+Order: `.deb` first (no signing, cheapest to check), then `.msi`, then `.dmg`. None of it changes the programs, so it does not wait for T-92. It does not fix T-92 either: the programs start on clean Windows machines (G-19), and an installer does not change where the libraries are written or what SmartScreen thinks of an unsigned file.
+
+Done when: each installer is built in the release workflow, installed and removed in a check job on its own system, attached to the release and linked from the page, and the manual says how to install each; what ran where is recorded here.
 
 
 ---

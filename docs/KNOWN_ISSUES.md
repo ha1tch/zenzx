@@ -242,5 +242,5 @@ pointing the test at a real captured image locally.
 - **Gate:** run by hand from the Actions tab (Windows smoke); needs GitHub's `windows-latest` runner, and `windows-11-arm` for the arm64 program.
 - **Invariant:** each Windows program the release published on the page matches the SHA-256 in `runners.json`, and starts with `-version` and exits 0, which means the graphics libraries inside it (raylib.dll, libffi-8.dll) were written to `%LocalAppData%` and loaded; the job lists what was written. The window is not seen: the runners have no screen or graphics card.
 - **Invocation:** Actions > Windows smoke > Run workflow (the page is `https://ha1tch.github.io/zenzx` unless another is given).
-- **Last exercised:** never (T-92 is what it was written for)
+- **Last exercised:** 2026-11-25, amd64 on `windows-latest`, against the 0.50.0 page: passed (the program started with `-version` and exited 0). arm64 on `windows-11-arm`: passed the same day. (T-92 is what it was written for.)
 
