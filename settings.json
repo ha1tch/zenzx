@@ -1,8 +1,16 @@
 {
   "version": 1,
-  "theme": "Spectrum",
+  "theme": "Dark",
   "font": "Spleen",
   "fontZoom": 3,
   "displayScale": 3,
-  "fixedMenuBar": true
+  "fixedMenuBar": false,
+  "dock": true,
+  "multi": true,
+  "stopAnimation": true,
+  "drop": "ask",
+  "dropShift": "run",
+  "snapshotStart": "paused",
+  "tapeDeck": "top",
+  "tapeCassette": "big"
 }

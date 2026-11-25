@@ -68,6 +68,8 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 | T-88 | The tape deck's first cut: one machine at a time, no Fast mode, no seeking, nominal 3.5 MHz time, a colour per tape and not per header | ux | P3 | ☐ | — |
 | T-89 | An exported program has not been run on Windows, or seen opening its window on Linux | embedding | P2 | ◐ | — |
 | T-90 | Machine > Stop and the Pause/Play row have not been seen in a window with the machine's picture | ux | P3 | ☐ | — |
+| T-91 | Export for another platform: fetch and verify the other system's stub, a Runs-on row in the Export form, and the signed-manifest CI stages | export | P3 | ☐ | — |
+| T-92 | The Windows program does not start for two testers; windows/arm64 cannot start at all (no embedded libffi for it) | windows | P1 | ☐ | — |
 
 ## timing
 
@@ -694,5 +696,31 @@ Trigger: 0.50.0, Machine > Stop (machinedeck_stop_gui.go, stomp_gui.go, machinem
 Scope: the menu rows (label and icon), the stop of one of several machines, the stop of the last one (a window with only its background), the starting of a machine again from the dock's New and from the Machine menu, and the animation are covered by tests (stop_gui_test.go, stompicon_gui_test.go, TestGLStomp, G-18). The window has not been looked at as a person would with the machine's picture on it: the picture is not drawn under Xvfb's software OpenGL in this environment, so the dim over it, the leg coming down over a real picture and the dock after the last machine has gone are checked by the pieces and not together.
 
 Done when: Stop has been used on a real display with one machine and with several, in a tiled layout and a single one, and the dock, the menu and the empty window were as described in docs/gui.md; what ran, where and when is recorded here.
+
+## export
+
+### T-91. Export for another platform: fetch and verify the other system's stub, a Runs-on row in the Export form, and the signed-manifest CI stages
+
+Theme: export · Priority: P3 · Status: ☐
+
+Trigger: 0.50.0, after the page of programs was published (runners.json).
+
+Scope: docs/proposals/export-for-another-platform.md: the plan in stages S0 (spikes on a Mac, Windows and Linux arm64), S1 (core, offline), S2 (signed manifest), S3 (client and form), S4 (CI: manifest, draft release, verify-release, publish), S5 (documents). Decisions D1 to D9 are taken there; the key custody and the macOS question are open.
+
+Done when: S0 to S5 are done and an export for each system has been made from another and run on that system, with what ran, where and when recorded here.
+
+
+## windows
+
+### T-92. The Windows program does not start for two testers; windows/arm64 cannot start at all (no embedded libffi for it)
+
+Theme: windows · Priority: P1 · Status: ☐
+
+Trigger: 0.50.0 release, reports from two testers (2026-11-25): the program does not start on Windows; no message, as the GUI program has no console and the failure is a panic in a dependency's init.
+
+Scope: found by reading, not run: github.com/jupiterrider/ffi v0.7.0 embeds libffi only for windows/amd64 (embed_windows_amd64.go; there is no arm64 file), so on windows/arm64 its init panics unless libffi-8.dll is installed; the amd64 program's two embedded libraries (raylib.dll, libffi-8.dll) import only system DLLs and are extracted to %LocalAppData%\github.com\... and loaded; their init runs before main, so console_windows.go's AttachConsole is too late to show the panic. Run under Wine 9.0 (a fresh profile, so the libraries are extracted on the first run) on 2026-11-25: the windows/amd64 program built from this source and the one published on the page (SHA-256 a15dfb4c, as runners.json gives it) both start, show the menu bar and the Spectrum's boot screen. So the cause is not in the program's own start-up on amd64; it is something on the testers' machines (Windows version, antivirus or SmartScreen, a profile folder that cannot be written, or the processor being ARM) until their log says otherwise. A console build of both Windows programs and instructions went to the testers to get the message, and `.github/workflows/windows-smoke.yml` (run by hand, guard G-19) starts the published programs on GitHub's Windows runners. (Wine needed a clean environment: with the session's own variables it aborted at its start.)
+
+Done when: the cause is found from a tester's log or a run on Windows, fixed, and the program has been started on Windows (amd64 and arm64, or arm64 withdrawn from the page and the release with the reason recorded here); what ran, where and when is recorded here.
+
 
 ---

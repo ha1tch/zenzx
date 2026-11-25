@@ -1,0 +1,69 @@
+name: Windows smoke
+
+# Started by hand (Actions > Windows smoke > Run workflow): it takes the Windows programs that the
+# release published on the page, checks their SHA-256 against runners.json, and starts each one
+# on a real Windows runner. The program's graphics libraries (raylib.dll and libffi-8.dll, which
+# are inside it) are written out and loaded before it reads its first option, so `-version`
+# shows whether they can be on that machine. There is no screen or graphics card on the runners,
+# so the window itself is not seen here. This is dormant guard G-19 in docs/KNOWN_ISSUES.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: "The page the programs are taken from"
+        default: "https://ha1tch.github.io/zenzx"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ${{ matrix.arch }} on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-latest, arch: amd64 }
+          - { runner: windows-11-arm, arch: arm64 }
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: The machine
+        run: |
+          $os = Get-CimInstance Win32_OperatingSystem
+          "$($os.Caption) $($os.Version) build $($os.BuildNumber), $($os.OSArchitecture)"
+          "Processor architecture: $env:PROCESSOR_ARCHITECTURE"
+          try { $d = Get-MpComputerStatus; "Defender: real-time $($d.RealTimeProtectionEnabled), signatures $($d.AntivirusSignatureVersion)" } catch { "Defender: not readable ($($_.Exception.Message))" }
+
+      - name: The program from the page
+        env:
+          SITE: ${{ inputs.site }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          $m = Invoke-RestMethod "$env:SITE/runners.json"
+          $r = $m.runners | Where-Object { $_.os -eq 'windows' -and $_.arch -eq $env:ARCH }
+          if (-not $r) { throw "runners.json has no windows/$env:ARCH program" }
+          Invoke-WebRequest "$env:SITE/$($r.file)" -OutFile zenzx.exe
+          $sum = (Get-FileHash zenzx.exe -Algorithm SHA256).Hash.ToLower()
+          "version $($m.version); $($r.file): $((Get-Item zenzx.exe).Length) bytes, sha256 $sum"
+          if ($sum -ne $r.sha256) { throw "sha256 differs from runners.json ($($r.sha256))" }
+
+      - name: Start it with -version
+        run: |
+          $p = Start-Process -FilePath .\zenzx.exe -ArgumentList '-version' -Wait -PassThru `
+                 -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          "exit code $($p.ExitCode)"
+          "--- stdout"; Get-Content out.txt
+          "--- stderr"; Get-Content err.txt
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: What it wrote out (also when it failed)
+        if: always()
+        run: |
+          $d = Join-Path $env:LOCALAPPDATA 'github.com'
+          if (Test-Path $d) { Get-ChildItem $d -Recurse -File | ForEach-Object { "$($_.Length)`t$($_.FullName)" } } else { "nothing under $d" }

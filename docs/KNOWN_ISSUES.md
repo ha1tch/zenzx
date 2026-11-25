@@ -237,3 +237,10 @@ pointing the test at a real captured image locally.
 - **Invocation:** `Xvfb :99 -screen 0 1280x1024x24 &` then `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ZENZX_GL_TESTS=1 ZENZX_STOMP_SHOTS=shots go test -run TestGLStomp -v .` (under a second; `ZENZX_STOMP_SHOTS` keeps the contact sheet of twelve moments)
 - **Last exercised:** 2026-11-24 env:sandbox — at 0.50.0 (re-release): passes under Xvfb with software OpenGL, with the Spectrum icon drawn with the rainbow
 
+### G-19. The Windows programs on the page, started on real Windows (`.github/workflows/windows-smoke.yml`)
+
+- **Gate:** run by hand from the Actions tab (Windows smoke); needs GitHub's `windows-latest` runner, and `windows-11-arm` for the arm64 program.
+- **Invariant:** each Windows program the release published on the page matches the SHA-256 in `runners.json`, and starts with `-version` and exits 0, which means the graphics libraries inside it (raylib.dll, libffi-8.dll) were written to `%LocalAppData%` and loaded; the job lists what was written. The window is not seen: the runners have no screen or graphics card.
+- **Invocation:** Actions > Windows smoke > Run workflow (the page is `https://ha1tch.github.io/zenzx` unless another is given).
+- **Last exercised:** never (T-92 is what it was written for)
+

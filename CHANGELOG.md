@@ -70,6 +70,11 @@ rework, and a documentation sweep.
   types with every call made through it, which the library checks only when the call is made.
   It fetches raylib-go itself when the module cache lacks it, as on a fresh CI machine, where the
   cgo-free core build never needs it (the step used to stop there with "no raylib_purego.go").
+- **A workflow that starts the published Windows programs on real Windows** (`.github/workflows/windows-smoke.yml`,
+  run by hand: Actions > Windows smoke). It takes each Windows program from the page, checks its SHA-256 against
+  `runners.json`, starts it with `-version` on `windows-latest` and `windows-11-arm`, and lists what it wrote to
+  `%LocalAppData%`: the libraries inside the program are loaded before any option is read, so this shows whether
+  they can be on that machine. The window is not seen (no screen on the runners). Guard G-19.
 - **The binary checker lets the Linux arm64 GUI program name the glibc loader.** On arm64 the linker lists
   `ld-linux-aarch64.so.1` among the libraries a program needs (amd64 does not list its own), so the release
   job's `libs` check refused a program that needs nothing but glibc, ALSA and X11. The loaders of both
