@@ -27,6 +27,8 @@ test-errors.txt
 !docs/**/*.png
 !reference/**/*.png
 !examples/next/*/art/*.png
+!assets/**/*.png
+!sprites/**/*.png
 
 # Python leaves these beside the scripts in examples/next/tools
 __pycache__/
