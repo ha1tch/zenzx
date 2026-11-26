@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # build_headless.sh - Build the CGO-free headless ZenZX binary.
 #
 # The headless build has no window and no audio device: it renders the

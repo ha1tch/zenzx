@@ -47,37 +47,49 @@ func (cw *CPUWrapper) GetCycles() uint64 {
 // Main ZenZX Emulator
 // ============================================================================
 
-// escapeMode is how the Escape key behaves, set by the -escape command-line
-// flag. See parseEscapeMode for the flag values.
+// escapeMode is how the Escape key behaves when no menu or window is open for it to close:
+// the saved setting "escape" (settings.json, and the Preferences window), or the -escape
+// command-line switch for one session. The zero value is escapeOff, so that a ZenZX built
+// without being told is one that Escape cannot quit.
 type escapeMode int
 
 const (
-	// escapeOn: Escape quits the program at once (the historical default).
-	escapeOn escapeMode = iota
-	// escapeOff: Escape never quits.
-	escapeOff
+	// escapeOff: Escape never quits, and does nothing when nothing is open to close. The
+	// default.
+	escapeOff escapeMode = iota
 	// escapeClose: Escape closes an open dialog, menu or the debugger HUD, and
 	// never quits the program.
 	escapeClose
 	// escapeQuery: Escape asks for confirmation before quitting.
 	escapeQuery
+	// escapeOn: Escape quits the program at once.
+	escapeOn
 )
 
-// parseEscapeMode reads an -escape flag value. An unknown value falls back to
-// escapeOn and reports the error to the caller.
-func parseEscapeMode(s string) (escapeMode, bool) {
-	switch s {
-	case "on", "":
-		return escapeOn, true
-	case "off":
-		return escapeOff, true
-	case "close":
-		return escapeClose, true
-	case "query":
-		return escapeQuery, true
-	default:
-		return escapeOn, false
+// escapeModeWords are the modes as the switch and settings.json spell them, in the order of
+// the constants (and of settingsconfig.EscapeWords).
+var escapeModeWords = [...]string{"off", "close", "query", "on"}
+
+func (m escapeMode) String() string {
+	if m < 0 || int(m) >= len(escapeModeWords) {
+		return escapeModeWords[escapeOff]
 	}
+	return escapeModeWords[m]
+}
+
+// parseEscapeMode reads a mode word, from the -escape switch or from settings.json. An empty
+// word is the default, off; a word that is not a mode is off as well and is reported to the
+// caller, so that a mistyped switch never turns Escape on.
+func parseEscapeMode(s string) (escapeMode, bool) {
+	if s == "" {
+		return escapeOff, true
+	}
+	for i, w := range escapeModeWords {
+		if s == w {
+			return escapeMode(i), true
+		}
+	}
+	return escapeOff, false
 }
 
 type ZenZX struct {
@@ -122,6 +134,29 @@ type ZenZX struct {
 
 	// OnNotice is where the host hears what notice says (input.go).
 	OnNotice func(msg string)
+
+	// OpenSnapshot is how the host opens a snapshot: the window makes the machine it is of, or
+	// reloads the one it made it for (snapshotopen_gui.go), and loads it there. nil loads it into
+	// this machine, as the headless program does (openSnapshot, input.go).
+	OpenSnapshot func(path, format string, wait bool) error
+
+	// OpenMultisnapshot is how the host opens a multisnapshot (multisnapshot.go): the window asks
+	// first, and replaces its machines with the ones in it. nil where there is no window to do it
+	// (loadDroppedFile, input.go).
+	OpenMultisnapshot func(path string)
+
+	// cardsApproved is set by the window while it loads a snapshot of a Next over cards that the
+	// person has chosen to go on with, though they are not the ones the snapshot was made over, or
+	// with none in the second slot: the loader does not refuse it then (cardrecords.go).
+	cardsApproved bool
+
+	// OnDiagnostics is where the host hears of F3, which opens the diagnostics report in a
+	// window as Snapshot > Run Diagnostics does (diagnostics_gui.go).
+	OnDiagnostics func()
+
+	// OnInfo is where the host hears of Alt+I and F12, which open a text window as the Tape and
+	// Snapshot menus do (info_gui.go): the title and the text, whose lines starting "## " are headings.
+	OnInfo func(title, text string)
 
 	// nexRun is a .nex being run from the menu or the Browser, one frame at a time (nexrun.go);
 	// nexScratch is the card made for it. OnNEXRun is where the host hears how it ended.
@@ -170,8 +205,9 @@ type ZenZX struct {
 	// System
 	is128K  bool
 	isPlus3 bool
-	// escape is how the Escape key behaves (set from -escape): quit at once,
-	// never quit, close an open dialog/HUD only, or ask before quitting.
+	// escape is how the Escape key behaves when this machine starts: the -escape switch, or the
+	// saved setting, or off (see escapeMode). The running program asks the menu bar (escapeNow),
+	// since the Preferences window can change it at any time.
 	escape escapeMode
 	// uiOwnsEscape is set by the GUI's loop for a frame in which a menu or a
 	// window of the menu bar is open: Escape closes that, not the program.
@@ -302,6 +338,13 @@ func (zx *ZenZX) EnableZ80N() {
 	// nextRegOpcodeWrite's doc comment in nextreg.go for why (real
 	// hardware behaviour, and a real jnext bug/fix, GH #54).
 	zx.cpu.NextregWrite = zx.io.nextRegOpcodeWrite
+}
+
+// DisableZ80N is the other way: the CPU is a plain Z80 again, as after a live switch from the Next to
+// another model.
+func (zx *ZenZX) DisableZ80N() {
+	zx.cpu.Z80N = false
+	zx.cpu.NextregWrite = nil
 }
 
 // EnableDivMMC attaches a DivMMC interface (T-36) to this instance:
@@ -531,6 +574,12 @@ func (zx *ZenZX) Reset() {
 
 	// What a reset line puts back besides the CPU: reset.go.
 	zx.resetHardware()
+
+	// A paused machine runs no frame, which is where a Next's reset is carried out: it is carried out
+	// here, or the machine would show, and be asked about, the state it had before the reset until Play.
+	if zx.paused && zx.io != nil && zx.memory != nil && zx.memory.isNext {
+		zx.serviceNextReset()
+	}
 }
 
 func (zx *ZenZX) RunFrame() {

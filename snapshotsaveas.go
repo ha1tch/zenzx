@@ -24,14 +24,16 @@ var snapshotSaveFormats = []struct{ format, label string }{
 
 // saveSnapshotAs saves the machine to path in format and says what happened: the result is a
 // toast (and a line on the terminal), as the other items of the Snapshot menu say theirs. A name
-// without the format's extension gets it, as the writers add it.
-func (zx *ZenZX) saveSnapshotAs(path, format string) {
+// without the format's extension gets it, as the writers add it. The result is the path that was
+// saved, or "" when it was not.
+func (zx *ZenZX) saveSnapshotAs(path, format string) (saved string) {
 	if !strings.HasSuffix(path, "."+format) {
 		path += "." + format
 	}
 	if err := zx.SaveSnapshotFormat(path, format); err != nil {
 		zx.notice("The snapshot %s could not be saved: %v", filepath.Base(path), err)
-		return
+		return ""
 	}
 	zx.notice("Saved snapshot %s (%s format)", filepath.Base(path), strings.ToUpper(format))
+	return path
 }

@@ -4,8 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/ha1tch/zenzx/pkg/fetch"
 )
 
 // The three files a Next boots from, by the names they have in the folder that holds them.
@@ -110,33 +110,24 @@ func Setup(ctx context.Context, opts Options, progress Progress) error {
 	if opts.BootROMURL == "" {
 		opts.BootROMURL = DefaultBootROMURL
 	}
-	if opts.Client == nil {
-		opts.Client = http.DefaultClient
-	}
 	if err := os.MkdirAll(opts.Dir, 0o755); err != nil {
 		return err
 	}
 	f := In(opts.Dir)
 
 	if !exists(f.BootROM) {
-		sum, err := download(ctx, opts.Client, opts.BootROMURL, f.BootROM, func(done, total int64) { progress(StageBootROM, done, total) })
+		err := get(ctx, opts.Client, opts.BootROMURL, f.BootROM, checkedAs(opts.BootROMURL, DefaultBootROMURL, bootROMSHA256),
+			func(done, total int64) { progress(StageBootROM, done, total) })
 		if err != nil {
 			return fmt.Errorf("the boot ROM: %w", err)
-		}
-		if opts.BootROMURL == DefaultBootROMURL && sum != bootROMSHA256 {
-			os.Remove(f.BootROM)
-			return fmt.Errorf("the boot ROM that was downloaded is not the expected file (SHA-256 %s)", sum)
 		}
 	}
 	if !exists(f.Card) || !exists(f.DivMMCROM) {
 		zipPath := filepath.Join(opts.Dir, "distribution.zip")
-		sum, err := download(ctx, opts.Client, opts.DistributionURL, zipPath, func(done, total int64) { progress(StageDownload, done, total) })
+		err := get(ctx, opts.Client, opts.DistributionURL, zipPath, checkedAs(opts.DistributionURL, DefaultDistributionURL, distributionSHA256),
+			func(done, total int64) { progress(StageDownload, done, total) })
 		if err != nil {
 			return fmt.Errorf("the distribution: %w", err)
-		}
-		if opts.DistributionURL == DefaultDistributionURL && sum != distributionSHA256 {
-			os.Remove(zipPath)
-			return fmt.Errorf("the distribution that was downloaded is not the expected file (SHA-256 %s)", sum)
 		}
 		if _, err := FromZip(ctx, zipPath, opts.Dir, progress); err != nil {
 			return err
@@ -152,67 +143,21 @@ func exists(path string) bool {
 	return err == nil && !st.IsDir()
 }
 
-// download fetches url into path through a ".part" file and returns the SHA-256 of what
-// it wrote.
-func download(ctx context.Context, client *http.Client, url, path string, progress func(done, total int64)) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return "", err
+// get fetches url into path with the shared downloader (pkg/fetch): through a ".part" file
+// that a broken connection resumes, retried, and checked against sha when there is one. A nil
+// client is the downloader's own.
+func get(ctx context.Context, client *http.Client, url, path, sha string, progress func(done, total int64)) error {
+	_, err := fetch.File(ctx, fetch.Request{URLs: []string{url}, Dest: path, SHA256: sha, Client: client, Progress: progress})
+	return err
+}
+
+// checkedAs is the SHA-256 a download must have: the recorded one for the default address,
+// and none for an address somebody chose, which is checked only for what it holds.
+func checkedAs(url, defaultURL, sha string) string {
+	if url == defaultURL {
+		return sha
 	}
-	req.Header.Set("User-Agent", "zenzx")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%s answered %s", url, resp.Status)
-	}
-	part := path + ".part"
-	out, err := os.Create(part)
-	if err != nil {
-		return "", err
-	}
-	hash := sha256.New()
-	total := resp.ContentLength
-	if total < 0 {
-		total = 0
-	}
-	var done int64
-	buf := make([]byte, 256*1024)
-	for {
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, err := out.Write(buf[:n]); err != nil {
-				out.Close()
-				os.Remove(part)
-				return "", err
-			}
-			hash.Write(buf[:n])
-			done += int64(n)
-			progress(done, total)
-		}
-		if rerr == io.EOF {
-			break
-		}
-		if rerr != nil {
-			out.Close()
-			os.Remove(part)
-			return "", rerr
-		}
-	}
-	if err := out.Close(); err != nil {
-		os.Remove(part)
-		return "", err
-	}
-	if total > 0 && done != total {
-		os.Remove(part)
-		return "", fmt.Errorf("the download stopped at %d of %d bytes", done, total)
-	}
-	if err := os.Rename(part, path); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return ""
 }
 
 var timingLine = regexp.MustCompile(`(?im)^timing=\d+`)

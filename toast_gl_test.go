@@ -20,8 +20,8 @@ import (
 
 // TestGLToastOverTheDemos draws the toast over pictures of the Next's demos running in ZenZX
 // (docs/img) and checks what was asked of it: the face of the text is white inside a black
-// stroke, and the toast, text and stroke, is never wider than half the window: a long
-// message is drawn one notch smaller, and then in lines. It writes the pictures it
+// stroke, and the toast, text and stroke, is never wider or taller than half the window: a long
+// message is wrapped in lines at the usual size, and drawn one notch smaller only when a word is too wide for a line. It writes the pictures it
 // draws, with the sparks, to the folder named by ZENZX_TOAST_SHOTS (or a temporary one).
 //
 // A dormant guard, G-14 (docs/KNOWN_ISSUES.md): it opens a window.
@@ -59,7 +59,8 @@ func TestGLToastOverTheDemos(t *testing.T) {
 		scale, lines int
 	}{
 		{"short", 960, 768, "Loaded fuji.nex", 2, 1},
-		{"smaller", 960, 768, "The snapshot manic-miner-v2.z80 has been restored", 1, 1},
+		{"wrapped-usual", 960, 768, "The snapshot manic-miner-v2.z80 has been restored", 2, 3},
+		{"wrapped-usual-narrow", 480, 384, "The snapshot has been restored", 2, 3},
 		{"wrapped", 480, 384, "The tape a-rather-long-tape-name.tap is loaded and rewound (3 blocks)", 1, 0},
 		{"wrapped-narrow", 320, 256, "The tape a-rather-long-tape-name.tap is loaded and rewound (3 blocks)", 1, 0},
 	}
@@ -72,7 +73,7 @@ func TestGLToastOverTheDemos(t *testing.T) {
 		for _, c := range cases {
 			tt := newToast(txt)
 			tt.Start(c.message)
-			tt.fit(c.w)
+			tt.fit(c.w, c.h)
 			tt.travel = 60 // risen far enough to be wholly in the window, and not yet fading
 			if tt.scale != c.scale || (c.lines > 0 && len(tt.lines) != c.lines) || len(tt.lines) == 0 {
 				t.Fatalf("%s: %q laid out at scale %d in %d lines", c.name, c.message, tt.scale, len(tt.lines))

@@ -23,8 +23,8 @@ func TestMachineMenuFlatListStructure(t *testing.T) {
 		t.Fatalf("machineconfig.Load: %v", err)
 	}
 
-	if got := len(b.actions[barMachine]); got != 3 {
-		t.Errorf("len(actions[barMachine]) = %d, want 3 (Reset, Pause or Play, Stop only)", got)
+	if got := len(b.actions[barMachine]); got != machineHeadRows {
+		t.Errorf("len(actions[barMachine]) = %d, want %d (the title, Reset, Pause or Play, Stop only)", got, machineHeadRows)
 	}
 
 	// A "submenu" node occupies exactly one top-level slot (its own
@@ -266,10 +266,10 @@ func TestViewFPSCheckboxPointsAtDisplayField(t *testing.T) {
 	zx.window().showFPS = false
 
 	items := b.widget.ItemsFor(barView)
-	if items[0].Checked == nil {
+	if items[1].Checked == nil {
 		t.Fatal("View menu's FPS item has no Checked pointer")
 	}
-	if *items[0].Checked {
+	if *items[1].Checked {
 		t.Error("FPS item still shows checked after zx.display.showFPS was set false directly")
 	}
 }
@@ -284,7 +284,7 @@ func TestViewBorderCheckboxPointsAtDisplayField(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barView)
-	if items[1].Checked != &zx.window().showBorder {
+	if items[2].Checked != &zx.window().showBorder {
 		t.Error("Border item's Checked pointer is not the same address as zx.display.showBorder -- should be directly wired, not a copy")
 	}
 }
@@ -298,19 +298,21 @@ func TestViewFPSItemIsToggleNotSelectAndClose(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barView)
-	if !items[0].Toggle {
+	if !items[1].Toggle {
 		t.Error("View menu's FPS item should have Toggle: true")
 	}
-	if !items[1].Toggle {
-		t.Error("View menu's Border item should have Toggle: true")
-	}
 	if items[2].Toggle {
-		t.Error("View menu's \"Show Status\" item should not be a toggle")
+		t.Error("View menu's Border item should close the menu: the window changes size under it")
+	}
+	for _, it := range items {
+		if it.Label == "Show Status" {
+			t.Error("the View menu has a Show Status row, which only printed to the console")
+		}
 	}
 }
 
 func TestViewActionsNeverPanicIfCalled(t *testing.T) {
-	// b.actions[barView][0] and [1] are unreachable in normal operation
+	// b.actions[barView][1] and [2] are unreachable in normal operation
 	// (FPS/Border are pure Toggle items now) but MenuBar.Update does
 	// return ok=true for Toggled, meaning the generic dispatch's index
 	// bounds check alone would let these be called -- confirm they're
@@ -331,7 +333,8 @@ func TestViewActionsNeverPanicIfCalled(t *testing.T) {
 }
 
 func TestViewBorderToggleResizesTheWindow(t *testing.T) {
-	// Item.Toggle flips showBorder through the checkbox's pointer and nothing else. The
+	// Picking the row flips showBorder and nothing else (and closes the menu: the window changes
+	// size under it). The
 	// window follows because UpdateWindowSize compares the border as borderView derives it
 	// with the border the window was last sized for: no action closure has to remember to
 	// ask for the resize, so Alt+B, the checkbox and a settings change all behave alike.
@@ -348,12 +351,12 @@ func TestViewBorderToggleResizesTheWindow(t *testing.T) {
 	}
 	withBorder := dm.targetWidth
 
-	item := b.widget.ItemsFor(barView)[1]
-	if item.Label != "Border Display" || !item.Toggle || item.Disabled {
-		t.Fatalf("row 1 is %+v, want an enabled Border Display checkbox", item)
+	item := b.widget.ItemsFor(barView)[2]
+	if item.Label != "Border Display" || item.Toggle || item.Disabled {
+		t.Fatalf("row 2 is %+v, want an enabled Border Display row that is not a checkbox (a checkbox keeps the menu open)", item)
 	}
-	*item.Checked = false // what Item.Toggle does
-	dm.followBorder()     // the first thing UpdateWindowSize does each frame
+	b.viewSpec(zx)[2].run(zx) // picking the row
+	dm.followBorder()         // the first thing UpdateWindowSize does each frame
 	if !dm.isAnimating || dm.targetWidth >= withBorder {
 		t.Errorf("after the border was switched off: animating=%v, target width %d (was %d); the window should be on its way to a smaller size", dm.isAnimating, dm.targetWidth, withBorder)
 	}
@@ -373,21 +376,24 @@ func TestRefreshViewItemsStructure(t *testing.T) {
 	b.refreshViewItems(zx)
 	items := b.widget.ItemsFor(barView)
 
-	if want := 8 + len(deckLayoutNames) + 1; len(items) != want {
-		t.Fatalf("len(items) = %d, want %d (3 + separator + 3 zooms + separator + the layouts + Rotate)", len(items), want)
+	if want := 11 + len(deckLayoutNames) + 1; len(items) != want {
+		t.Fatalf("len(items) = %d, want %d (a title and 3, separator, a title and 3 zooms, separator, a title, the layouts and Rotate)", len(items), want)
 	}
 	if last := items[len(items)-1]; last.Label != viewRotateLabel || !last.Disabled {
 		t.Errorf("the last item is %q (disabled %v), want Rotate Machines, greyed for one machine", last.Label, last.Disabled)
 	}
-	if !items[7].Separator {
-		t.Error("items[7] should be the separator between the zoom group and the layouts")
+	if !items[9].Separator {
+		t.Error("items[9] should be the separator between the zoom group and the layouts")
+	}
+	if !items[10].Title || items[10].Label != "Layout" {
+		t.Errorf("items[10] is %+v, want the title Layout", items[10])
 	}
 	// With one machine and no dock: One Machine ticked, the tiled layouts
 	// greyed, the zoom available.
 	for i, name := range deckLayoutNames {
-		it := items[8+i]
+		it := items[11+i]
 		if it.Label != name {
-			t.Errorf("items[%d].Label = %q, want %q", 8+i, it.Label, name)
+			t.Errorf("items[%d].Label = %q, want %q", 11+i, it.Label, name)
 		}
 		if it.Checked == nil || *it.Checked != (i == 0) {
 			t.Errorf("%s: wrongly ticked for one machine", name)
@@ -404,11 +410,11 @@ func TestRefreshViewItemsStructure(t *testing.T) {
 	b.refreshViewItems(zx)
 	items = b.widget.ItemsFor(barView)
 	for i := range deckLayoutNames {
-		if items[8+i].Disabled || *items[8+i].Checked != (deckLayout(i) == layoutColumns) {
-			t.Errorf("%s with three machines side by side: disabled %v, ticked %v", deckLayoutNames[i], items[8+i].Disabled, *items[8+i].Checked)
+		if items[11+i].Disabled || *items[11+i].Checked != (deckLayout(i) == layoutColumns) {
+			t.Errorf("%s with three machines side by side: disabled %v, ticked %v", deckLayoutNames[i], items[11+i].Disabled, *items[11+i].Checked)
 		}
 	}
-	for i := 4; i < 7; i++ {
+	for i := 6; i < 9; i++ {
 		if !items[i].Disabled {
 			t.Errorf("%s is offered in a tiled layout", items[i].Label)
 		}
@@ -416,13 +422,16 @@ func TestRefreshViewItemsStructure(t *testing.T) {
 	b.layoutState = nil
 	b.refreshViewItems(zx)
 	items = b.widget.ItemsFor(barView)
-	if !items[3].Separator {
-		t.Error("items[3] should be the separator between the base options and the zoom group")
+	if !items[4].Separator {
+		t.Error("items[4] should be the separator between the base options and the zoom group")
+	}
+	if !items[0].Title || items[0].Label != "Display" || !items[5].Title || items[5].Label != "Scale" {
+		t.Errorf("the titles are %+v and %+v, want Display and Scale", items[0], items[5])
 	}
 	wantLabels := []string{"X 1", "X 2", "X 3"}
 	for i, want := range wantLabels {
-		if items[4+i].Label != want {
-			t.Errorf("items[%d].Label = %q, want %q", 4+i, items[4+i].Label, want)
+		if items[6+i].Label != want {
+			t.Errorf("items[%d].Label = %q, want %q", 6+i, items[6+i].Label, want)
 		}
 	}
 }
@@ -444,7 +453,7 @@ func TestRefreshViewItemsChecksCurrentScale(t *testing.T) {
 	items := b.widget.ItemsFor(barView)
 
 	for i, n := range []int{1, 2, 3} {
-		item := items[4+i]
+		item := items[6+i]
 		if item.Checked == nil {
 			t.Fatalf("X %d item has no Checked pointer", n)
 		}
@@ -471,7 +480,7 @@ func TestRefreshViewItemsDisablesScalesAboveLimit(t *testing.T) {
 
 	limit := zx.window().maxMultiplierThatFits()
 	for i, n := range []int{1, 2, 3} {
-		item := items[4+i]
+		item := items[6+i]
 		want := n > limit
 		if item.Disabled != want {
 			t.Errorf("X %d Disabled = %v, want %v (limit=%d)", n, item.Disabled, want, limit)
@@ -490,8 +499,8 @@ func TestViewZoomDispatchesToSetScale(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	// index 6 = "X 3" (0:FPS, 1:Border, 2:Show Status, 3:separator, 4:X1, 5:X2, 6:X3)
-	b.actions[barView][6](zx)
+	// index 8 = "X 3" (0:title, 1:FPS, 2:Border, 3:Full Screen, 4:separator, 5:title, 6:X1, 7:X2, 8:X3)
+	b.actions[barView][8](zx)
 	if zx.window().screen.multiplier != 3 {
 		t.Errorf("multiplier = %d, want 3 after dispatching the X 3 action", zx.window().screen.multiplier)
 	}

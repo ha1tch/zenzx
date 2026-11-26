@@ -68,6 +68,17 @@ jobs:
       - name: The installer tool
         run: python3 -W error scripts/test_package.py
 
+      - name: The examples (launcher, archive) and the manual's builder
+        run: |
+          pip install --quiet markdown
+          python3 -W error scripts/test_launch.py
+          python3 -W error scripts/test_fetch_cli.py
+          python3 -W error scripts/test_findpy_sh.py
+          python3 -W error scripts/test_findpy_cmd.py
+          python3 -W error scripts/test_shell_scripts.py
+          python3 -W error scripts/test_build_examples.py
+          python3 scripts/test_build_manual.py
+
       - name: Register consistency
         run: repoman register check
 

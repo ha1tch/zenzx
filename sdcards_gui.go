@@ -455,6 +455,11 @@ func (w *cardsWindow) startCopy(c cardEntry) {
 			w.done, w.total = done, total
 			w.mu.Unlock()
 		})
+		if err == nil {
+			// the copy is a card of its own: a snapshot made over the original is not made over it
+			// (a file that has no partition table to put a signature in is left as it is)
+			_ = nextcard.Resign(dst)
+		}
 		w.mu.Lock()
 		w.copying, w.copyErr, w.copied = false, err, true
 		w.mu.Unlock()

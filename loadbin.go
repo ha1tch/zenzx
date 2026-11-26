@@ -89,7 +89,10 @@ func (zx *ZenZX) LoadSCR(filename string) error {
 //
 // Loading is bank-aware: bytes are written via memory.Write against the
 // current paging configuration. Callers that need a specific bank paged in
-// should configure paging before calling LoadBIN.
+// should configure paging before calling LoadBIN, or name the page with
+// LoadBINAt. The ROM is not written to, so a file that would land in it, or
+// where no RAM is paged in, is refused with a word about where, and nothing
+// is written: the bytes used to be dropped without a sound.
 func (zx *ZenZX) LoadBIN(filename string, loadAddr uint16, startAddr int) error {
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -106,6 +109,9 @@ func (zx *ZenZX) LoadBIN(filename string, loadAddr uint16, startAddr int) error 
 			filename, len(data), loadAddr, end-0x10000)
 	}
 
+	if err := zx.memory.checkPokeMap(loadAddr, len(data)); err != nil {
+		return fmt.Errorf("%s: %w", filename, err)
+	}
 	zx.memory.Load(loadAddr, data)
 
 	if startAddr >= 0 {

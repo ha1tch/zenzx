@@ -26,6 +26,8 @@ func NewCard(path string, size int64, root *Node) (Layout, error) {
 	binary.LittleEndian.PutUint32(entry[8:], start)
 	binary.LittleEndian.PutUint32(entry[12:], sectors)
 	mbr[510], mbr[511] = 0x55, 0xAA
+	// a card of ZenZX's own has an identity from the start (identity.go)
+	binary.LittleEndian.PutUint32(mbr[sigOffset:], NewSignature())
 
 	out, err := os.OpenFile(path+".part", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {

@@ -1,6 +1,13 @@
 # zen80 tracing hooks — proposal
 
-Updated: 2026-08-28
+Updated: 2026-11-25
+
+> **Reconciliation, 2026-11-25.** Built, as proposed. zen80 v0.5.5 (tagged 2026-08-29, per
+> `docs/TRACE_GENERALIZATION_TRACKING.md`) has `DebugMemReadHook` and `DebugIOOutHook` with the
+> signatures below, the trace harness uses them (`zzz_trace_harness_test.go`), T-26 is closed
+> (`RESOLVED.md`, 0.6.10) and every stage of the tracker is ✓; ZenZX is on zen80 v0.5.7. The text
+> below is the 2026-08-28 design intent and is not rewritten: "nothing here has been implemented"
+> was true when it was written.
 
 Design intent for a zen80-side change requested by ZenZX. Written from
 zenzx (the dependent), not from inside zen80 itself — zen80 isn't checked

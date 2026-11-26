@@ -243,7 +243,7 @@ func TestOpenLogoMenuIsInTitledSections(t *testing.T) {
 		}
 	}
 	want := []string{
-		"[Help]", "Help", "About...", "Acknowledgements...", "ZenZX website", "-",
+		"[Help]", "Help", "ZenZX Manual", "About...", "Acknowledgements...", "ZenZX website", "-",
 		"[Tools]", "Developer",
 	}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
@@ -331,6 +331,34 @@ func TestHandleLogoMenuResultZenZXWebsiteOpensURL(t *testing.T) {
 	b.handleLogoMenuResult(zx, helpRow(t, b, "ZenZX website"), -1)
 	if len(opened) != 1 || opened[0] != zenZXHomepageURL {
 		t.Fatalf("the website item opened %v, want %s once", opened, zenZXHomepageURL)
+	}
+}
+
+func TestHelpMenuManualRowOpensTheManual(t *testing.T) {
+	zx := testZX()
+	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
+	if err != nil {
+		t.Fatalf("newAppMenuBar: %v", err)
+	}
+	defer b.text.Unload()
+
+	var opened []string
+	saved := openURL
+	openURL = func(s string) { opened = append(opened, s) }
+	defer func() { openURL = saved }()
+	b.openLogoMenu(800)
+	row := helpRow(t, b, "ZenZX Manual")
+	if h := helpRow(t, b, "Help"); row != h+1 {
+		t.Errorf("the manual's row is %d, want it straight after Help (%d)", row, h)
+	}
+	b.handleLogoMenuResult(zx, row, -1)
+	// no manual is beside the test program, so the release's copy is what opens
+	want := manualOnline(version)
+	if found := findManual(version, manualDirs()); found != "" {
+		want = found
+	}
+	if len(opened) != 1 || opened[0] != want {
+		t.Fatalf("the manual row opened %q, want %q once", opened, want)
 	}
 }
 

@@ -26,8 +26,8 @@ github.com/ha1tch/zentools v0.8.6 h1:BVblmwIflTGLVLGTJ6WdhjFHePGzYXwlRoiu//NXl6Q
 github.com/ha1tch/zentools v0.8.6/go.mod h1:LHsdG9KLRmmQSTniIvN0wGCZ5twRtKDqqax62gmfw0c=
 github.com/ha1tch/zentools v0.16.1 h1:y6omoPousijZi8v2qwO8thKzL0Kzje+uJ+oWMOz6n8c=
 github.com/ha1tch/zentools v0.16.1/go.mod h1:LHsdG9KLRmmQSTniIvN0wGCZ5twRtKDqqax62gmfw0c=
-github.com/ha1tch/zenui v0.3.4 h1:HnWyh6W3x4krS90+Hw/NVjU0Tf2r9Qq5RRKTiWeO+sg=
-github.com/ha1tch/zenui v0.3.4/go.mod h1:Hx9uP1F7ZoZlYoJybMLtuDRkFvlKBrWcyL4L6Tuqjr8=
+github.com/ha1tch/zenui v0.3.5 h1:csgH30/j4c6FtIrlY7eIlbMk0nldPIgyEt42wD2k5Gk=
+github.com/ha1tch/zenui v0.3.5/go.mod h1:Hx9uP1F7ZoZlYoJybMLtuDRkFvlKBrWcyL4L6Tuqjr8=
 github.com/jupiterrider/ffi v0.7.0 h1:RKsl6Ascal+3kyAqR5Qcbp83LceQMLc1VZbPfHWoNzs=
 github.com/jupiterrider/ffi v0.7.0/go.mod h1:9dauhpOfNqrqk28fxuu0kkdeFtT9Qr4vbfigiuIXN7c=
 github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c h1:km8GpoQut05eY3GiYWEedbTT0qnSxrCjsVbb7yKY1KE=

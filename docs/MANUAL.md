@@ -37,7 +37,8 @@ Sinclair 2068, with tape and snapshot support. It builds in two variants
 from the same emulation core:
 
 - **GUI** (default) -- raylib rendering with audio, for interactive use.
-  Requires CGO and system libraries (OpenGL, X11/Wayland, ALSA).
+  On Linux it needs CGO and system libraries (OpenGL, X11/Wayland, ALSA); the
+  macOS and Windows programs of a release are built without a C compiler.
 - **Headless** (`-tags headless`) -- no window, no audio device, CGO-free.
   Boots a model, runs a fixed number of frames, and writes PNG screenshots
   of the screen decoded directly from display memory. Built for automated
@@ -50,11 +51,66 @@ is only in front-end plumbing (windowing, audio device, input), so a
 
 ## Installing and building
 
+### Installing a release
+
+Every release ([github.com/ha1tch/zenzx/releases](https://github.com/ha1tch/zenzx/releases); the
+newest is also at [ha1tch.github.io/zenzx](https://ha1tch.github.io/zenzx/)) has installers for
+people who would rather not unpack anything, and the programs themselves:
+
+| For | File | How |
+|---|---|---|
+| Debian, Ubuntu: amd64, arm64 | `zenzx_<version>_<arch>.deb` | `sudo apt install ./zenzx_<version>_amd64.deb`, with the file that matches `dpkg --print-architecture`. It puts `zenzx` in `/usr/bin`, with a menu entry and an icon, and needs a recent C library (Ubuntu 24.04, Debian 13), ALSA and X11: `apt` says when something is missing. `sudo apt remove zenzx` removes it. |
+| Windows 10 and later: amd64, arm64 | `zenzx-<version>-windows-<arch>.msi` | Open it. It installs for the person who runs it, in `%LocalAppData%\Programs\ZenZX`, with no administrator and no questions, and adds a Start menu entry. Apps in Windows Settings removes it. The `arm64` file is for Windows on ARM. |
+| macOS 12 or later: Intel and Apple silicon | `zenzx-<version>-macos-universal.dmg` | Open the image and drag ZenZX onto Applications. |
+| Windows 7: 64-bit | `zenzx-<version>-windows7-amd64.zip` and `.msi` | The `.msi` as above, or unzip the folder and run `zenzx.exe`. It is a separate program, built with a patched Go compiler, because Go has not supported Windows 7 since version 1.21; the other Windows programs need Windows 10. |
+| Any system | `zenzx-<version>-<os>-<arch>.tar.gz` (`.zip` on Windows) | Unpack and run `zenzx`: the program with the ROMs, the manual and the Next demo card beside it. |
+| Any system, no window | the same names ending `-headless` | The headless program of [the headless section](#command-line-reference--headless). |
+| Reading offline | `zenzx-<version>-manual.pdf` | This manual as a PDF, with its contents as bookmarks. |
+| The examples | `zenzx-<version>-examples.zip` | Unpack it and start an example with its launcher: `run.cmd` or `chat.cmd` on Windows, `run.sh` or `chat.sh` elsewhere. See [the examples](#the-examples-and-their-launchers). |
+
+The installers are not signed. Windows SmartScreen may say it protected the PC: choose *More info*, then
+*Run anyway*. macOS refuses the first opening: open System Settings, Privacy & Security, and choose
+*Open Anyway*. The page's programs, which are bare files, are marked by a browser when it downloads them,
+and on macOS `xattr -d com.apple.quarantine <file>` clears that. The installers register no file types:
+start ZenZX and open a tape or a snapshot from its menu, or drop the file on the window.
+
+### The examples and their launchers
+
+`zenzx-<version>-examples.zip` holds the three examples of the repository's `examples/` folder: the
+connected world of nine machines, the chat room of four, and three programs for the Next. ZenZX is a
+separate download. A launcher looks for it in a `bin` folder beside `examples`, in `examples` itself,
+on the PATH and in the `ZENZX` variable, and when it finds none it offers to download the right one
+for the computer from the release page and checks it against the SHA-256 the page lists.
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| The connected world | `examples\world\run.cmd` | `examples/world/run.command` | `sh examples/world/run.sh` |
+| The chat room | `examples\link\chat.cmd` | `examples/link/chat.command` | `sh examples/link/chat.sh` |
+| The Next and its examples | `examples\next\run.cmd` | `examples/next/run.command` | `sh examples/next/run.sh` |
+
+Double-click the `.cmd` file on Windows, or the `.command` file on a Mac (it opens a Terminal window;
+macOS may refuse a file that came from the internet the first time: right-click it, choose Open, then
+Open again). The world and the chat room have a host program written in Python, a free programming
+language that many programs use in the background (the language, not the snake). A person who has
+never heard of it needs to do nothing: when a launcher finds no Python 3.6 or later, it says what it
+is, and pressing Enter downloads a private copy into a `python` folder beside the examples (about
+10 MB on Windows, from python.org, whose signature is checked; about 35 MB on macOS and Linux, from
+the python-build-standalone project, checked against a SHA-256 in the launcher). Nothing is
+installed, and deleting the folder removes it. On Windows, typing `O` instead opens the download page
+of Python, for installing it yourself; elsewhere the launcher names the command
+(`brew install python`, `sudo apt install python3`) and <https://www.python.org/downloads/>. The
+Windows launchers were run under Wine with the real Windows Python, not yet on Windows itself
+([KNOWN_ISSUES.md](KNOWN_ISSUES.md) says what is known). `examples/README.md` in the archive has the
+details.
+
+### Building from source
+
 Requirements:
 
 - Go 1.26.5 or later
-- For the GUI build only: a C toolchain and the raylib/oto system libraries
-  (OpenGL, X11 or Wayland, ALSA)
+- For the GUI on Linux: a C toolchain and the raylib/oto system libraries
+  (OpenGL, X11 or Wayland, ALSA). The macOS and Windows GUI of a release is built with
+  `CGO_ENABLED=0` and needs none: `CGO_ENABLED=0 go build ./cmd/zenzx` on a Mac or a Windows machine.
 
 ```
 ./build.sh            # native GUI binary (needs CGO + system libs)
@@ -70,6 +126,11 @@ derived from `git describe`. Confirm with `-version`:
 ./zenzx -version
 ./zenzx-headless -version
 ```
+
+They say the version and the build: `ZenZX 0.50.0 (build 12)`. The build is a whole number that goes
+up by one with each release that is built and is never reset, so that two binaries of one version
+are told apart; the About window says it too. It is the number of the release the source is of, and
+the same for every binary built from it (0 is a tree that was never released).
 
 What a release builds can be checked without running it: `make check-binaries` reads every
 program in `dist/` (ELF, Mach-O and PE) and says whether it is the one its name says: the
@@ -141,6 +202,7 @@ and [`docs/TS2068_TRACKING.md`](TS2068_TRACKING.md) for stage-by-stage detail.
 | `-rom0` .. `-rom3` | *(none)* | Override a single ROM bank, leaving the rest of `-model`'s standard set intact |
 | `-custom-roms-menu` | `false` | Interactively pick a ROM from `-custom-roms-dir` and a bank to apply it to |
 | `-custom-roms-dir` | `custom-roms` | Directory scanned by `-custom-roms-menu` |
+| `-snapshots-dir` | `snapshots` | Folder for the snapshots that Quick Save (`F9`), Save Timestamped (`Shift+F11`) and Save As make, that Quick Load (`F10`) and Snapshot > Load Timestamped read, and that Snapshot > Manage Snapshots lists. Made when the first is saved. Snapshots that earlier versions left in the folder ZenZX runs in (`quicksave.*`, `snapshot_<date>_<time>.*`) are moved into it at start, and none is written over |
 | `-rom-bin` | *(none)* | Make a ROM on the fly from this binary file, of any size, and use it as a ROM bank -- see [Making a ROM from a binary file](#making-a-rom-from-a-binary-file) |
 | `-rom-at` | `0x0000` | Where in the ROM the `-rom-bin` file goes: `0x1234`, `$1234` or decimal. On a Next it counts from the start of `-rom-bank`, and the file may run on into the banks after it, up to the 256 KiB |
 | `-rom-fill` | `zero` | What is around the `-rom-bin` file: `zero`, or `rom` (the ROM the bank has, so the file is an overlay on it) |
@@ -150,19 +212,21 @@ and [`docs/TS2068_TRACKING.md`](TS2068_TRACKING.md) for stage-by-stage detail.
 | `-scale` | `2` | Initial window scale (1-5) |
 | `-settings` | `settings.json` | Path to the settings file (persists theme/font/font-zoom/display-scale/fixed-menu-bar/dock/multi/drop choices across sessions) |
 | `-noborder` | `false` | Start without border |
-| `-escape` | `on` | `Esc` key behaviour: `on` (quit at once), `off` (never quit), `close` (close an open dialog or the HUD only), `query` (ask before quitting) |
+| `-escape` | `off` | `Esc` key behaviour for this run: `off` (disabled: it never quits, and menus and windows still close with it), `close` (it also closes the debugger HUD), `query` (ask before quitting), `on` (quit at once). Without it the Escape row of Preferences (File > Preferences > Keyboard) applies, which is `off` until it is changed |
+| `-language-switch` | *(Preferences)* | Position of the Microdigital (TK90X, TK95) language switch for this run: `spanish` or `portuguese`. The ROMs of those machines that read the diode behind it show Spanish or Portuguese messages; it reads as bit 7 of the ULA port, high at `spanish` and low at `portuguese`, on the 48K models only. Without it the Language switch row of Preferences (File > Preferences > Machines) applies, which is `spanish` until it is changed |
 | `-nofdc` | `false` | Disable FDC emulation for +3 |
 | `-disk` | *(none)* | Path to a +3 disk image (`.dsk`) |
 | `-debugfdc` | `false` | Enable FDC debug output |
-| `-snapshot` | *(none)* | Load a snapshot on startup |
+| `-snapshot` | *(none)* | Load a snapshot on startup. With no `-model` (and no `-multi`) the machine started is the one the snapshot is of: a 128K snapshot starts a 128K, a +3 one a +3. With a `-model` of another kind (a 48K for a 128K snapshot) it is refused and says so; `-model=ts2068` takes any, as before, and a `-model=next` takes only a Next's snapshot |
 | `-format` | `auto` | Snapshot format: `auto`, `zxs`, `sna`, `z80` |
 | `-tape` | *(none)* | Load a tape file (`.tap` or `.tzx`) |
 | `-tapemode` | `fast` | Tape mode: `fast`, `accurate`, or `turbo` (same correctness as `accurate`, rendering/audio bookkeeping skipped while loading -- see [Media formats](#media-formats)) |
 | `-noaudio` | `false` | Disable audio |
 | `-audiobackend` | `oto` | Audio backend: `raylib` or `oto` |
-| `-bin` | *(none)* | Load a raw binary blob directly into memory |
+| `-bin` | *(none)* | Load a raw binary blob directly into memory; a file that would land in the ROM is refused |
 | `-binaddr` | `0x8000` | Load address for `-bin` (hex `0x..` or decimal) |
-| `-binstart` | *(load address)* | PC start address after `-bin`; empty = use load address, `-1` = leave PC unchanged |
+| `-binpage` | *(none)* | RAM page to put `-bin` in, instead of the memory as the CPU sees it: a bank `0`-`7` on a 128K, +2, +2A or +3, an 8K page `0`-`223` on a Next (bank N is pages 2N and 2N+1); `-binaddr` is then the address in the page, and `-binstart` defaults to none. A 48K and a TS2068 have no pages and refuse it -- see [Load Binary](#snapshots-in-the-gui) |
+| `-binstart` | *(load address)* | PC start address after `-bin`; empty = use load address (none with `-binpage`), `-1` = leave PC unchanged |
 | `-scr` | *(none)* | Load a raw `.scr` screen dump onto the display (still image) |
 | `-script` | *(none)* | Path to a `.zen` action script to drive the emulator -- see [Scripting with zenscript](#scripting-with-zenscript) |
 | `-non-standard` | `off` | Master switch for non-standard features: `on` or `off`. Gates all `-ns-*` flags |
@@ -173,6 +237,7 @@ and [`docs/TS2068_TRACKING.md`](TS2068_TRACKING.md) for stage-by-stage detail.
 | `-multi` | *(none)* | Start several machines: `12,128k`, `4:48k,48k,128k,next`, `48k,128k` or `3`; a Next may name the SD card it boots from, `3:next/sdcard-01,next/sdcard-02,next/sdcard-03` -- see [`docs/link.md`](link.md) |
 | `-listen` | *(none)* | A TCP port for each machine, through which bytes reach a program on it by I/O ports 16384 and 16385: one number (the others follow it) or one each -- see [`docs/link.md`](link.md) |
 | `-listen-host` | `127.0.0.1` | Address the `-listen` ports are opened on; the default accepts this computer only |
+| `-focus-follow` | off | With several machines, move the keyboard focus to the machine whose player beacon (the byte at `0xBFFE`) is set, so the controls follow the player across screens; for a program that keeps that beacon, such as `examples/world` -- see [`docs/link.md`](link.md) |
 | `-autorun` | *(none)* | Load and run a BASIC program from a text file once the machine has started; one file, or one place for each machine -- see [`docs/link.md`](link.md) |
 | `-layout` | `single` | With several machines, how the window tiles them at the start: `single`, `columns`, `rows`, `grid`, `main-left`, `main-right` -- the View menu's own layouts, changed any time from it |
 | `-version` | `false` | Print version and exit |
@@ -263,26 +328,28 @@ guest:
 
 | Key | Action |
 |-----|--------|
-| `Esc` | Quit (unless changed with `-escape`: may close a dialog/HUD, ask first, or be disabled) |
+| `Esc` | Closes the open menu or window. It does not quit, unless that is chosen: Preferences > Keyboard > Escape, or `-escape` for one run (it may also close the debugger HUD, ask before quitting, or quit at once) |
 | `F1` | Reset the machine, as its reset line does: the CPU, the memory paging and ROM choice, the sound chip, the Timex ports and the +3's disc controller start again, and a Next starts its firmware again from the boot ROM with every register as at power on. RAM, a disc in the drive, a tape and the border are kept |
 | `F2` | Pause / resume (a paused machine shows a Play button in the middle of its picture; clicking it resumes) |
-| `F3` | Print machine status to the console |
+| `F3` | Open the diagnostics report in a window (Snapshot > Run Diagnostics) |
 | `F4` | Save the current disk image (+3, if modified) |
 | `F5` | Insert a blank disk (+3) |
 | `F6` | Eject the disk (+3) |
-| `F7` | Print disk-loading instructions |
+| `F7` | Say how to load a disk (drop a `.dsk` on the window, or `-disk=`) |
 | `F8` | Save the disk image to a new file (+3) |
-| `F9` | Quick-save snapshot |
-| `F10` | Quick-load snapshot |
-| `F11` | Save a timestamped snapshot |
-| `F12` | Snapshot info; `Shift+F12` runs snapshot diagnostics |
+| `F9` | Quick-save snapshot (into the snapshots folder, `snapshots/`) |
+| `F10` | Quick-load snapshot (the machine it is of is made when it is not the one that is shown, and with no machine running) |
+| `F11` | Full screen on and off (the same as `Alt+Enter`; it was the timestamped snapshot until 0.50.0, which is now `Shift+F11`) |
+| `Shift+F11` | Save a timestamped snapshot |
+| `F12` | Snapshot info window; `Shift+F12` opens the diagnostics window, as `F3` does |
 | `Page Up` / `Page Down` | Increase / decrease window scale |
 | `Alt+F` | Toggle the FPS counter (off at start; drawn in the interface font) |
 | `Alt+B` | Toggle the border (where it is the user's to choose: not in a tiled layout or a full-frame Layer 2 mode) |
+| `Alt+Enter` | Full screen on and off (View > Full Screen), as `F11` |
 | `Alt+P` | Play / stop the tape |
 | `Alt+R` | Rewind the tape |
 | `Alt+T` | Toggle tape mode (accurate / fast) |
-| `Alt+I` | Print tape status and block list |
+| `Alt+I` | Tape info window: status and block list |
 | `Alt+M` | Open or close the machine dock (see [Several machines](#several-machines-gui)) |
 
 ### Spectrum keyboard mapping
@@ -336,10 +403,144 @@ the wheel.
 Only a gamepad as a Kempston joystick on a 48K has been tried on a host;
 `docs/TRACKING.md` (T-57) lists what has not.
 
+## Snapshots in the GUI
+
+Every snapshot the GUI makes goes into one folder, `snapshots/` in the folder ZenZX runs in (or
+what `-snapshots-dir` names): Snapshot > Quick Save and `F9` (`quicksave.zxs`), Snapshot > Save
+Timestamped and `Shift+F11` (`snapshot_YYYYMMDD_HHMMSS.zxs`) and Snapshot > Save As (its file browser
+begins there). Quick Load and `F10` read the quick save from it. The folder is made when the first
+snapshot is saved. Versions before 0.50.0 wrote them into the folder ZenZX runs in; at start the
+quick saves and timestamped snapshots found there are moved into `snapshots/`, and one whose name is
+taken in it is left where it is, never written over.
+
+- **A snapshot is loaded into the machine it is of.** A snapshot is the state of a 48K, a 128K or a
+  +3 (a +2 is a 128K, a +2A a +3 with no disc drive), and in a machine of another kind it is
+  nothing that runs. So opening one (a Snapshot menu row, Manage Snapshots, Quick Load and `F10`,
+  File > Open, a file dropped on the window) makes a machine of the kind it says, with the
+  Sinclair ROMs (a snapshot does not say which ROM it had), brings it to the front and loads the
+  snapshot into it; the machine that was shown goes on behind, as it was. With **no machine
+  running** the machine made is the one that fills the window, and these are what can be chosen
+  in the Snapshot menu then: Quick Load, Load Timestamped and Manage Snapshots (and `F10`); the
+  rows that save, or look into a machine, are greyed until one runs, and File > Open takes a
+  snapshot but says "No machine is running" of anything else. A snapshot opened again from the same
+  file (Quick Load again, the same Load Timestamped row) is loaded into the machine it made and
+  does not make another. Where adding machines is off (File > Preferences) none is made: a snapshot
+  of the kind the machine is goes into it, and any other turns it into a machine of the snapshot's
+  model first. A snapshot that cannot be loaded leaves no machine behind. No more than 32 machines
+  are made this way. A **Next** has snapshots of its own: they hold its whole state (the
+  SRAM, the registers of the hardware, DMA, copper, sprites, palettes, tilemap, Layer 2, the SD
+  controller and the sound chips), a Next takes only a Next's snapshot and a Next's is loaded only by
+  a Next, which the window makes if none is running. What a Next snapshot is not: it does not hold what is
+  on the SD card, only which cards the Next had mounted (each one's signature, size and layout, and the name of its
+  file; a card put in the second slot and not read from by NextZXOS, such as one put in after it started, was
+  not mounted and does not count), it is read by the build that saved it (another build says so and loads nothing), and a Next that
+  is loading a tape cannot be saved. **The cards are found again by what they are, and not by where they
+  are or what they are called:** loading a Next's snapshot looks through the folders the boot files and the
+  cards are kept in, the folders of the cards the machines have, and the snapshot's own, and says nothing
+  when it finds them. When one cannot be had, a window says so in a line: the snapshot needs the card (its
+  file name in quotes and its size), and it is not found, or is in use by another machine ("which is in use by machine 2": a
+  card is in one machine at a time) or could be any of several, and a card is to be chosen in its place. Below it is a list
+  of the card images in those folders, as the SD Cards window lists them, with what is said of each: the cards that can be
+  chosen come first (**the same card** by its signature, **same layout** for a copy that has the card's size and partition
+  layout, **very different** for one that has not), then those that cannot: **IN USE, machine N**, **TAKEN BY CARD 1** (the file is already
+  the card chosen for another card of the snapshot) and **NOT A CARD IMAGE**. Those that cannot be chosen cannot be selected, by the mouse
+  or the keys. **Choose** (or Enter) takes the card selected; **Browse...** opens a file browser for a card that is not in the
+  list, in the folder of the card in use (where its copies are) or of the last file you chose, and Escape or its Cancel button
+  brings the window back; a file you browse to is in the list from then on. Nothing is read of a card but its first sector,
+  where its partition layout and signature are: a card you choose that has the size and layout of the card is taken for it,
+  as a copy is, without a note. A card that is very different brings a note: if you had
+  nothing of your own on the original card, another Next card with NextZXOS on it should work as well; if the
+  Next was working with files on it, they may not be where the snapshot expects them, and saving to the new card
+  could change what is on it. **Load** then goes on with the file, and **Choose another** takes a different one. The first card is needed (Load cannot be pressed
+  until it has a file); a second that is
+  missing may be left out. A card with no signature (the standard card has none) is given one, four bytes of
+  its partition table, when a snapshot is first made over it; a card opened read-only cannot be, and any
+  card of its size and layout is taken for it; a copy made in the SD Cards window has a signature of its
+  own, and one made outside ZenZX has the original's. A TS2068 has no kind: a snapshot is not refused by one. In the headless program, a script's `snapshot` verb loads into the machine it
+  runs, and is refused when the snapshot is of another kind, naming the `-model` that starts one.
+
+- **Load Timestamped** lists the snapshots that Save Timestamped made, the newest first, ten of
+  them as rows, each with its date and time (and its format when it is not `.zxs`). Choosing one
+  loads it (see **A snapshot is loaded into the machine it is of**, below), and the machine waits
+  paused or plays as Preferences says a loaded snapshot does. With none, the row says so and is
+  greyed.
+- **More...**, below the ten, opens a menu of the older ones where the pointer is. Up to twenty
+  more are listed as they are. With more than twenty they are grouped, the newest group first:
+  **Today**, then **Yesterday** and a group for each of the days of the last week (`Thu 5 Mar`), then
+  a group for each **Week of 2 Mar** (weeks begin on a Monday) for the five weeks before that, then
+  a group for each month (`January 2026`), each with the number of snapshots in it, and its
+  snapshots as its submenu. A group of more than twenty-five lists twenty-five and a last row,
+  **N more: Manage Snapshots...**, which opens the window below.
+- **Manage Snapshots...** opens a window listing every snapshot in the folder, the newest first,
+  with its size and date: **Load**, **Duplicate** (a copy beside it, `name-2`, `name-3` and so on,
+  never over another file), **Rename** (it asks for the name, and then whether to go on; the format
+  stays what it was) and **Delete** (it asks for the word `DELETE`), the last two as in the SD Cards
+  window. `Enter` loads the chosen one and `Escape` closes the window. A snapshot that has been
+  renamed or copied has a name that Save Timestamped did not give it, so Load Timestamped does not
+  list it: load it from this window.
+- **Load Snapshot...** is a file browser that loads any snapshot (`.zxs`, `.sna`, `.z80`, `.szx`, or a
+  multisnapshot) into the machine it is of, as File > Open does; it is there to choose with no machine
+  running. **Recent Snapshots** lists the named snapshots that were saved with Save As or loaded, the
+  newest first, fifteen at most (the folder is shown when two have one name; timestamped snapshots and
+  the quick save have menus of their own, and a file that has gone is not listed). The list is kept in
+  the settings.
+- **Save Multisnapshot...** (two machines or more) pauses every machine, takes a snapshot of each and
+  saves them in one zip file, `.zms`, with how the window shows them: the layout (Side by Side, Grid,
+  a main tile...), the machine in front, the zoom and the names in the dock. The machines run or wait
+  as they did. **Load Multisnapshot...**, Load Snapshot..., File > Open, Recent Snapshots, Manage
+  Snapshots and a file dropped on the window load one, and **the machines running are closed and
+  replaced by the ones in it**: the window says so and asks for the word `YES` (with none running it
+  loads at once). Loading is all or nothing: a file that cannot be loaded (damaged, saved by another
+  build, more machines than are allowed, Multi off in Preferences) leaves the window as it was and says
+  which machine failed. The cards of the Nexts in it are found, or asked for in one window (each line says
+  which machine), before anything is closed. The links between machines (`-multi`) are not kept.
+- **Load Binary...** opens a window of three tabs over the front machine's memory: the first is `-bin`,
+  `-binaddr`, `-binstart` and `-binpage` in a window, and the others are a peek and poke and a hex
+  editor. Nothing is typed in it that is refused afterwards: addresses are boxes of four hex digits
+  that cannot hold more than the memory has, the memory is chosen from a list, bytes are hex digits
+  and nothing else, and what cannot be done with what is on the tab is said in the note at the foot
+  of it, with the button that would do it greyed out.
+  The **Memory** list is the memory as the CPU sees it now, or a RAM page, which is what the machine
+  has: a 48K and a TS2068 have no paged memory, and the list is not shown; a 128K, +2, +2A or +3 has
+  eight 16K banks, `0` to `7`; a Next has 224 pages of 8K, `0` to `223`, of which the first sixteen are
+  the banks (bank N is pages 2N and 2N+1). The address is as the CPU sees it, or in the page chosen:
+  `0` to `0x3FFF` in a bank and `0` to `0x1FFF` in a Next page, and what does not fit in it goes on
+  into the next page, up to the last, where a run that would pass the end is refused whole. What would
+  land in ROM, or where no RAM is paged in, is refused and says so instead of being dropped without a
+  word. Clicking in an address selects it, so that typing a new one replaces it; `Tab` goes round the
+  boxes of the tab.
+  - **Load file** takes the file (**Browse...** opens a file browser), the memory, the address, and
+    **Start at**, with the address to start at, which begins as the load address and follows it until
+    it is typed in: unticked, the program counter stays where it is; it is not offered in a page, which
+    has no start. **Load** is greyed out until the file is there, is not empty, and fits; the note says
+    which of those it is not, or how many bytes go from where to where. **Load** puts the file in and
+    closes the window with a toast that says where, and so does `Enter`.
+  - **Peek and Poke** shows the dump at the address, and shows it as the machine runs: there is no Peek
+    to press. **Back** and **Forward**, or `Page Up` and `Page Down`, step by what the dump shows,
+    across the end of a page, and are greyed out (and do nothing) at the ends. The **Bytes** box takes hex digits, two to a byte, up to 64 bytes; **Poke**
+    (or `Enter`) is on when they are whole bytes that can be written there, and the note says what was
+    written until something is changed.
+  - **Hot Memory** is a hex editor over the machine as it runs. The **Memory** list chooses the
+    space: the CPU address space (64K, as paged in now) or one RAM page, each with where it is paged
+    in now and whether it is the screen's. The dump is read again every frame, so what the running
+    program does to it shows, and a byte that changed is lit for half a second. Click a byte, or use
+    the arrows, `Page Up`, `Page Down`, `Home`, `End` and the wheel (the arrows, `Page Up` and `Page Down`
+    go on while held). Typing goes two ways, chosen with
+    the **Hex** and **ASCII** buttons, with `Tab`, or by clicking in the column to type in: as hex
+    digits (the first sets the high half of the byte, the second the low half and writes, and the
+    cursor moves on), or as characters, one to a byte, printable ASCII (the keys that are not are not
+    taken). The place the next key goes is a block that flashes, on the digit or on the character; the
+    same byte is outlined in the other column. **Go to** is a box of hex digits (`Tab` leaves it, going
+    where it says; `Escape` leaves it, going nowhere). ROM is shown dim and refuses a write, with no
+    block on it; choose a RAM page from the list to edit what is under it. The dumps are drawn in a
+    monospaced face: the font Preferences chose when that is monospaced, and otherwise the monospaced
+    one whose size is the closest (Tom Thumb, which is not, gets Spleen).
+  `Escape` closes the window (after closing an open list or a box being edited).
+
 ## Media formats
 
 Standard snapshot formats (`.sna`, `.z80`, and `.szx` for loading only) and the proprietary `.zxs`
-chunk format are supported via `-snapshot`/`snapshot-save`, with
+chunk format (a Next's snapshots are `.zxs`) are supported via `-snapshot`/`snapshot-save`, with
 `-format auto` detecting from content. An `.rzx` recording is opened the same way and
 played: see "RZX recordings" below. Tapes (`.tap`, `.tzx`) load via
 `-tape`, with `-tapemode fast|accurate|turbo` controlling load speed
@@ -369,6 +570,7 @@ In the GUI build, dropping a file onto the window loads it by extension:
 | `.dsk` | A +3 disk image (requires +3 mode with the FDC enabled) |
 | `.sna` / `.z80` | Standard snapshots (48K and 128K), via the shared `zentools` library |
 | `.szx` | ZX-State snapshots, load only, via the shared `zentools` library |
+| `.zms` | A multisnapshot: a zip of snapshots of several machines and the layout of the window (Snapshot > Save Multisnapshot...) |
 | `.rzx` | A recording, played from its first frame (see "RZX recordings") |
 
 Dropping a file onto a storage slot instead copies it into that slot's media:
@@ -387,9 +589,9 @@ on the window) puts the machine in the recorded state and plays the recording fr
 keyboard, joystick or tape needed: each frame is as long as the recording says, and each `IN` gets the
 byte that was recorded. A game plays itself, as it did when recorded.
 
-- **Start the model it was made on first.** Opening a snapshot never switches the machine model, and
-  nor does this: a 128K recording on a 48K is refused with a message saying so. The Spectrum Next is
-  not supported.
+- **Start the model it was made on first.** A recording is not a snapshot, and opening one does not
+  make or change a machine as opening a snapshot does: a 128K recording on a 48K is refused with a
+  message saying so. The Spectrum Next is not supported.
 - **Playback only.** ZenZX does not record. Nothing you press while a recording plays reaches the
   game. A reset, or loading a snapshot or another recording, ends the playback and leaves the
   machine as it is.
@@ -409,14 +611,16 @@ every setting kept between sessions, in three tabs (Appearance, Machines and Fil
 Left, Right and Tab, changes tab) with the settings grouped under headings in each; and **Quit**, for systems with no
 application menu), **Machine** (reset, **Pause** or **Play** as the machine
 needs, **Stop**, which ends the machine, and every supported model grouped by manufacturer, switched
-live without restarting), **Custom ROM**, **Tape**, **Storage** (the +3's
+live without restarting), **Custom ROM** (the ROMs of the custom-roms folder, its subfolders as submenus, and **Download more ROMs**,
+which opens the pages listed in `custom-roms/rom-archives.json`: Rodolfo Guerra's ROM mods and the Speccy4ever ROM archive, as shipped), **Tape**, **Storage** (the +3's
 floppy drive and a Next's SD cards, the same two sections on every model, greyed where the machine has none),
-**Snapshot**, **View** (FPS counter, border display, display scale, layouts),
+**Snapshot**, **View** (FPS counter, border display, full screen, display scale, layouts),
 and **Theme** (Dark/Light/Spectrum, plus a font submenu with six bundled
 BDF faces). A logo/rainbow element at the right of the bar opens the Help
 menu, in titled sections: **Help** (the in-app reference
-covering every menu, shortcut and flag, **About...**, **Acknowledgements...**
-and **ZenZX website**),
+covering every menu, shortcut and flag, **ZenZX Manual**, which opens this manual as a PDF
+(`zenzx-<version>-manual.pdf`) from beside the program, or from the release page when it is
+not there, **About...**, **Acknowledgements...** and **ZenZX website**),
 and **Tools** (**Developer** > **Debugger**). The border display is the
 user's to choose except where the picture decides it (a tiled layout, a Layer 2
 mode that fills the frame); see `docs/gui.md`.
@@ -442,8 +646,8 @@ to the terminal, for a session that is being logged.
 | Tape | the file, the mode (fast, accurate or turbo), whether it is playing and at which block, the first program's name, and every block with its type, name and length |
 | Disk | the file (or that the disc is a blank one not saved yet), its tracks and sides, whether it has changes that are only in memory, the file's size, and whether the file has changed on disk since it was loaded |
 | Card | for each of the two slots: the file, its size, whether it can be written to, how many files it holds and how much they come to, and whether a Next boots from it, with the reason when it does not |
-| Snapshot | the snapshot files there are in the folder ZenZX runs in (the quick save in each format, the timestamped saves and the newest, with size and date), then how a snapshot is loaded and what Quick Save, Save Timestamped and Save As write |
-| Diagnostics | the model and whether it runs or is paused, the registers, flags and interrupts, where PC is and the nearest ROM routine, the memory layout and banking, the top of the stack, the tape, the floppy drive and the card slots, and checks (byte order of snapshot files, the stack pointer, the memory map) that name what is wrong; reading it changes nothing in the machine |
+| Snapshot | the snapshot files there are in the snapshots folder (the quick save in each format, the timestamped saves and the newest, with size and date), then how a snapshot is loaded and what Quick Save, Save Timestamped and Save As write |
+| Diagnostics | the model and whether it runs or is paused, the registers, flags and interrupts, where PC is and the nearest ROM routine, the memory layout and banking (on a Next, which ROM the CPU reads and the registers that decide it, and three sections on the Next's hardware: the CPU speed, timing, the eight MMU slots and the interrupts; the layer order, screen modes, Layer 2, tilemap and sprites; the DMA, copper and DivMMC), the top of the stack, the tape, the floppy drive and the card slots, and checks (byte order of snapshot files, the stack pointer, the memory map) that name what is wrong; reading it changes nothing in the machine |
 
 ![The Card Info window](img/info-card.png)
 
@@ -524,6 +728,14 @@ choose it with the arrow keys and `Enter`, and it grows out of the dock
 until it fills the screen: that machine is now in front. Everything in the
 menu bar acts on the machine in front.
 
+A machine that a snapshot makes (see **Snapshot**) is shown to you: the dock slides in with its
+picture growing into place and a chevron, as wide as the picture, bouncing over it (a big hop, a small
+one, and again); the chevron is a white V of big square pixels with a black outline, so that it
+is seen against a busy game screen. The dock stays three seconds after it is in, and then slides out again, unless the pointer is on
+the dock (it stays as it always does) or it was opened with `Alt+M`. The chevron does not go with the dock: it stays at the bottom
+of the window, over whatever the machine is showing, pointing at where the dock is, for six seconds more, until the pointer is on the
+picture it points at, or the machine is gone. With the dock off in Preferences it is not shown.
+
 **Machine > Stop** ends the machine in front: a ground comes up from below the window with a small
 Spectrum standing on a bin, a leg comes down from the top and a boot stamps the Spectrum flat, and
 the ground goes back down with the bin and what is left; the machine is gone from the dock. (A machine that is not
@@ -531,6 +743,11 @@ on the screen is stopped at once.) When the last machine is stopped the window s
 background, with the menu bar and the dock; **New**, or a model chosen from the Machine menu,
 starts a machine again. The pictures of the animation can be replaced with your own: see
 `sprites/stomp/README.txt`.
+
+**Choosing another model** from the Machine menu makes a new machine of that model, running or paused: its
+memory and screen are empty, it shows the first screen with a black border, and a Next starts from its boot
+chain at once, not at Play. Nothing of the machine it was is left to be seen. (Reset, which is a real
+reset, keeps the memory.)
 
 | In the dock | Does |
 |---|---|
@@ -930,8 +1147,8 @@ the global transparency colour and the fallback colour. The GUI shows the
 frame as one texture over the whole picture area, in place of its cell
 drawing and its border; a headless screenshot is then the frame, 320x256,
 or 640x256 when a layer with double horizontal resolution is on (Timex
-hi-res included). The colours are the palettes', three bits a gun: white is
-#B6B6B6 and bright white #FFFFFF, as in CSpect. Sprites are set
+hi-res included). The colours are the palettes', three bits a gun: white
+is #B6B6B6 and bright white #FFFFFF, as in CSpect. Sprites are set
 up through ports 0x303B, 0x57 and 0x5B or their NextREG mirrors.
 
 `-nextreg-log=40,41,44` (any list of register numbers in hex, or `all`)
@@ -979,6 +1196,40 @@ patterns. Not drawn at all: the two blending layer orders, the ULA's own scrolli
 palette's priority bit. `docs/TRACKING.md` has the open items, and
 `docs/NEXT_BOOT_REFERENCE.md` describes the boot sequence.
 
+## Fetching things: -fetch
+
+ZenZX is also the downloader that the examples' launchers use to get Python, in both builds. It
+runs before any window is made and exits: 0 when it is done, 1 when it could not be (the reason is
+said, in plain words) or was declined, 2 when it was asked wrongly.
+
+    zenzx -fetch python -fetch-to examples/python   a Python for the examples
+    zenzx -fetch list                               what it knows by name
+    zenzx -fetch https://host/f.zip -fetch-sha256 HEX -fetch-to f.zip
+    zenzx -fetch https://host/f.tar.gz -fetch-unpack DIR -fetch-strip 1
+
+| Flag | What it does |
+|---|---|
+| `-fetch` | What to fetch: `python`, `list`, or the address of a file |
+| `-fetch-to` | Where it goes: the folder for a name (default: the name), the file for an address |
+| `-fetch-how` | How to get a name: `private`, `brew`, `apt`, `dnf`, `yum`, `uv`, `conda`, `manual`. Not given: a terminal is asked, anything else is told what to give |
+| `-fetch-yes` | Ask nothing; take what Return would |
+| `-fetch-force` | Fetch again even if it is there |
+| `-fetch-url`, `-fetch-sha256` | Download from another address (with the SHA-256 it must have; an empty one switches the check off) |
+| `-fetch-unpack`, `-fetch-strip` | For an address: take the zip or `.tar.gz` apart into a folder, dropping leading folders |
+
+A download goes to a `.part` file next to where it is going and takes its name only when its SHA-256
+is right; one that was cut off carries on from where it stopped; a failed attempt is made again up
+to four times with growing waits; a connection that says nothing for 30 seconds is given up on; and
+a name that has mirrors tries them in order. The proxy of the environment (`HTTPS_PROXY`) is used.
+
+Python is the one name with a choice of ways, and a terminal is offered only those the computer
+has: a private copy in the folder (python.org's embeddable Python on Windows, 3.8.10 on Windows 7
+and Vista; python-build-standalone's 3.12 on macOS and Linux), Homebrew (`brew install python`), on
+Linux the system's own package (`apt-get install python3`, `dnf install python3` or `yum install
+python3`, as the administrator or through `sudo`, which asks for the password), a separate
+environment made by `uv` or by `conda`, `mamba` or `micromamba`, and installing it oneself. Without
+a terminal it has to be told: `-fetch-how` names the way, `-fetch-yes` takes the private copy.
+
 ## Non-standard features
 
 `-non-standard on` is the master switch gating every `-ns-*` flag; with it
@@ -1019,13 +1270,12 @@ register); intentional limits and the dormant-guard table live in
 - **Real-world tape loading is not uniformly reliable.** A meaningful
   fraction of real commercial tapes use custom/protected loaders that
   either don't decode correctly yet (Speedlock-class protection, root
-  cause open after extensive investigation) or get no benefit from
-  `-tapemode=fast`'s ROM-trap once such a loader takes over. More
-  fundamentally, no tape mode's own self-reported "finished loading"
-  signal has proven reliably trustworthy on its own. See
-  `docs/TAPE_LOADING_HANDOVER.md` for the full picture and
-  `contrib/tape-corpus-harness/` for a tool that measures this against
-  a real corpus.
+  cause open after extensive investigation: `docs/TRACKING.md` T-22) or get
+  no benefit from `-tapemode=fast`'s ROM-trap once such a loader takes over
+  (T-23). More fundamentally, no tape mode's own self-reported "finished
+  loading" signal has proven reliably trustworthy on its own (T-24).
+  `contrib/tape-corpus-harness/` is a tool that measures this against a
+  real corpus.
 
 Audio issues do not affect the headless build, which produces no audio.
 
@@ -1054,10 +1304,12 @@ release, every stale dormant guard is run, handed off, or its skip is
 recorded in the changelog entry.
 
 `.github/workflows/ci.yml` builds and tests every push; pushing a `v*`
-tag runs `.github/workflows/release.yml`, publishing prebuilt archives as
-GitHub release assets. This is separate from `repoman relcore`'s local
+tag runs `.github/workflows/release.yml`, which publishes the prebuilt
+archives as GitHub release assets, then makes the installers and the
+Windows 7 program and attaches them to the release, and publishes the
+download page. This is separate from `repoman relcore`'s local
 checkpoint -- run the local release first to gate and verify, then tag
-once it's green.
+once it's green. `docs/development.md` says what each workflow does.
 
 ## Project layout
 
@@ -1069,8 +1321,10 @@ Emulation core (raylib-free, shared by both builds): `zenzx.go`,
 `display.go`, `input.go`, `audio_oto.go`, `audio_device_oto.go`,
 `zenzx_gui.go` (`RunGUI`). Headless-only: `zenzx_headless.go`
 (`RunHeadless`). The root package is a library, `package zenzx`; the two
-programs are `cmd/zenzx` and `cmd/zenzx-headless`, one call each. See
-`docs/MACHINE_MAP.md`.
+programs are `cmd/zenzx` and `cmd/zenzx-headless`, one call each. Another
+program can import the machine with `-tags headless,purego` (no C compiler,
+no window). What the library can reach so far is in `docs/MACHINE_MAP.md`;
+`docs/development.md` has the rest of the layout.
 
 `contrib/tape-corpus-harness/` is a standalone tool for measuring
 real-world tape-loading coverage, in its own Go module with no import

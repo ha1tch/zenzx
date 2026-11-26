@@ -18,17 +18,31 @@ appear.
                  manufacturer -- Sinclair, Amstrad, Investronica,
                  Timex)
   Custom ROM     load a ROM file live from -custom-roms-dir
-  Tape           play/stop, rewind, accurate/fast mode, tape info
-                 (a window with its file, state and blocks)
+                 (its folders are submenus);
+                 Download more ROMs opens the pages where
+                 ROMs are published (custom-roms/rom-archives.json;
+                 Rodolfo Guerra's mods and the Speccy4ever
+                 archive when it is not there)
+  Tape           play, stop and rewind buttons, accurate/fast
+                 mode as radio buttons,
+                 tape info (a window with its file, state and blocks)
   Storage        the same two sections on every model: a +3's
                  floppy drive (open a .dsk image, save, insert
                  blank, eject, save as, disk info) and a Next's
                  SD cards (slot 2). Greyed, with the reason,
                  where the machine has none; results show as
                  a toast
-  Snapshot       quick save/load, save timestamped, save as (a
-                 format: .zxs, .sna or .z80, then a name), snapshot
-                 info, run diagnostics
+  Snapshot       quick save/load, save timestamped, load
+                 timestamped (the ten newest, More... for the rest),
+                 save as (a format: .zxs, .sna or .z80, then a name),
+                 load snapshot, recent snapshots (the named ones),
+                 save and load multisnapshot (.zms: every machine
+                 and the layout; loading replaces the machines,
+                 after you type YES),
+                 manage snapshots (load, duplicate, rename, delete),
+                 load binary (a file into memory, peek and poke, and
+                 a hex editor, in the CPU's memory or a RAM page),
+                 snapshot info, run diagnostics. All go in snapshots/
   View           FPS and border checkboxes (the border is greyed
                  where the picture decides it: tiled layouts, full-
                  frame Layer 2 modes), status, zoom X1-X3, and the
@@ -39,8 +53,8 @@ appear.
 
 The rainbow (Spectrum theme) or logo (Dark/Light themes) on
 the right of the bar has its own menu, the Help menu, in
-sections: Help (this screen, an About box, the Acknowledgements
-and a link to the project's own page) and Tools (Developer >
+sections: Help (this screen, the manual as a PDF, an About box,
+the Acknowledgements and a link to the project's own page) and Tools (Developer >
 Debugger). The bar's settings are in File > Preferences.
 
 
@@ -48,10 +62,12 @@ Debugger). The bar's settings are in File > Preferences.
 
   F1             Reset
   F2             Pause / Resume
-  F3             Show status
+  F3             Diagnostics (a window)
   PgUp / PgDn    Scale window up / down
   Alt+F          FPS counter on/off
   Alt+B          Border on/off (animates the window size)
+  Alt+Enter      Full screen on/off (View menu: Full Screen; also F11)
+  Alt+1 .. Alt+9 With -multi: give the keyboard to that machine
   Alt+M          Machines: the dock at the bottom edge, also opened by
                  resting the mouse there. Arrows and Enter (or a click)
                  bring a machine to the front, New adds one, Delete
@@ -60,7 +76,8 @@ Debugger). The bar's settings are in File > Preferences.
 
   F9             Quick save
   F10            Quick load
-  F11            Save snapshot
+  F11            Full screen on/off (the same as Alt+Enter)
+  Shift+F11      Save snapshot, named by the date and time
   F12            Snapshot info (Shift+F12: run diagnostics)
 
 
@@ -122,7 +139,8 @@ Debugger). The bar's settings are in File > Preferences.
   -settings=PATH      settings.json path (theme/font/zoom/scale/
                       fixed-bar persistence; default settings.json)
   -disk=FILE          mount a .dsk at startup (+3 models)
-  -snapshot=FILE      load a snapshot at startup
+  -snapshot=FILE      load a snapshot at startup (starts the model it is of, unless -model is given;
+                      a Next's snapshot needs the cards it was made over, and says which if it has not got them)
   -format=FORMAT      snapshot format: sna, z80, szx (load only), zxs, rzx (a recording to play), auto
   -audiobackend=NAME  raylib or oto
 
@@ -132,6 +150,59 @@ Examples:
   ./zenzx -model=128k
   ./zenzx -model=plus3 -disk=game.dsk
   ./zenzx -snapshot=saved.sna -format=sna
+
+
+## Command line, more
+
+  -scale=N            the window's first zoom, 1 to 5
+  -noborder           start without the border
+  -noaudio            no sound
+  -version            print the version and exit
+  -tape=FILE          load a .tap or .tzx
+  -tapemode=MODE      fast (the default), accurate or turbo
+  -scr=FILE           show a .scr screen dump
+  -script=FILE        drive the emulator with a .zen action script
+  -rom0=FILE .. -rom3=FILE
+                      replace that one ROM bank of the model's set
+  -custom-roms-menu   pick a ROM and the bank for it before starting
+  -nofdc              no floppy controller on a +3
+  -debugfdc           the floppy controller's trace, on the terminal
+  -joystick=MODE      auto, none, kempston, kempston2, kempston-both, sinclair
+                      (sinclair1), sinclair2, sinclair-both or cursor
+  -mouse=MODE         auto, none, kempston or amx
+  -escape=MODE        what the Escape key does: off (the default), close,
+                      query or on
+  -language-switch=P  spanish or portuguese: the Microdigital language switch
+  -snapshots-dir=DIR  the folder of the snapshots (default snapshots)
+
+  Memory, in a running machine (Snapshot > Load Binary... does the same):
+
+  -bin=FILE           put a raw binary in memory
+  -binaddr=ADDR       where, hex 0x.. or decimal (default 0x8000)
+  -binpage=N          in a RAM page instead of the memory the CPU sees: a bank
+                      0-7 on a 128K, +2, +2A or +3, an 8K page 0-223 on a Next;
+                      -binaddr is then the address in the page
+  -binstart=ADDR      the program counter after it (default: the address; with
+                      -binpage none; -1 leaves it alone)
+
+  Several machines:
+
+  -multi=SPEC         start several: 3, 12,128k, 4:48k,48k,128k,next
+  -layout=NAME        how the window tiles them: single, columns, rows, grid,
+                      main-left or main-right
+  -focus-follow       the keyboard follows the player beacon at 0xBFFE
+  -autorun=FILE       type in and run a BASIC program (a file of numbered lines)
+  -listen=PORT        a TCP link to each machine (ports 16384 and 16385 in it);
+                      -listen-host=ADDR is the address it listens on
+
+  The Next and the rest:
+
+  -next-bootable=CARD make that card image one a Next can boot from, and exit
+  -next-boot-cache=M  auto, off or refresh: start from the state of a Next that
+                      has booted instead of booting
+  -divmmc-debug       the DivMMC and SD card trace, on stderr
+  -non-standard=on    allows -ns-graphics=MODE and -ns-storage=NAME, which are
+                      not a real machine (the manual, "Non-standard features")
 
 
 ## Scroll this help

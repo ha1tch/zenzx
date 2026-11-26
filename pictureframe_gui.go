@@ -69,13 +69,30 @@ func (dm *DisplayManager) drawFrame(r pictureRect, top, winW, winH int) {
 	if !shadowFits(r.W, r.H) {
 		return
 	}
-	// The shadow is the picture's size grown by the reach of the blur on every side, and moved down.
+	drawBoxShadow(dm.shadowTexture(), rl.Rectangle{X: r.X, Y: r.Y, Width: r.W, Height: r.H})
+}
+
+// drawBoxShadow draws the shadow of a box from the shadow texture: the box's size grown by the
+// reach of the blur on every side, and moved down. A box with room for the nine-patch (shadowFits)
+// has it; a smaller one, a short submenu, has the whole texture squeezed into the size it would
+// have, which is a little tighter and the same in kind. The popup menus use it too
+// (popupshadow_gui.go).
+func drawBoxShadow(tex rl.Texture2D, r rl.Rectangle) { drawBoxShadowAt(tex, r, 1) }
+
+// drawBoxShadowAt is drawBoxShadow with the shadow's strength scaled: 1 is the texture as it is, 0.7 is
+// 30% less dark.
+func drawBoxShadowAt(tex rl.Texture2D, r rl.Rectangle, strength float32) {
+	tint := shadowTint(strength)
 	const reach = float32(shadowReach)
-	dest := rl.Rectangle{X: r.X - reach, Y: r.Y - reach + shadowDropY, Width: r.W + 2*reach, Height: r.H + 2*reach}
+	dest := rl.Rectangle{X: r.X - reach, Y: r.Y - reach + shadowDropY, Width: r.Width + 2*reach, Height: r.Height + 2*reach}
+	if !shadowFits(r.Width, r.Height) {
+		rl.DrawTexturePro(tex, rl.Rectangle{Width: shadowSide, Height: shadowSide}, dest, rl.Vector2{}, 0, tint)
+		return
+	}
 	info := rl.NPatchInfo{
 		Source: rl.Rectangle{Width: shadowSide, Height: shadowSide},
 		Left:   2 * shadowReach, Top: 2 * shadowReach, Right: 2 * shadowReach, Bottom: 2 * shadowReach,
 		Layout: rl.NPatchNinePatch,
 	}
-	rl.DrawTextureNPatch(dm.shadowTexture(), info, dest, rl.Vector2{}, 0, rl.White)
+	rl.DrawTextureNPatch(tex, info, dest, rl.Vector2{}, 0, tint)
 }

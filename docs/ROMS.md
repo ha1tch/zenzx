@@ -45,13 +45,15 @@ Each file given to `-rom` or `-romN` must be exactly the size of its bank: 16384
 for the TS2068's bank 1. Only the banks the model has can be named: bank 0 on a 48K, 0-1 on a
 128K, +2 or TS2068, 0-3 on a +2A or +3.
 
-In the GUI the Custom ROM menu does the same live, for any `.rom` in `custom-roms/`: it asks for
+In the GUI the Custom ROM menu does the same live, for any `.rom` in `custom-roms/` and in its subfolders, two levels down
+(each folder is a submenu, and what does not fit the window goes under **More...**; the selector of
+`-custom-roms-menu` lists them as `folder/x.rom`): it asks for
 the bank (on a 48K there is only one, and it does not ask), loads the file and resets the machine. A model chosen from the Machine menu loads that
 model's standard set, and what was laid over the old one does not go with it. A reset does not
 reload the ROM: a ROM laid over stays until the model changes or ZenZX is closed.
 
-`custom-roms/` has the Microdigital TK90X and TK95 ROMs and the zenpoint swap ROMs; its
-`README.md` says which is which.
+`custom-roms/` has the Microdigital TK90X and TK95 ROMs in a folder, `Microdigital`, and the zenpoint swap
+ROMs in another, `Zenpoint Project`; its `README.md` says which is which.
 
 ## Making a ROM from a file
 
@@ -130,7 +132,7 @@ for one list of patches: another list is another cache.
 On a Next `-rom-bin` reaches the whole 256 KiB. `-rom-bank` takes 0-7 (0-3 are NextZXOS's ROMs,
 4 the DivMMC's ROM, 5 the Multiface, 6 and 7 the alternate ROMs) and `-rom-at` counts from the
 start of that bank, so a file can run on into the banks after it; the banks it touches are
-built whole, and an address past the 256 KiB is refused. Show Status says which ROM the CPU is
+built whole, and an address past the 256 KiB is refused. The Diagnostics report (Snapshot > Run Diagnostics, or F3) says which ROM the CPU is
 reading and why: the lock bits, NextREG 0x8C, the ROM the ports choose and the two lowest MMU
 slots, so that a patch to the wrong bank can be told from a patch that does nothing. Whether
 NextZXOS rewrites the alternate ROMs when the machine's mode is changed has not been looked at.

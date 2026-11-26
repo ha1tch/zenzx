@@ -389,6 +389,7 @@ func (b *appMenuBar) prefSections(zx *ZenZX) []prefSection {
 				set: func(i int) {
 					if err := b.ApplyFont(fonts.All[i]); err != nil {
 						fmt.Printf("Warning: could not switch to font %s: %v\n", fonts.All[i], err)
+						zx.notice("The font %s could not be used: %v", fonts.All[i], err)
 					}
 				}},
 			{label: "Font zoom", options: zooms,
@@ -450,6 +451,23 @@ func (b *appMenuBar) prefSections(zx *ZenZX) []prefSection {
 				get:  func() int { return int(b.tapeCassette) },
 				set:  func(i int) { b.tapeCassette = tapeCassetteSize(i) },
 				hint: "Small, beside the buttons; big, under them, with the program's name written on its label; or hidden, leaving the buttons."},
+		}},
+		{"Machines", "Microdigital clones", []prefRow{
+			{label: "Language switch", options: []string{"Spanish", "Portuguese"},
+				get: func() int {
+					if b.microdigitalNow() {
+						return 1
+					}
+					return 0
+				},
+				set:  func(i int) { b.setMicrodigital(i == 1) },
+				hint: "The diode of the TK90X and TK95 that picked the language of their messages: the ROMs that read it show Portuguese when it pulls bit 7 of the ULA port low, Spanish when it leaves it high, as on every other Spectrum. Only the 48K models read it; the Amstrad and Timex models and the Next are left as they were. -language-switch sets it for one run."},
+		}},
+		{"Keyboard", "The Escape key", []prefRow{
+			{label: "Escape", options: []string{"Disabled", "Closes windows only", "Asks before quitting", "Quits at once"},
+				get:  func() int { return int(b.escapeNow()) },
+				set:  func(i int) { b.setEscape(escapeMode(i)) },
+				hint: "What Escape does when no menu or window is open to close. Disabled, it never quits and leaves the debugger open (menus and windows still close with it); closing windows only, it also closes the debugger; asking, the second press within a moment quits; the last quits at once. -escape sets it for one run."},
 		}},
 		{"Files", "Dropped on a Next at its menu", []prefRow{
 			{label: "A plain drop", options: dropNames,

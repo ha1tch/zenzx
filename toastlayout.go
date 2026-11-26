@@ -5,10 +5,11 @@ package zenzx
 
 import "strings"
 
-// A toast is never wider than half the window. toastLayout is the rule, kept apart from the
-// drawing so that it can be tested without a window: the text at the usual scale if it fits,
-// one notch down if it fits then, and otherwise at that smaller scale in as many lines as it
-// takes, broken between words.
+// A toast is never wider, nor taller, than half the window. toastLayout is the rule, kept apart from
+// the drawing so that it can be tested without a window: the text at the usual scale, on one line
+// if it fits and otherwise broken between words into as many lines as it takes; and only when
+// that is taller than half the window, or has a word wider than a line, one notch down, where it is
+// broken in the same way (and a word wider than a line is cut).
 const (
 	toastScale    = 2 // the usual size of the text, in pixels per font pixel
 	toastMinScale = 1 // one notch down, and the smallest
@@ -19,27 +20,38 @@ const (
 // to be bolder. A toast's width is counted with it, because it is what is seen.
 func toastInk(scale int) int { return 2*scale + 1 }
 
-// toastLayout fits text into maxW pixels. measure gives a string's width at a scale. It
-// returns the lines and the scale they are drawn at. A word wider than a whole line is cut
-// where the line ends, and a line is never empty, so the loop below always ends.
-func toastLayout(text string, measure func(s string, scale int) int, maxW int) (lines []string, scale int) {
+// toastLayout fits text into maxW by maxH pixels (a maxH of 0 is no limit on the height). measure
+// gives a string's width at a scale and cellH is the font's height at scale 1. It returns the lines
+// and the scale they are drawn at. A word wider than a whole line is cut where the line ends, and a
+// line is never empty, so the loop below always ends.
+func toastLayout(text string, measure func(s string, scale int) int, cellH, maxW, maxH int) (lines []string, scale int) {
 	text = strings.TrimSpace(text)
 	fits := func(s string, sc int) bool { return measure(s, sc)+toastInk(sc) <= maxW }
 	paras := strings.Split(text, "\n")
-	for sc := toastScale; sc >= toastMinScale; sc-- {
-		all := true
+	// wrap is the paragraphs at a scale, each on one line where it fits and else broken between
+	// words, and whether every word is whole on its line.
+	wrap := func(sc int) (out []string, whole bool) {
+		whole = true
 		for _, para := range paras {
-			all = all && fits(para, sc)
+			if fits(para, sc) {
+				out = append(out, para)
+				continue
+			}
+			for _, word := range strings.Fields(para) {
+				whole = whole && fits(word, sc)
+			}
+			out = append(out, wrapToast(para, func(s string) bool { return fits(s, sc) })...)
 		}
-		if all {
-			return paras, sc
+		return out, whole
+	}
+	for sc := toastScale; sc > toastMinScale; sc-- {
+		out, whole := wrap(sc)
+		if whole && (maxH <= 0 || len(out)*cellH*sc <= maxH) {
+			return out, sc
 		}
 	}
-	scale = toastMinScale
-	for _, para := range paras {
-		lines = append(lines, wrapToast(para, func(s string) bool { return fits(s, scale) })...)
-	}
-	return lines, scale
+	lines, _ = wrap(toastMinScale)
+	return lines, toastMinScale
 }
 
 // wrapToast breaks one paragraph into lines that each satisfy fits.

@@ -4,11 +4,16 @@
 """Build the ZenZX download page: the GUI program for every platform as a raw
 executable, with its checksums and a manifest a ZenZX client can read.
 
-    build_site.py --version 0.50.0 --archives dist --out zenzx_site
+    build_site.py --version 0.50.0 --archives dist --out zenzx_site [--extras extras]
 
 --archives is the folder the release workflow's GUI jobs leave their archives
 in (zenzx-<version>-<os>-<arch>.tar.gz, and .zip for Windows). The headless
-archives are not used. The page is:
+archives are not used. --extras is optional: a folder with what the release
+carries beside those programs, the installers (.deb, .msi, .dmg) and the
+Windows 7 program (.zip, .msi). Whatever of them is there is listed on the page,
+with a link to the file on the release, its size and its SHA-256; whatever is
+not there is left out, and the build does not stop. They are not in runners.json,
+which is for the programs a client runs. The page is:
 
     index.html          for a person
     runners.json        for a ZenZX client: every program, its size and sha256
@@ -32,6 +37,10 @@ import shutil
 import sys
 import tarfile
 import zipfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import site_page  # noqa: E402  (the page itself, beside this file)
 
 REPO = "ha1tch/zenzx"
 SCHEMA = 1
@@ -118,72 +127,113 @@ def check_program(data, os_, arch, name):
         raise BuildError(f"{name}: does not begin like an executable for {os_}: {data[:4]!r}")
 
 
+# What a release carries beside the programs: the installers, the Windows 7 program, the manual
+# as a PDF and the examples.
+# (group, system, for, file name); {v} is the version. The page lists the ones that are there.
+EXTRAS = [
+    ("installer", "Linux", "Debian and Ubuntu, amd64", "zenzx_{v}_amd64.deb"),
+    ("installer", "Linux", "Debian and Ubuntu, arm64", "zenzx_{v}_arm64.deb"),
+    ("installer", "Windows 10 and later", "amd64", "zenzx-{v}-windows-amd64.msi"),
+    ("installer", "Windows 10 and later", "arm64, Windows on ARM", "zenzx-{v}-windows-arm64.msi"),
+    ("installer", "macOS", "Intel and Apple silicon", "zenzx-{v}-macos-universal.dmg"),
+    ("windows7", "Windows 7", "amd64, installer", "zenzx-{v}-windows7-amd64.msi"),
+    ("windows7", "Windows 7", "amd64, a folder to unzip", "zenzx-{v}-windows7-amd64.zip"),
+    ("documents", "Any system", "the manual, A4, with its pictures", "zenzx-{v}-manual.pdf"),
+    ("documents", "Any system", "the examples, with launchers for Windows, macOS and Linux", "zenzx-{v}-examples.zip"),
+]
+
+
+def find_extras(folder, version):
+    """The files of EXTRAS that are in folder, as rows for the page. A folder or a
+    file that is not there is no error: the installers and the Windows 7 program are
+    made after the release is published, and the page is worth having without them."""
+    rows = []
+    if not folder or not os.path.isdir(folder):
+        return rows
+    for group, system, detail, pattern in EXTRAS:
+        name = pattern.replace("{v}", version)
+        path = os.path.join(folder, name)
+        if not os.path.isfile(path):
+            continue
+        with open(path, "rb") as f:
+            data = f.read()
+        if not data:
+            raise BuildError(f"{name}: is empty")
+        rows.append({
+            "group": group, "system": system, "detail": detail, "name": name,
+            "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+        })
+    return rows
+
+
 def human(n):
-    return f"{n / 1048576:.1f} MiB"
+    return site_page.human(n)
 
 
-PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ZenZX {version}</title>
-<style>
-:root {{ --bg: #ffffff; --fg: #1a1a1a; --dim: #5c5c5c; --line: #d6d6d6; --link: #0b57d0; }}
-@media (prefers-color-scheme: dark) {{
-  :root {{ --bg: #1a1a1a; --fg: #e8e8e8; --dim: #a0a0a0; --line: #3a3a3a; --link: #8ab4f8; }}
-}}
-body {{ background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif;
-        margin: 0 auto; max-width: 52rem; padding: 2rem 16px; }}
-h1, h2 {{ line-height: 1.2; }}
-a {{ color: var(--link); }}
-table {{ border-collapse: collapse; width: 100%; }}
-th, td {{ text-align: left; padding: .4rem .6rem; border-bottom: 1px solid var(--line); }}
-td.n {{ white-space: nowrap; }}
-code {{ font-family: ui-monospace, monospace; font-size: .9em; }}
-.dim {{ color: var(--dim); }}
-.sum {{ font-size: .8em; word-break: break-all; }}
-@media (max-width: 40rem) {{
-  .sum {{ display: none; }}
-  td.n {{ white-space: normal; overflow-wrap: anywhere; }}
-  th, td {{ padding: .4rem .3rem; }}
-}}
-</style>
-</head>
-<body>
-<h1>ZenZX {version}</h1>
-<p>A ZX Spectrum emulator: 48K, 128K, +2, +2A, +3, the Spanish variants, the Timex Sinclair 2068
-and the ZX Spectrum Next. One program, with its ROMs inside it.</p>
-
-<h2>Programs</h2>
-<table>
-<tr><th>System</th><th>Arch</th><th>Download</th><th>Size</th><th class="sum">SHA-256</th></tr>
-{rows}
-</table>
-<p>Check a download with <code>sha256sum -c checksums.txt</code> (<code>shasum -a 256 -c</code> on a Mac),
-in the folder that has both. <a href="bin/checksums.txt">checksums.txt</a></p>
-<p class="dim">On Linux and macOS, <code>chmod +x</code> the file. A browser marks a program it downloads,
-and macOS then asks for permission to open it: <code>xattr -d com.apple.quarantine zenzx-darwin-arm64</code>
-clears that.</p>
-
-<h2>For a program</h2>
-<p><a href="runners.json">runners.json</a> lists the same programs for a ZenZX client, with the
-size and SHA-256 of each; <code>file</code> is relative to the manifest's own address.</p>
-
-<h2>More</h2>
-<ul>
-<li><a href="https://github.com/{repo}/releases/tag/v{version}">Release {version}</a>:
-the same programs in archives, with the ROMs, the manual and the Next demo card beside them,
-and the programs without a window.</li>
-<li><a href="https://github.com/{repo}">Source</a>, Apache License 2.0.</li>
-</ul>
-</body>
-</html>
-"""
+# The figure that waits in a ZenZX window with no machine in it: the pictures, and what it does
+# with them (sprites/wait/sequence.txt), which the page plays as the program does.
+FIGURE_DIR = os.path.join(ROOT, "sprites", "wait")
 
 
-def build(version, archives, out, repo=REPO):
+def read_figure():
+    """{"frames": [file names under assets/], "intro": [[frame, seconds]...], "loop": [...], "rest": n}:
+    the steps before the line "loop" are played once, those after it go round. "rest" is the picture
+    that is shown the longest, which is what the page shows before (or without) a script."""
+    names = sorted(n for n in os.listdir(FIGURE_DIR) if re.fullmatch(r"frame\d+\.png", n))
+    if not names:
+        raise BuildError(f"no frame*.png in {FIGURE_DIR}")
+    intro, loop, cur = [], [], None
+    path = os.path.join(FIGURE_DIR, "sequence.txt")
+    if os.path.isfile(path):
+        cur = intro
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                if line == "loop":
+                    cur = loop
+                    continue
+                try:
+                    n, secs = line.split()
+                    step = [int(n), float(secs)]
+                except ValueError:
+                    raise BuildError(f"sequence.txt: cannot read {line!r}")
+                if not 0 <= step[0] < len(names):
+                    raise BuildError(f"sequence.txt: there is no picture {step[0]}")
+                cur.append(step)
+    if not intro and not loop:
+        loop = [[i, 0.2] for i in range(len(names))]
+    held = {}
+    for n, secs in loop or intro:
+        held[n] = held.get(n, 0) + secs
+    return {"frames": ["assets/figure/" + n for n in names], "intro": intro, "loop": loop,
+            "rest": max(held, key=held.get)}
+
+
+def copy_assets(out):
+    """What the page draws itself with: the icon, the face, the figure. All of it is in the repository."""
+    assets = os.path.join(out, "assets")
+    os.makedirs(os.path.join(assets, "figure"))
+    for src, dst in (
+        (("assets", "icon", "speccy.png"), "speccy.png"),
+        (("assets", "icon", "png", "zenzx-64.png"), "zenzx-64.png"),
+        (("assets", "site", "spleen-5x8.woff"), "spleen-5x8.woff"),
+        (("assets", "site", "spleen-5x8-proportional.woff"), "spleen-5x8-proportional.woff"),
+        (("assets", "site", "LICENSE-Spleen.txt"), "LICENSE-Spleen.txt"),
+    ):
+        path = os.path.join(ROOT, *src)
+        if not os.path.isfile(path):
+            raise BuildError(f"the page needs {os.path.join(*src)}")
+        shutil.copyfile(path, os.path.join(assets, dst))
+    for n in sorted(os.listdir(FIGURE_DIR)):
+        if re.fullmatch(r"frame\d+\.png", n):
+            shutil.copyfile(os.path.join(FIGURE_DIR, n), os.path.join(assets, "figure", n))
+
+
+def build(version, archives, out, repo=REPO, extras=None):
     found = find_archives(archives, version)
+    extra_rows = find_extras(extras, version)
 
     if os.path.isdir(out):
         shutil.rmtree(out)
@@ -214,32 +264,30 @@ def build(version, archives, out, repo=REPO):
         json.dump(manifest, f, indent=2)
         f.write("\n")
 
-    rows = "\n".join(
-        '<tr><td>{os}</td><td>{arch}</td><td class="n"><a href="{file}">{name}</a></td>'
-        '<td class="n">{size}</td><td class="sum"><code>{sha}</code></td></tr>'.format(
-            os=html.escape(r["os"]), arch=html.escape(r["arch"]), file=html.escape(r["file"]),
-            name=html.escape(os.path.basename(r["file"])), size=human(r["size"]), sha=r["sha256"])
-        for r in runners
-    )
+    copy_assets(out)
+    page = site_page.Page(version, repo, runners, extra_rows, read_figure())
     with open(os.path.join(out, "index.html"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(PAGE.format(version=html.escape(version), repo=html.escape(repo), rows=rows))
-    return manifest
+        f.write(page.render())
+    return manifest, extra_rows
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--version", required=True, help="the version, without the leading v")
     ap.add_argument("--archives", required=True, help="the folder of the release's GUI archives")
+    ap.add_argument("--extras", default=None,
+                    help="a folder with the release's installers and Windows 7 files, to list on the page (optional)")
     ap.add_argument("--out", required=True, help="the folder to build the page in (replaced)")
     ap.add_argument("--repo", default=REPO, help="owner/name on GitHub, for the page's links")
     args = ap.parse_args(argv)
     try:
-        m = build(args.version, args.archives, args.out, args.repo)
+        m, extra_rows = build(args.version, args.archives, args.out, args.repo, args.extras)
     except BuildError as e:
         print(f"build_site: {e}", file=sys.stderr)
         return 1
     total = sum(r["size"] for r in m["runners"])
-    print(f"zenzx {m['version']} site built: {len(m['runners'])} programs, {human(total)} -> {args.out}")
+    note = f", {len(extra_rows)} installer and Windows 7 files listed" if extra_rows else ""
+    print(f"zenzx {m['version']} site built: {len(m['runners'])} programs, {human(total)}{note} -> {args.out}")
     return 0
 
 

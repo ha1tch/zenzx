@@ -5,6 +5,17 @@ text verbatim as at closure, stamped with the closing version and date.
 The changelog says what shipped; this record says what was wrong and
 how it was resolved. Append-only.
 
+## [0.50.0] T-99 — Snapshots of a Next: a model code and a chunk in the .zxs that carry the machine's whole state, and a Next made to load it (v0.50.0, 2026-11-25)
+
+Theme: formats · closed 0.50.0 · 2026-11-25
+Trigger: 2026-11-25, while making a snapshot load into a machine of its own kind (0.50.0): the .zxs, .sna, .z80 and .szx hold a 48K, a 128K or a +3 and none of a Next's SRAM, NextREG file, DMA, copper, sprites, palettes, tilemap, Layer 2, DivMMC or SD controller (`nextstate.go`), so a Next is `classOther` in `snapshotmodel.go`: a snapshot is not refused by one, and the window makes the machine the snapshot is of, never a Next. The Next's whole state exists (`SaveNextState` and `RestoreNextState`, the boot cache of T-77, by `pkg/machinestate`) but is a bare blob for a Next built as a cold boot builds it, with no header, date or picture, and is not offered to the person.
+
+Scope: a model code for the Next in the .zxs header and a chunk that holds the `machinestate` blob with its layout fingerprint, so that a Save of a Next (Quick Save, Save Timestamped, Save As) writes one and Load makes a Next of the boot-chain kind and restores it (`classNext` beside `class48K`, and the deck making the machine as it does for the others). To settle first: the SD card (the snapshot names the image and refuses a changed one, or embeds what was written to it); that a state is out of date whenever the machine's structs change (the layout hash can only turn that into a clear refusal, so a Next snapshot is for the build that made it, unlike the others); the ten fields that differ between a restored machine and a cold one (T-77's reconciliation); and a Next that is playing a tape, which `SaveNextState` refuses.
+
+Done when: a Next saved from the menu and loaded in a window with no machine running (or another model) comes back as the same Next, and a snapshot of an older build is refused with a message that says why.
+
+Cross-ref: CHANGELOG 0.50.0.
+
 ## [0.50.0] T-82 — RZX files cannot be opened: the embedded snapshot is not read and the input recording is not replayed (v0.50.0, 2026-11-23)
 
 Theme: formats · closed 0.50.0 · 2026-11-23

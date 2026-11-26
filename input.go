@@ -3,6 +3,7 @@
 package zenzx
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -193,6 +194,12 @@ func (zx *ZenZX) handleAltCombinations() {
 		zx.window().ToggleBorder()
 	}
 
+	// Alt+Enter is full screen: the chord a Windows program has for it, and the window managers of
+	// macOS and Linux leave it alone. F11 is full screen too (HandleInput).
+	if rl.IsKeyPressed(rl.KeyEnter) || rl.IsKeyPressed(rl.KeyKpEnter) {
+		zx.window().ToggleFullscreen()
+	}
+
 	if rl.IsKeyPressed(rl.KeyT) {
 		zx.ToggleTapeMode()
 	}
@@ -260,6 +267,10 @@ func (zx *ZenZX) RewindTape() {
 // loaded. Extracted from handleAltCombinations (Alt+I); see
 // ToggleTapeMode.
 func (zx *ZenZX) ShowTapeInfo() {
+	if zx.OnInfo != nil { // the window, as Tape > Show Info: the deck says so when there is no tape
+		zx.OnInfo("TAPE INFO", tapeInfoText(zx))
+		return
+	}
 	if zx.tape == nil || zx.tape.st == nil || !zx.tape.st.Loaded {
 		return
 	}
@@ -461,9 +472,9 @@ func (zx *ZenZX) handleFunctionKeys() {
 		zx.TogglePause()
 	}
 
-	// F3 - Show status
-	if rl.IsKeyPressed(rl.KeyF3) {
-		zx.showStatus()
+	// F3 - Diagnostics, in a window, as Snapshot > Run Diagnostics
+	if rl.IsKeyPressed(rl.KeyF3) && zx.OnDiagnostics != nil {
+		zx.OnDiagnostics()
 	}
 
 	// F4 - Save disk (if modified)
@@ -483,9 +494,7 @@ func (zx *ZenZX) handleFunctionKeys() {
 
 	// F7 - Load disk info
 	if rl.IsKeyPressed(rl.KeyF7) {
-		fmt.Println("To load a disk image:")
-		fmt.Println("  Restart with: ./zenzx -model=plus3 -disk=filename.dsk")
-		fmt.Println("Or drag and drop a .dsk file (not implemented yet)")
+		zx.notice("To load a disk, drop a .dsk file on the window, or start with -disk=file.dsk")
 	}
 
 	// F8 - Save disk as new file
@@ -503,61 +512,33 @@ func (zx *ZenZX) handleFunctionKeys() {
 		zx.handleQuickLoad()
 	}
 
-	// F11 - Save timestamped snapshot
+	// F11 - Full screen on and off; Shift+F11 saves a timestamped snapshot, which F11 did until
+	// 0.50.0 (the menu's Snapshot > Save Timestamped is the same action).
 	if rl.IsKeyPressed(rl.KeyF11) {
-		zx.handleAutoSave()
+		if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
+			zx.handleAutoSave()
+		} else {
+			zx.window().ToggleFullscreen()
+		}
 	}
 
 	// F12 - Load snapshot info / Run diagnostics with Shift
 	if rl.IsKeyPressed(rl.KeyF12) {
 		if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
-			// Shift+F12 - Run diagnostics
-			fmt.Println("\nRunning snapshot diagnostics...")
-			debugger := NewDebugSnapshot(zx)
-			debugger.RunFullDiagnostics()
-		} else {
-			fmt.Println("Snapshot loading: Drop a .zxs file onto the window")
-			fmt.Println("(Hold Shift+F12 for diagnostics)")
-		}
-	}
-}
-
-// showStatus displays current emulator status
-func (zx *ZenZX) showStatus() {
-	if zx.memory.isNext {
-		fmt.Println(zx.NextROMLive())
-	}
-	if zx.isPlus3 {
-		fmt.Printf("+3 Mode - ROM: %d, RAM@C000: %d, Screen: %d, ",
-			zx.memory.romBank, zx.memory.ramBankTop, zx.memory.screenBank)
-		if zx.memory.specialMode > 0 {
-			fmt.Printf("Special Mode: %d, ", zx.memory.specialMode)
-		}
-		fmt.Printf("Locked: %v\n", zx.memory.pagingLocked)
-		if zx.io.hasFDC && zx.io.fdc != nil {
-			if zx.io.fdc.HasDisk() {
-				if zx.io.fdc.diskFilename != "" {
-					fmt.Printf("Disk: %s (modified: %v)\n", zx.io.fdc.diskFilename, zx.io.fdc.IsModified())
-				} else {
-					fmt.Printf("Disk: Blank disk (modified: %v)\n", zx.io.fdc.IsModified())
-				}
+			// Shift+F12 - the diagnostics, in a window as F3 and Snapshot > Run Diagnostics
+			if zx.OnDiagnostics != nil {
+				zx.OnDiagnostics()
 			} else {
-				fmt.Println("Disk: No disk inserted")
+				fmt.Println("\nRunning snapshot diagnostics...")
+				NewDebugSnapshot(zx).RunFullDiagnostics()
 			}
+		} else if zx.OnInfo != nil { // F12 - the snapshot info, as Snapshot > Snapshot Info
+			zx.OnInfo("SNAPSHOT INFO", snapshotInfoText(zx))
+		} else {
+			fmt.Println("To load a snapshot, drop a .zxs, .sna, .z80 or .szx file on the window")
+			fmt.Println("(Shift+F12 runs the diagnostics)")
 		}
-	} else if zx.is128K {
-		fmt.Printf("128K Mode - ROM: %d, RAM@C000: %d, Screen: %d, Locked: %v\n",
-			zx.memory.romBank, zx.memory.ramBankTop, zx.memory.screenBank, zx.memory.pagingLocked)
-	} else {
-		fmt.Println("48K Mode")
 	}
-
-	// Show tape status if loaded
-	if zx.tape != nil && zx.tape.st != nil && zx.tape.st.Loaded {
-		status := zx.tape.GetStatus()
-		fmt.Printf("Tape: %s\n", status)
-	}
-
 }
 
 // notice says what happened because of something the person did. The GUI has OnNotice, which
@@ -593,15 +574,13 @@ func (zx *ZenZX) handleSaveDisk() {
 func (zx *ZenZX) handleInsertBlankDisk() {
 	if zx.io.hasFDC && zx.io.fdc != nil {
 		if zx.io.fdc.IsModified() && zx.io.fdc.diskFilename != "" {
-			fmt.Println("Saving current disk before inserting blank...")
-			zx.io.SaveDisk()
+			if err := zx.io.SaveDisk(); err != nil {
+				zx.notice("The disk was not saved before the blank one went in: %v", err)
+			}
 		}
 
 		zx.io.fdc.CreateBlankDisk()
-		zx.notice("A blank formatted disk is in the drive")
-		fmt.Println("Tip: Use SAVE \"filename\" to save BASIC programs")
-		fmt.Println("     Use CAT to list disk contents")
-		fmt.Println("     Press F8 to save disk image to file")
+		zx.notice("A blank formatted disk is in the drive: SAVE \"name\" puts a BASIC program on it, CAT lists it, F8 keeps it in a file")
 	} else {
 		zx.notice("This model has no disk drive")
 	}
@@ -655,6 +634,30 @@ func (zx *ZenZX) afterSnapshotLoad() {
 	zx.paused = snapshotStartsPlaying == nil || !snapshotStartsPlaying()
 }
 
+// loadSnapshotHere loads a snapshot into this machine, which waits paused or plays as Preferences
+// says a loaded snapshot does; with wait it waits whatever Preferences say, as it always has after
+// Quick Load. It is what loads one when there is no window to make the machine it is of (the
+// headless program, a script), and what the window does once it has made it.
+func (zx *ZenZX) loadSnapshotHere(file, format string, wait bool) error {
+	zx.paused = true
+	if err := zx.LoadSnapshotFormat(file, format); err != nil {
+		zx.paused = false
+		return err
+	}
+	if !wait {
+		zx.afterSnapshotLoad()
+	}
+	return nil
+}
+
+// openSnapshot opens a snapshot as the host does (OpenSnapshot), else in this machine.
+func (zx *ZenZX) openSnapshot(file, format string, wait bool) error {
+	if zx.OpenSnapshot != nil {
+		return zx.OpenSnapshot(file, format, wait)
+	}
+	return zx.loadSnapshotHere(file, format, wait)
+}
+
 // loadDroppedFile loads one dropped file by its extension into the machine
 // directly -- a snapshot replaces state, a tape/disc is inserted, a .scr paints
 // the screen. This is the "load into the machine" path; the mount drawer's
@@ -670,6 +673,11 @@ func (zx *ZenZX) loadDroppedFile(file string) string {
 		return ""
 	}
 	base := filepath.Base(file)
+	if zx.stopped && !isSnapshotExt(file) && !isMultiSnapshotPath(file) {
+		// no machine is running: a snapshot makes its own, and a multisnapshot its machines; nothing
+		// else has a machine to go into
+		return "No machine is running: " + base + " has nothing to be loaded into"
+	}
 	switch strings.ToLower(file[len(file)-4:]) {
 	case ".scr":
 		if err := zx.screen.LoadFromFile(file); err != nil {
@@ -680,26 +688,30 @@ func (zx *ZenZX) loadDroppedFile(file string) string {
 		return "The screen " + base + " is now on display"
 
 	case ".zxs":
-		zx.paused = true
-		if err := zx.LoadSnapshot(file); err != nil {
+		if err := zx.openSnapshot(file, "zxs", false); err != nil {
+			if errors.Is(err, errCardsAsked) {
+				return "" // the window asks for the cards, and says what came of it
+			}
 			fmt.Printf("Error loading snapshot %s: %v\n", file, err)
-			zx.paused = false
-			return base + " could not be loaded as a snapshot"
+			return snapshotRefusal(base, err)
 		}
 		fmt.Printf("Loaded snapshot: %s\n", file)
-		zx.afterSnapshotLoad()
 		return "The snapshot " + base + " has been restored"
 
+	case ".zms":
+		if zx.OpenMultisnapshot == nil {
+			return base + " is a multisnapshot, which only the window loads"
+		}
+		zx.OpenMultisnapshot(file)
+		return "" // the window asks first and says what came of it
+
 	case ".sna", ".z80", ".szx":
-		zx.paused = true
 		format := strings.ToLower(strings.TrimPrefix(file[len(file)-4:], "."))
-		if err := zx.LoadSnapshotFormat(file, format); err != nil {
+		if err := zx.openSnapshot(file, format, false); err != nil {
 			fmt.Printf("Error loading snapshot %s: %v\n", file, err)
-			zx.paused = false
-			return base + " could not be loaded as a snapshot"
+			return snapshotRefusal(base, err)
 		}
 		fmt.Printf("Loaded %s snapshot: %s\n", strings.ToUpper(format), file)
-		zx.afterSnapshotLoad()
 		return "The " + strings.ToUpper(format) + " snapshot " + base + " has been restored"
 
 	case ".rzx":
@@ -823,8 +835,12 @@ func (zx *ZenZX) handleQuickSave() {
 		format = "zxs" // Default for quick save
 	}
 
-	extension := "." + format
-	filename := "quicksave" + extension
+	filename := snapshotPath(quickSaveName(format))
+	if err := ensureSnapshotDir(); err != nil {
+		zx.notice("Quick save failed: %v", err)
+		zx.paused = wasPaused
+		return
+	}
 
 	if err := zx.SaveSnapshotFormat(filename, format); err != nil {
 		zx.notice("Quick save failed: %v", err)
@@ -836,8 +852,8 @@ func (zx *ZenZX) handleQuickSave() {
 }
 
 func (zx *ZenZX) handleQuickLoad() {
-	// Pause emulator before loading - CRITICAL!
-	zx.paused = true
+	// (openSnapshot pauses the machine it loads into, and the host makes the machine the
+	// snapshot is of when there is not one: snapshotopen_gui.go.)
 
 	// Try different formats
 	formats := []string{"zxs", "sna", "z80"}
@@ -848,29 +864,31 @@ func (zx *ZenZX) handleQuickLoad() {
 
 	loaded := false
 	for _, format := range formats {
-		filename := "quicksave." + format
+		filename := snapshotPath(quickSaveName(format))
 		if _, err := os.Stat(filename); err == nil {
-			if err := zx.LoadSnapshotFormat(filename, format); err == nil {
+			err := zx.openSnapshot(filename, format, true)
+			if err == nil {
 				zx.notice("Quick loaded from %s (%s format)", filename, strings.ToUpper(format))
 				loaded = true
 				break
+			}
+			if m, ok := snapshotMismatchOf(err); ok {
+				// the host makes the machine a snapshot is of; where it cannot, say why
+				zx.notice("The quick save is a %s snapshot and this machine is a %s", m.Snapshot, m.Machine)
+				return
 			}
 		}
 	}
 
 	if !loaded {
 		zx.notice("No quick save found (tried .zxs, .sna, .z80)")
-		zx.paused = false // Unpause on error
 	}
-	// Note: Don't unpause here - the snapshot load will handle it
-	// The loaded state determines if we should be paused or not
+	// The machine waits paused, as it always has after Quick Load: Play or F2 starts it.
 }
 
 func (zx *ZenZX) handleAutoSave() {
 	wasPaused := zx.paused
 	zx.paused = true
-
-	timestamp := time.Now().Format("20060102_150405")
 
 	// Determine format and extension
 	format := zx.snapshotFormat
@@ -878,8 +896,12 @@ func (zx *ZenZX) handleAutoSave() {
 		format = "zxs" // Default for auto save
 	}
 
-	extension := "." + format
-	filename := fmt.Sprintf("snapshot_%s%s", timestamp, extension)
+	filename := snapshotPath(timestampedName(time.Now(), format))
+	if err := ensureSnapshotDir(); err != nil {
+		zx.notice("Save snapshot failed: %v", err)
+		zx.paused = wasPaused
+		return
+	}
 
 	if err := zx.SaveSnapshotFormat(filename, format); err != nil {
 		zx.notice("Save snapshot failed: %v", err)

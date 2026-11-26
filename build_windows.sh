@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # build_windows.sh - Cross-compile the GUI ZenZX binary for Windows (amd64).
 # Requires the mingw-w64 toolchain. Uses the Go package build (no file list).
 set -e

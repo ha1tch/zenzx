@@ -5,9 +5,7 @@ package zenzx
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/ha1tch/zenui"
 	"github.com/ha1tch/zenzx/pkg/nextcard"
@@ -215,46 +213,37 @@ func snapshotInfoText(zx *ZenZX) string {
 	if format == "" || format == "auto" {
 		format = "zxs"
 	}
-	lines := []string{"## Here", "", infoLine("Saves in", strings.ToUpper(format)+", unless Save As says another")}
-	for _, ext := range []string{"zxs", "sna", "z80"} {
-		if line, ok := snapshotFileLine("Quick save ."+ext, "quicksave."+ext); ok {
+	lines := []string{"## Here", "",
+		infoLine("Folder", snapshotDir+"/ (Manage Snapshots lists what is in it)"),
+		infoLine("Saves in", strings.ToUpper(format)+", unless Save As says another")}
+	for _, ext := range snapshotFormats {
+		if line, ok := snapshotFileLine("Quick save ."+ext, snapshotPath(quickSaveName(ext))); ok {
 			lines = append(lines, line)
 		}
 	}
-	if len(lines) == 3 {
-		lines = append(lines, infoLine("Quick save", "none yet: Quick Save writes quicksave."+format))
+	if len(lines) == 4 {
+		lines = append(lines, infoLine("Quick save", "none yet: Quick Save writes "+snapshotPath(quickSaveName(format))))
 	}
-	// The newest of the timestamped saves in the folder the program runs in.
-	var newest string
-	var when time.Time
-	count := 0
-	if names, err := filepath.Glob("snapshot_*"); err == nil {
-		for _, n := range names {
-			ext := strings.ToLower(filepath.Ext(n))
-			if ext != ".zxs" && ext != ".sna" && ext != ".z80" {
-				continue
-			}
-			count++
-			if st, err := os.Stat(n); err == nil && st.ModTime().After(when) {
-				newest, when = n, st.ModTime()
-			}
-		}
-	}
-	if count == 0 {
+	// The newest of the timestamped saves in the snapshots folder.
+	stamped := timestampedSnapshots(listSnapshots(snapshotDir))
+	if len(stamped) == 0 {
 		lines = append(lines, infoLine("Timestamped", "none yet"))
 	} else {
-		lines = append(lines, infoLine("Timestamped", fmt.Sprintf("%d saved; the newest", count)))
-		line, _ := snapshotFileLine("", newest)
+		lines = append(lines, infoLine("Timestamped", fmt.Sprintf("%d saved; the newest", len(stamped))))
+		line, _ := snapshotFileLine("", stamped[0].Path)
 		lines = append(lines, line)
 	}
 	lines = append(lines, "", "## Loading", "",
 		infoLine("From a file", "drop a .zxs, .sna, .z80 or .szx file on the window,"),
 		infoLine("", "or start with -snapshot (a .rzx plays the same way)"),
 		infoLine("Quick Load", "reads the quick save back, in any of the formats"),
+		infoLine("The machine", "one of its kind (48K, 128K or +3) is made for it,"),
+		infoLine("", "and is the one that starts when none is running"),
 		"", "## Saving", "",
-		infoLine("Quick Save", "writes quicksave.<format>"),
-		infoLine("Timestamped", "writes snapshot_<date>_<time>.<format>"),
+		infoLine("Quick Save", "writes "+snapshotDir+"/quicksave.<format>"),
+		infoLine("Timestamped", "writes "+snapshotDir+"/snapshot_<date>_<time>.<format>"),
 		infoLine("Save As", "the format (.zxs, .sna or .z80), then the name"),
+		infoLine("Load Timestamped", "the newest ten, and More... for the rest"),
 		"", "Run Diagnostics reports on the running machine.")
 	return strings.Join(lines, "\n")
 }

@@ -3,6 +3,7 @@ package settingsconfig
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -26,7 +27,7 @@ func TestLoadRecreatesAFileWithNothingInIt(t *testing.T) {
 	def, _ := parseAndValidate([]byte(validSettingsJSON()), testThemes, testFonts)
 	for _, content := range []string{"", "  \n\t ", "{}", " { } ", "null"} {
 		res, path := loadFrom(t, content)
-		if res.Settings == nil || *res.Settings != *def {
+		if res.Settings == nil || !reflect.DeepEqual(*res.Settings, *def) {
 			t.Errorf("%q: settings %+v, want the default %+v", content, res.Settings, def)
 		}
 		if !res.Recreated || res.Note == "" || res.Warning != "" {
@@ -36,7 +37,7 @@ func TestLoadRecreatesAFileWithNothingInIt(t *testing.T) {
 			t.Errorf("%q: a file with nothing in it was kept as .bad", content)
 		}
 		again, err := Load(path, []byte(validSettingsJSON()), testThemes, testFonts)
-		if err != nil || !again.FromDisk || again.Recreated || again.Note != "" || again.Warning != "" || *again.Settings != *def {
+		if err != nil || !again.FromDisk || again.Recreated || again.Note != "" || again.Warning != "" || !reflect.DeepEqual(*again.Settings, *def) {
 			t.Errorf("%q: the file it wrote is not a good settings file: %+v err %v", content, again, err)
 		}
 	}

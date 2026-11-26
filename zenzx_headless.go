@@ -47,6 +47,7 @@ func RunHeadless(args []string) {
 	tapeMode := fs.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
 	binFile := fs.String("bin", "", "Load a raw binary blob directly into memory")
 	binAddr := fs.String("binaddr", "0x8000", "Load address for -bin (hex 0x.. or decimal)")
+	binPage := fs.String("binpage", "", "RAM page to put -bin in, instead of the memory as the CPU sees it: a bank 0-7 on a 128K, +2 or +3, an 8K page 0-223 on a Next; -binaddr is then the address in the page, and -binstart defaults to none")
 	binStart := fs.String("binstart", "", "PC start address after -bin (hex/decimal; empty = use load address; -1 = leave PC unchanged)")
 	z80n := fs.Bool("z80n", false, "Enable the CPU core's Z80N (ZX Spectrum Next) extended instruction set. CPU-level only -- no other Next hardware (memory paging, sprites, the copper, etc.) is emulated; intended for Z80N instruction verification (e.g. via -bin plus a \"dump-mem\" script action), not as a claim of Next machine emulation.")
 	scrFile := fs.String("scr", "", "Load a raw .scr screen dump onto the display (still image)")
@@ -70,6 +71,7 @@ func RunHeadless(args []string) {
 	nextIssue := fs.Int("next-issue", 5, nextIssueHelp)
 	nextFirmwareFlag := fs.String("next-firmware", "", nextFirmwareHelp)
 	nextSetupFlag := fs.Bool("next-setup", false, nextSetupHelp)
+	fetchF := addFetchFlags(fs)
 	nextDistURL := fs.String("next-distribution", "", nextDistributionHelp)
 	nextBootURL := fs.String("next-bootrom-url", "", nextBootROMURLHelp)
 	nextBootCacheFlag := fs.String("next-boot-cache", "off", nextBootCacheHelp)
@@ -81,6 +83,7 @@ func RunHeadless(args []string) {
 	listenFlag := fs.String("listen", "", listenHelp)
 	listenHost := fs.String("listen-host", "127.0.0.1", listenHostHelp)
 	autorunFlag := fs.String("autorun", "", autorunHelp)
+	langSwitchFlag := fs.String("language-switch", "", languageSwitchHelp)
 	layoutFlag := fs.String("layout", "", layoutHelp)
 	paceFlag := fs.String("pace", "", paceHelp)
 	shotInterval := fs.Int("shot-interval", 0, "Capture a screenshot every N frames (0 = only the final frame)")
@@ -95,10 +98,18 @@ func RunHeadless(args []string) {
 	mouse := fs.String("mouse", "auto", "Mouse emulation: auto (kempston on a Next, none on the other models), none, kempston or amx")
 	showVersion := fs.Bool("version", false, "Print version and exit")
 	fs.Parse(args)
+	if *langSwitchFlag != "" {
+		pt, ok := parseMicrodigitalLanguage(*langSwitchFlag)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "Warning: unknown -language-switch %q; the switch stays at Spanish. Valid: spanish, portuguese\n", *langSwitchFlag)
+		}
+		SetMicrodigitalLanguage(pt)
+	}
 	if err := startProgram(model, snapshot, snapshotFormat); err != nil { // a standalone program starts as its machine
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	startModelFromSnapshot(fs, model, *multiFlag, *snapshot, *snapshotFormat) // a snapshot starts the machine it is of
 	if err := romBin.check(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -154,6 +165,9 @@ func RunHeadless(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
 	}
+	if fetchF.asked() {
+		os.Exit(runFetch(fetchF, os.Stdin, stdinIsTerminal(), os.Stdout, os.Stderr))
+	}
 	firmware, firmwareErr := nextFirmwareAction(*nextFirmwareFlag, *nextSetupFlag)
 	if firmwareErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", firmwareErr)
@@ -198,7 +212,7 @@ func RunHeadless(args []string) {
 	}
 
 	if *showVersion {
-		fmt.Printf("ZenZX %s (headless)\n", version)
+		fmt.Printf("ZenZX %s (headless)\n", versionLine())
 		return
 	}
 
@@ -551,7 +565,15 @@ func RunHeadless(args []string) {
 			fmt.Fprintf(os.Stderr, "Invalid -binaddr %q: %v\n", *binAddr, err)
 			os.Exit(1)
 		}
+		page, err := ParsePage(*binPage)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid -binpage: %v\n", err)
+			os.Exit(1)
+		}
 		start := int(addr) // default: start at load address
+		if page >= 0 {
+			start = -1 // the page is not necessarily paged in at the address: no start unless -binstart says
+		}
 		if *binStart != "" {
 			s, err := ParseAddrSigned(*binStart)
 			if err != nil {
@@ -560,11 +582,17 @@ func RunHeadless(args []string) {
 			}
 			start = s
 		}
-		if err := zx.LoadBIN(*binFile, uint16(addr), start); err != nil {
+		if page >= 0 {
+			msg, err := zx.LoadBINAt(*binFile, page, addr, start)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error loading binary %s: %v\n", *binFile, err)
+				os.Exit(1)
+			}
+			logf(*quiet, "Loaded binary: %s: %s", *binFile, msg)
+		} else if err := zx.LoadBIN(*binFile, uint16(addr), start); err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading binary %s: %v\n", *binFile, err)
 			os.Exit(1)
-		}
-		if start >= 0 {
+		} else if start >= 0 {
 			logf(*quiet, "Loaded binary: %s at 0x%04X, PC=0x%04X", *binFile, addr, start)
 		} else {
 			logf(*quiet, "Loaded binary: %s at 0x%04X (PC unchanged)", *binFile, addr)

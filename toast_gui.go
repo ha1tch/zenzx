@@ -18,9 +18,10 @@ import (
 // toast is the caption that confirms what was just done: it rises from below the bottom-right
 // corner of the window, holds, and fades. It moves like zenui's zenuiraylib.OSD, whose
 // sparks and timings it keeps, and differs in what that cannot be asked for: the face of the
-// text is white inside a black stroke, and it is never wider than half the window (the rule
-// is toastLayout's, in toastlayout.go): a long message is drawn one notch smaller, and then
-// broken into lines. Behind the text is a darkened box with round corners, which, like the
+// text is white inside a black stroke, and it is never wider or taller than half the window (the rule
+// is toastLayout's, in toastlayout.go): a long message is broken into lines at the usual
+// size, and drawn one notch smaller only when that would be taller than half the window or
+// has a word too wide for a line. Behind the text is a darkened box with round corners, which, like the
 // dock's panel, is more see-through at its top edge than at its bottom one; the width cap
 // is that of the whole box, the padding included.
 const (
@@ -70,6 +71,7 @@ type toast struct {
 	lines   []string // the text as laid out for laidFor
 	scale   int
 	laidFor int // the window width the layout was made for; 0: not laid out
+	laidH   int // and the window height
 	boxW    int // the text's width and height; the box is toastPad* larger on each side
 	boxH    int
 
@@ -108,12 +110,13 @@ func (t *toast) Start(text string) {
 	t.laidFor = 0
 }
 
-// fit lays the text out for a window screenW wide, when that is not already done.
-func (t *toast) fit(screenW int) {
-	if t.laidFor == screenW && t.lines != nil {
+// fit lays the text out for a window screenW wide and screenH high, when that is not already
+// done: the whole box, padding included, is to be no wider and no taller than half the window.
+func (t *toast) fit(screenW, screenH int) {
+	if t.laidFor == screenW && t.laidH == screenH && t.lines != nil {
 		return
 	}
-	t.lines, t.scale = toastLayout(t.text, t.txt.Measure, screenW/2-2*toastPadX)
+	t.lines, t.scale = toastLayout(t.text, t.txt.Measure, t.txt.CellH(), screenW/2-2*toastPadX, screenH/2-2*toastPadY)
 	t.boxW = 0
 	for _, l := range t.lines {
 		if w := t.txt.Measure(l, t.scale); w > t.boxW {
@@ -121,11 +124,12 @@ func (t *toast) fit(screenW int) {
 		}
 	}
 	t.boxH = len(t.lines) * t.txt.CellH() * t.scale
-	t.laidFor = screenW
+	t.laidFor, t.laidH = screenW, screenH
 }
 
-// Update moves the caption on by dt seconds. A seq other than the last one seen starts text.
-func (t *toast) Update(dt float32, seq int, text string, screenW int) {
+// Update moves the caption on by dt seconds, in a window screenW by screenH. A seq other than the
+// last one seen starts text.
+func (t *toast) Update(dt float32, seq int, text string, screenW, screenH int) {
 	if seq != t.seq {
 		t.seq = seq
 		if text != "" {
@@ -135,7 +139,7 @@ func (t *toast) Update(dt float32, seq int, text string, screenW int) {
 	if !t.active {
 		return
 	}
-	t.fit(screenW)
+	t.fit(screenW, screenH)
 	t.travel += toastSpeed * dt
 	if t.travel >= toastTravel {
 		t.active, t.sparks = false, nil
@@ -181,7 +185,7 @@ func (t *toast) Draw(screenW, screenH int) {
 	if !t.Active() {
 		return
 	}
-	t.fit(screenW)
+	t.fit(screenW, screenH)
 	a := uint8(t.alpha() * 255)
 	outerW, outerH := t.boxW+2*toastPadX, t.boxH+2*toastPadY
 	bx := screenW - toastMargin - outerW

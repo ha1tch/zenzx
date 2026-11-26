@@ -22,8 +22,13 @@ type menuEntry struct {
 	disabled bool
 	checked  *bool // a checkmark that follows the pointed-to bool
 	toggle   bool  // with checked: a checkbox that flips it and keeps the menu open
-	sub      menuSpec
-	run      func(zx *ZenZX) // what picking the row does; nil for none
+	// icon is a picture drawn before the label, as the Machine menu's Pause, Play and Stop have.
+	icon func(r zenui.Renderer, cell zenui.Rect, col zenui.Colour)
+	sub  menuSpec
+	run  func(zx *ZenZX) // what picking the row does; nil for none
+	// needsMachine says the row acts on the machine that is running, so that it is disabled
+	// with none (the Snapshot menu: snapshotmenu_gui.go).
+	needsMachine bool
 }
 
 // menuTitle, menuSep and menuRow are the entries' constructors.
@@ -31,6 +36,11 @@ func menuTitle(label string) menuEntry { return menuEntry{label: label, title: t
 func menuSep() menuEntry               { return menuEntry{sep: true} }
 func menuRow(label string, run func(zx *ZenZX)) menuEntry {
 	return menuEntry{label: label, run: run}
+}
+
+// machineRow is a row that acts on the machine that is running.
+func machineRow(label string, run func(zx *ZenZX)) menuEntry {
+	return menuEntry{label: label, run: run, needsMachine: true}
 }
 
 // menuCheckbox is a row that flips *on and keeps the menu open; then, if not nil, runs.
@@ -52,6 +62,7 @@ func (s menuSpec) items() []zenui.Item {
 			Disabled:  e.disabled,
 			Checked:   e.checked,
 			Toggle:    e.toggle,
+			Icon:      e.icon,
 		}
 		if len(e.sub) > 0 {
 			out[i].SubItems = e.sub.items()

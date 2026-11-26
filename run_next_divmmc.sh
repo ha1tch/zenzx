@@ -39,7 +39,7 @@ done
 
 if [ ! -x "$BIN" ] || [ -n "$(find . -maxdepth 1 \( -name "*.go" -o -name go.mod \) -newer "$BIN" | head -n 1)" ]; then
     echo "Building $BIN..."
-    bash ./build.sh "$BIN" || exit 1
+    sh ./build.sh "$BIN" || exit 1
 fi
 if [ ! -w "$SDCARD" ]; then
     echo "Note: $SDCARD is not writable, so the card will be write-protected and nothing can be saved."

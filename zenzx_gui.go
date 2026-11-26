@@ -81,7 +81,8 @@ func RunGUI(args []string) {
 	scale := fs.Int("scale", 2, "Initial window scale (1-5)")
 	settingsPathFlag := fs.String("settings", "settings.json", "Path to settings.json (persists theme/font/font-zoom/display-scale/fixed-menu-bar across sessions -- whichever of -theme/-scale you don't pass explicitly falls back to whatever's saved there, not to this flag's own default)")
 	noBorder := fs.Bool("noborder", false, "Start without border")
-	escapeFlag := fs.String("escape", "on", "Escape key behaviour: on (quit at once), off (never quit), close (close an open dialog or the HUD only), query (ask before quitting)")
+	escapeFlag := fs.String("escape", "off", "Escape key behaviour, for this session: off (disabled: it never quits -- the default), close (close an open dialog or the debugger only), query (ask before quitting), on (quit at once). Without it, the Escape key setting of the Preferences window (File > Preferences) is used, and that is off until it is changed")
+	langSwitchFlag := fs.String("language-switch", "", languageSwitchHelp)
 	noFdc := fs.Bool("nofdc", false, "Disable FDC emulation for +3")
 	disk := fs.String("disk", "", "Path to +3 disk image (.dsk)")
 	sdCard := fs.String("sdcard", "", "Path to a raw FAT16/FAT32 SD card image, attached via DivMMC (T-36, docs/TRACKING.md) -- requires -divmmc-rom too. Pages in via automap at the usual RST-vector entry points on ANY model, not just -model=next; does not by itself model the Next's own separate config-mode boot ROM (item 6)")
@@ -99,6 +100,7 @@ func RunGUI(args []string) {
 	nextBootable := fs.String("next-bootable", "", nextBootableHelp)
 	nextFirmwareFlag := fs.String("next-firmware", "", nextFirmwareHelp)
 	nextSetupFlag := fs.Bool("next-setup", false, nextSetupHelp)
+	fetchF := addFetchFlags(fs)
 	nextDistURL := fs.String("next-distribution", "", nextDistributionHelp)
 	nextBootURL := fs.String("next-bootrom-url", "", nextBootROMURLHelp)
 	nextBootCacheFlag := fs.String("next-boot-cache", "auto", nextBootCacheHelp)
@@ -106,12 +108,14 @@ func RunGUI(args []string) {
 	debugFdc := fs.Bool("debugfdc", false, "Enable FDC debug output")
 	snapshot := fs.String("snapshot", "", "Load snapshot on startup")
 	snapshotFormat := fs.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only), rzx (a recording to play, load only)")
+	snapshotsDir := fs.String("snapshots-dir", SnapshotDir, "Folder for the snapshots Quick Save, Save Timestamped and Save As make, and Manage Snapshots lists")
 	tapeFile := fs.String("tape", "", "Load tape file (.tap or .tzx)")
 	tapeMode := fs.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
 	noAudio := fs.Bool("noaudio", false, "Disable audio")
 	audioBackend := fs.String("audiobackend", "oto", "Audio backend: raylib or oto")
 	binFile := fs.String("bin", "", "Load a raw binary blob directly into memory")
 	binAddr := fs.String("binaddr", "0x8000", "Load address for -bin (hex 0x.. or decimal)")
+	binPage := fs.String("binpage", "", "RAM page to put -bin in, instead of the memory as the CPU sees it: a bank 0-7 on a 128K, +2 or +3, an 8K page 0-223 on a Next; -binaddr is then the address in the page, and -binstart defaults to none")
 	binStart := fs.String("binstart", "", "PC start address after -bin (hex/decimal; empty = use load address; -1 = leave PC unchanged)")
 	scrFile := fs.String("scr", "", "Load a raw .scr screen dump onto the display (still image)")
 	scriptFile := fs.String("script", "", "Path to a .zen action script to drive the emulator")
@@ -128,10 +132,15 @@ func RunGUI(args []string) {
 	focusFollow := fs.Bool("focus-follow", false, focusFollowHelp)
 	showVersion := fs.Bool("version", false, "Print version and exit")
 	fs.Parse(args)
+	snapshotDir = *snapshotsDir
+	// snapshots from before they had a folder; startupNotes is what the window says once there is
+	// one, with the other things found before it opens
+	startupNotes := migrateLegacySnapshots()
 	if err := startProgram(model, snapshot, snapshotFormat); err != nil { // a standalone program starts as its machine
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	startModelFromSnapshot(fs, model, *multiFlag, *snapshot, *snapshotFormat) // a snapshot starts the machine it is of
 	if err := romBin.check(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -180,6 +189,9 @@ func RunGUI(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
 	}
+	if fetchF.asked() {
+		os.Exit(runFetch(fetchF, os.Stdin, stdinIsTerminal(), os.Stdout, os.Stderr))
+	}
 	firmware, firmwareErr := nextFirmwareAction(*nextFirmwareFlag, *nextSetupFlag)
 	if firmwareErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", firmwareErr)
@@ -216,7 +228,7 @@ func RunGUI(args []string) {
 	}
 
 	if *showVersion {
-		fmt.Printf("ZenZX %s\n", version)
+		fmt.Printf("ZenZX %s\n", versionLine())
 		return
 	}
 
@@ -243,6 +255,7 @@ func RunGUI(args []string) {
 	}
 	if settingsRes.Warning != "" {
 		fmt.Println("Warning:", settingsRes.Warning)
+		startupNotes = append(startupNotes, settingsRes.Warning)
 	}
 
 	// A standalone program starts with the preferences it was exported with, not with those of
@@ -340,11 +353,29 @@ func RunGUI(args []string) {
 	if startView != nil {
 		zx.window().showFPS = startView.FPS
 	}
-	escMode, escOK := parseEscapeMode(*escapeFlag)
-	if !escOK {
-		fmt.Printf("Warning: unknown -escape %q; using \"on\". Valid: on, off, close, query\n", *escapeFlag)
+	// The Escape key: the -escape switch for this session if it was given, otherwise what the
+	// Preferences window saved, otherwise off. A word that is no mode is off, never on.
+	escMode, _ := parseEscapeMode(settingsRes.Settings.EscapeWord())
+	escOverride := explicitFlags["escape"]
+	if escOverride {
+		var escOK bool
+		if escMode, escOK = parseEscapeMode(*escapeFlag); !escOK {
+			fmt.Printf("Warning: unknown -escape %q; Escape is off. Valid: off, close, query, on\n", *escapeFlag)
+		}
 	}
 	zx.escape = escMode
+
+	// The Microdigital language switch: the -language-switch switch for this session if it was
+	// given, otherwise what the Preferences window saved, otherwise Spanish.
+	mdPortuguese := settingsRes.Settings.MicrodigitalWord() == "portuguese"
+	mdOverride := explicitFlags["language-switch"]
+	if mdOverride {
+		var mdOK bool
+		if mdPortuguese, mdOK = parseMicrodigitalLanguage(*langSwitchFlag); !mdOK {
+			fmt.Printf("Warning: unknown -language-switch %q; the switch stays at Spanish. Valid: spanish, portuguese\n", *langSwitchFlag)
+		}
+	}
+	SetMicrodigitalLanguage(mdPortuguese)
 
 	// Demo overlay: bogus menu/notification/file-dialog for visually
 	// confirming the widget system works live over running emulation.
@@ -372,13 +403,43 @@ func RunGUI(args []string) {
 	// the window never read: how a .nex or an .rzx ended, what the menus did (input.go notice), and
 	// the question of a busy Next. Every machine has these, the ones the deck starts later as well:
 	// a machine started from the empty window used to say its notices on the console only.
+	// showDiagnostics is the menu bar's window of the report, once there is a bar; showInfo, its
+	// text windows of Alt+I and F12.
+	var showDiagnostics func(z *ZenZX)
+	var showInfo func(title, text string)
+	// openInDeck opens a snapshot as the window does, in the machine it is of (snapshotopen_gui.go).
+	var openInDeck func(path, format string, wait bool) error
+	// openMultiInHost opens a multisnapshot as the window does (multisnapshot_menu_gui.go).
+	var openMultiInHost func(z *ZenZX, path string)
 	hostHooks := func(z *ZenZX) {
+		z.OpenSnapshot = func(path, format string, wait bool) error {
+			if openInDeck != nil {
+				return openInDeck(path, format, wait)
+			}
+			return z.loadSnapshotHere(path, format, wait)
+		}
+		z.OpenMultisnapshot = func(path string) {
+			if openMultiInHost != nil {
+				openMultiInHost(z, path)
+			}
+		}
+		z.OnDiagnostics = func() {
+			if showDiagnostics != nil {
+				showDiagnostics(z)
+			}
+		}
+		z.OnInfo = func(title, text string) {
+			if showInfo != nil {
+				showInfo(title, text)
+			}
+		}
 		z.OnNEXRun = func(msg string) { drawer.say(msg) }
 		z.OnRZX = func(msg string) { drawer.say(msg) }
 		z.OnNotice = func(msg string) { drawer.say(msg) }
 		z.NEXAskReset = func(path string) { dropC.openReset(path) }
 	}
 	hostHooks(zx)
+	zx.window().OnNotice = drawer.say // why the zoom and the border keys did nothing
 	if overlay != nil {
 		defer overlay.Unload()
 	}
@@ -387,10 +448,17 @@ func RunGUI(args []string) {
 	if bar != nil {
 		uiText = func() *zenuiraylib.BDFText { return bar.text } // the FPS counter is drawn in the chosen font
 		snapshotStartsPlaying = func() bool { return bar.snapshotPlay }
+		showDiagnostics = bar.showDiagnostics
+		showInfo = bar.showInfo
+		startupNotes = append(startupNotes, bar.warnings...)
+		dm := zx.window()
+		bar.popupShadow = func(box rl.Rectangle) { drawBoxShadowAt(dm.shadowTexture(), box, menuShadowStrength) } // the popup menus' drop shadow
 	}
 	if err != nil {
 		fmt.Printf("Warning: menu bar unavailable: %v\n", err)
+		startupNotes = append(startupNotes, fmt.Sprintf("The menu bar is not available: %v", err))
 	}
+	sayStartupNotes(startupNotes, bar, drawer)
 	if bar != nil {
 		defer bar.Unload()
 	}
@@ -420,7 +488,7 @@ func RunGUI(args []string) {
 	if bar != nil {
 		deck = newMachineDeck(zx, *model, zx.window(), audioDev, func(m string) *ZenZX {
 			nz := NewZenZX(backend)
-			nz.escape = escMode
+			nz.escape = bar.escapeNow()
 			nz.snapshotFormat = *snapshotFormat
 			nz.nonStandard = nsConfig
 			hostHooks(nz)
@@ -436,6 +504,15 @@ func RunGUI(args []string) {
 		deck.multiOn = func() bool { return bar.multiOn }
 		deck.stopAnimation = func() bool { return bar.stopAnimation }
 		bar.cardUse = deck.cardUse
+		openInDeck = deck.openSnapshot
+		deck.cardDirs = bar.cardDirsOf
+		deck.mountCards = bar.mountCards
+		deck.askCards = bar.askForCards
+		deck.opened = func(path string) { bar.noteRecentSnapshot(deck.Front(), path) }
+		deck.retype = func(z *ZenZX, m string) {
+			switchModelLive(z, m, bar.romDir)
+			bar.setCurrentModel(m)
+		}
 		bar.stopMachine = deck.stopFront
 		bar.startMachine = deck.start
 		bar.machineNumber = deck.numberOf
@@ -444,6 +521,10 @@ func RunGUI(args []string) {
 		bar.layoutState = func() (deckLayout, int) { return deck.tiling, len(deck.machines) }
 		bar.setLayout = deck.setLayout
 		bar.rotateMachines = deck.rotate
+		bar.saveMulti = deck.saveMulti
+		openMultiInHost = bar.loadMultiSnapshotAt
+		bar.loadMulti = deck.loadMultiWith
+		bar.multiCards = deck.multiCardNeeds
 		deck.focusFollow = *focusFollow
 		// Several machines: the mount drawer must act on whichever machine is
 		// focused (the deck's front) at the moment of a drop, not the one it was
@@ -521,6 +602,7 @@ func RunGUI(args []string) {
 			drawer.DrawToast(screenW, screenH)
 		}
 		if bar != nil {
+			bar.watchDropChoice(dropC, screenW, screenH)
 			bar.Draw(screenW, screenH)
 		}
 		// The drop-choice dialog is modal: draw it last so it sits over everything.
@@ -533,6 +615,7 @@ func RunGUI(args []string) {
 	if !*noAudio && zx.audio != nil {
 		if err := zx.audio.Initialize(); err != nil {
 			fmt.Printf("Warning: Audio initialization failed: %v\n", err)
+			zx.notice("The sound could not be started, so it is off: %v", err)
 			zx.audio.SetEnabled(false)
 		} else {
 			fmt.Println("Audio: Initialized")
@@ -938,6 +1021,13 @@ func RunGUI(args []string) {
 			fmt.Printf("Invalid -binaddr %q: %v\n", *binAddr, err)
 		} else {
 			start := int(addr)
+			page, perr := ParsePage(*binPage)
+			if perr != nil {
+				fmt.Printf("Invalid -binpage: %v\n", perr)
+				page = -1
+			} else if page >= 0 {
+				start = -1 // the page is not necessarily paged in at the address: no start unless -binstart says
+			}
 			if *binStart != "" {
 				if s, err := ParseAddrSigned(*binStart); err != nil {
 					fmt.Printf("Invalid -binstart %q: %v\n", *binStart, err)
@@ -946,7 +1036,13 @@ func RunGUI(args []string) {
 					start = s
 				}
 			}
-			if err := zx.LoadBIN(*binFile, addr, start); err != nil {
+			if page >= 0 {
+				if msg, err := zx.LoadBINAt(*binFile, page, addr, start); err != nil {
+					fmt.Printf("Error loading binary %s: %v\n", *binFile, err)
+				} else {
+					fmt.Printf("Loaded binary: %s: %s\n", *binFile, msg)
+				}
+			} else if err := zx.LoadBIN(*binFile, addr, start); err != nil {
 				fmt.Printf("Error loading binary %s: %v\n", *binFile, err)
 			} else if start >= 0 {
 				fmt.Printf("Loaded binary: %s at 0x%04X, PC=0x%04X\n", *binFile, addr, start)
@@ -967,18 +1063,18 @@ func RunGUI(args []string) {
 
 	fmt.Printf("ZenZX Started - %s mode\n", *model)
 	fmt.Println("Controls:")
-	fmt.Println("  F1: Reset | F2: Pause | F3: Status | PgUp/PgDn: Scale")
-	fmt.Println("  F9: Quick Save | F10: Quick Load | F11: Save Snapshot | F12: Load info (Shift+F12: diagnostics)")
+	fmt.Println("  F1: Reset | F2: Pause | F3: Diagnostics | PgUp/PgDn: Scale")
+	fmt.Println("  F9: Quick Save | F10: Quick Load | F11: Full screen (Shift+F11: Save Snapshot) | F12: Snapshot info (Shift+F12: diagnostics) | Alt+I: Tape info")
 	fmt.Println("  Alt+F: Toggle FPS | Alt+B: Toggle Border | Alt+M: Machines")
 	fmt.Println("  Alt+1..9: focus that machine (with -multi)")
 	if zx.tape != nil {
 		fmt.Println("\nTape Controls:")
-		fmt.Println("  Alt+P: Play/Stop | Alt+R: Rewind | Alt+T: Toggle mode | Alt+I: Info")
+		fmt.Println("  Alt+P: Play/Stop | Alt+R: Rewind | Alt+T: Toggle mode | Alt+I: Info (window)")
 	}
 
 	if zx.isPlus3 && zx.io.hasFDC {
 		fmt.Println("\nDisk Operations:")
-		fmt.Println("  F4: Save disk | F5: Insert blank | F6: Eject | F7: Load info | F8: Save as")
+		fmt.Println("  F4: Save disk | F5: Insert blank | F6: Eject | F7: How to load | F8: Save as")
 	}
 	fmt.Printf("\nSnapshot format: %s (use -format flag to change)\n", *snapshotFormat)
 	fmt.Printf("Audio backend: %s (use -audiobackend flag to change)\n", *audioBackend)
@@ -1087,6 +1183,12 @@ func RunGUI(args []string) {
 	if bar != nil {
 		bar.openFiles = func(files []string) { routeFiles(files, false, -1) }
 		bar.quit = func() { quitRequested = true }
+		if escOverride {
+			bar.escapeFlag = &escMode // for this session only: the file keeps what the window saved
+		}
+		if mdOverride {
+			bar.microdigitalFlag = &mdPortuguese // likewise
+		}
 	}
 
 	for {
@@ -1106,15 +1208,19 @@ func RunGUI(args []string) {
 		}
 		if rl.IsKeyPressed(rl.KeyEscape) && !zx.uiOwnsEscape {
 			quit := false
+			escNow := zx.escape
+			if bar != nil {
+				escNow = bar.escapeNow()
+			}
 			switch {
-			case hud != nil && hud.Active() && zx.escape != escapeOff:
+			case hud != nil && hud.Active() && escNow != escapeOff:
 				// Escape closes an open HUD first, whatever the quit mode.
 				hud.Close()
-			case zx.escape == escapeOn:
+			case escNow == escapeOn:
 				quit = true
-			case zx.escape == escapeQuery:
+			case escNow == escapeQuery:
 				quit = confirmQuit(zx)
-			case zx.escape == escapeClose, zx.escape == escapeOff:
+			case escNow == escapeClose, escNow == escapeOff:
 				// Nothing open to close, and these modes never quit.
 			}
 			if quit {
@@ -1219,6 +1325,8 @@ func RunGUI(args []string) {
 		guiHasInput := (overlay != nil && overlay.Active()) || (bar != nil && bar.Active()) || (deck != nil && deck.Active()) || (deck != nil && deck.Stopping()) || (hud != nil && hud.Active()) || dropC.Active()
 		if !guiHasInput && !zx.stopped {
 			zx.HandleInput()
+		} else if !guiHasInput && rl.IsKeyPressed(rl.KeyF10) {
+			zx.handleQuickLoad() // no machine is running: Quick Load makes the one the snapshot is of
 		}
 		// RunTurboAwareFrame owns the whole Turbo-mode lifecycle (fast-path
 		// memory/IO snapshot-in, per-block sync, snapshot-out once the tape
@@ -1284,7 +1392,9 @@ func RunGUI(args []string) {
 
 		frameNo++
 		if !zx.stopped {
-			zx.io.FDCTick(frameNo, autoCommitDebounceFrames)
+			if w := zx.io.FDCTick(frameNo, autoCommitDebounceFrames); w != "" {
+				zx.notice("%s", w)
+			}
 		}
 
 		// The machines behind the front one run on, and the dock may bring

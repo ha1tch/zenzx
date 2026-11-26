@@ -127,7 +127,7 @@ func (d *demoOverlay) Update(screenW, screenH int) {
 		}
 	case demoOverlayNotification:
 		const msg = "Bogus notification!"
-		d.toast.Update(rl.GetFrameTime(), 1, msg, screenW)
+		d.toast.Update(rl.GetFrameTime(), 1, msg, screenW, screenH)
 		if !d.toast.Active() {
 			d.kind = demoOverlayNone
 		}

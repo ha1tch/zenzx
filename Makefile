@@ -54,7 +54,7 @@ build-gui-purego:
 ## build-headless: build the headless binary (always cgo-free)
 .PHONY: build-headless
 build-headless:
-	bash build_headless.sh $(DIST)/zenzx-headless
+	sh build_headless.sh $(DIST)/zenzx-headless
 
 ## cross: verify cross-compilation for every release target (to /dev/null -- see `make release` for real artifacts)
 .PHONY: cross
@@ -105,7 +105,7 @@ vet:
 .PHONY: smoke
 smoke: build-headless
 	cp $(DIST)/zenzx-headless .
-	bash smoke_headless.sh
+	sh smoke_headless.sh
 	rm -f zenzx-headless
 
 # =============================================================================
@@ -218,6 +218,16 @@ release-resume:
 .PHONY: testing-md
 testing-md:
 	python3 scripts/gen_testing_md.py
+
+## manual-pdf: the manual as dist/zenzx-<version>-manual.pdf (needs: pip install markdown, and Chrome or Chromium)
+.PHONY: manual-pdf
+manual-pdf:
+	python3 tools/build_manual.py --version $(VERSION) --out dist
+
+## examples-zip: the examples as dist/zenzx-<version>-examples.zip
+.PHONY: examples-zip
+examples-zip:
+	python3 tools/build_examples.py --version $(VERSION) --out dist
 
 # =============================================================================
 # Misc

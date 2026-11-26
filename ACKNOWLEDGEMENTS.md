@@ -38,6 +38,14 @@ have made the journey better, and I'm grateful to them.
   Spectrums; his favourite is his 128K "toastrack", though it is his Omni that we
   see more often on his Twitch live casts, since this little modern wonder is more
   convenient for streaming. His help cannot be overestimated.
+- **Rodolfo Guerra** — he has helped with the internationalisation of ZenZX and with
+  testing it, and his knowledge of the Spectrum is vast, above all of the Brazilian
+  and Uruguayan clones by Microdigital, the TK90X and the TK95: he is the author of the
+  book *Generación TK90X*, the history of the TK90X, built on some forty years of research
+  and the testimony of collaborators from Brazil, Spain and Uruguay. He supplied the package of all the historical Microdigital
+  ROMs, the originals, and the five of them that ZenZX ships in custom-roms/Microdigital/ are byte
+  for byte his. He also has a [website](https://sites.google.com/view/rodolfoguerra)
+  where he publishes his modified ROMs, free for anyone to use. Many thanks, Rodolfo.
 
 Thanks, too, to the wider #retrocomputing and ZX Spectrum lot on
 [oldbytes.space](https://oldbytes.space) and across the Fediverse — a good-natured,

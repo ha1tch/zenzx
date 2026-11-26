@@ -9,7 +9,7 @@ Updated: 2026-11-23
 > Item 4 is one rule and not two: the physical address is `-rom-bank` x 16 KiB + `-rom-at`, so
 > `-rom-at` needs no separate form, and the base of `-rom-bin` is the banks the file touches,
 > whole, and not the 256 KiB (a zero fill over all of it would clear NextZXOS's ROMs and the
-> DivMMC's). Item 6 is a line in Show Status (`NextROMLive`), not yet in the debugger's views or
+> DivMMC's). Item 6 was a line in Show Status (`NextROMLive`); Show Status is gone, and the lines are in the Diagnostics report (F3, or Snapshot > Run Diagnostics), not yet in the debugger's views or
 > the status bar. Item 7, the custom ROM menu on a running Next, is not touched. The boot cache
 > key carries one entry per patch in the field it already had. Guard G-16 is the real-firmware
 > test. Everything below the line is as it was written.

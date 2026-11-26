@@ -93,6 +93,7 @@ func (b *appMenuBar) drawBar(screenW, screenH int) int {
 	if k := b.scaleOfBar(); k > 1 {
 		r = &barScaleRenderer{Renderer: b.renderer, k: k, inBar: true}
 	}
+	r = b.withPopupShadow(r, true, 0)
 	// The rainbow of the Spectrum theme is as tall as the strip and keeps its shape; the logo of
 	// the other themes is made from the strip's height by zenui itself.
 	zenui.RainbowScanlines, zenui.RainbowBandWidth = b.stripH(), rainbowBandFor(b.stripH())

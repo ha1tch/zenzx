@@ -388,7 +388,7 @@ jobs:
   installers:
     # The .deb, .msi and .dmg of this release, made from the programs published above and attached
     # to the release (installers.yml). It runs after the release is published, and a failure in
-    # it leaves the release, the page and the deployment as they are.
+    # it leaves the release as it is; the page is made without the installers.
     needs: release
     permissions:
       contents: write
@@ -399,11 +399,22 @@ jobs:
   windows7:
     # The Windows 7 program and its .msi, built with a patched Go toolchain (windows7.yml, T-95) and
     # attached to the release. It runs after the release is published, and a failure in it leaves
-    # the release, the page and the deployment as they are.
+    # the release as it is; the page is made without the Windows 7 files.
     needs: release
     permissions:
       contents: write
     uses: ./.github/workflows/windows7.yml
+    with:
+      tag: ${{ github.ref_name }}
+
+  documents:
+    # The manual as a PDF and the examples as a zip, attached to the release beside the programs
+    # (documents.yml). It runs after the release is published, and a failure in it leaves the
+    # release as it is; the page is made without them.
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/documents.yml
     with:
       tag: ${{ github.ref_name }}
 
@@ -415,10 +426,22 @@ jobs:
     # second build -- and only once all of them have built, so the page never has a
     # platform missing or a build that no release has. tools/build_site.py stops, and
     # nothing is deployed, if a platform is absent or a program is not one.
+    #
+    # It also lists the installers, the Windows 7 files, the manual (PDF) and the examples, with
+    # links to them on the release, so it waits for the three jobs that make them. They are an
+    # addition: when one failed (or did not run), its files are not on the release, the page
+    # leaves them out, and it is deployed all the same.
     needs:
       - gui-binaries-cross
       - gui-binaries-linux-amd64
       - gui-binaries-linux-arm64
+      - release
+      - installers
+      - windows7
+      - documents
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.gui-binaries-cross.result == 'success' && needs.gui-binaries-linux-amd64.result == 'success' && needs.gui-binaries-linux-arm64.result == 'success' }}
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -430,12 +453,23 @@ jobs:
           pattern: zenzx-*
           merge-multiple: true
 
+      - name: The installers, the Windows 7 files, the manual and the examples of the release, if it has them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir extras
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir extras \
+              --pattern '*.deb' --pattern '*.msi' --pattern '*.dmg' --pattern '*windows7*' \
+              --pattern '*-manual.pdf' --pattern '*-examples.zip' \
+              || echo "gh release download stopped with status $?: the page goes without them"
+          ls -l extras
+
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
       - name: Build the page
-        run: python3 tools/build_site.py --version "${GITHUB_REF_NAME#v}" --archives dist --out zenzx_site
+        run: python3 tools/build_site.py --version "${GITHUB_REF_NAME#v}" --archives dist --extras extras --out zenzx_site
 
       - name: Upload the page
         uses: actions/upload-pages-artifact@v5

@@ -1,6 +1,6 @@
 # Installers
 
-Updated: 2026-11-25 · Status: built, not yet run in CI · Register: T-93, T-94, T-95
+Updated: 2026-11-25 · Status: built; run in the v0.50.0 release (2026-11-25), not yet installed on a real machine · Register: T-93, T-94, T-95
 
 A person who does not want a bare executable gets a normal installer: a `.deb` for Linux, a `.msi`
 for Windows and a `.dmg` for macOS. The programs stay on the page and in the release as they are

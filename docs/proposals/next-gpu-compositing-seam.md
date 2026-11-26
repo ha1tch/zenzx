@@ -1,6 +1,13 @@
 # Next GPU compositing seam — proposal
 
-Updated: 2026-09-15
+Updated: 2026-11-25
+
+> **Reconciliation, 2026-11-25.** Built as proposed; T-30 and T-31 stay at ◐ in the register for what
+> remains. The colour is resolved in one place (`resolveNextPixelIndex`, `layer2.go`), which Layer 2
+> and the sprites share; `io.nextPaletteVersion` is the counter the GPU caches compare against
+> (`videorender_gpu.go`), and the palette registers T-31 added bump it as well as NR 0x70
+> (`nextreg.go`). The text below is the 2026-09-15 intent and is not rewritten: "before either
+> wave starts" was true when it was written.
 
 Design intent for how T-30 (hardware sprites, wave 7) and T-31 (Next
 palette, wave 8) should be built so neither duplicates or has to unwind

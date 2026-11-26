@@ -3,6 +3,7 @@ package settingsconfig
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -175,7 +176,7 @@ func TestSaveThenLoadRoundTrips(t *testing.T) {
 		t.Fatal("Load should have used the just-saved disk file")
 	}
 	got := res.Settings
-	if *got != *want {
+	if !reflect.DeepEqual(*got, *want) {
 		t.Errorf("round-tripped settings = %+v, want %+v", got, want)
 	}
 }

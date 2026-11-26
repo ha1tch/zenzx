@@ -530,6 +530,12 @@ func (s *Scheduler) doSnapshot(zx *ZenZX, a Action) error {
 		}
 	}
 	if err := zx.LoadSnapshotFormat(path, format); err != nil {
+		if _, ok := snapshotMismatchOf(err); ok {
+			// a script runs in the machine it was started with: say which one the snapshot needs
+			if sm, rerr := readSnapshotMachine(path, format); rerr == nil {
+				return fmt.Errorf("%w: start the run with -model=%s", err, sm.Model)
+			}
+		}
 		return err
 	}
 	s.logf("script: frame %d -> snapshot %s (%s)", s.frame, path, strings.ToUpper(format))
@@ -560,10 +566,11 @@ func (s *Scheduler) doSnapshotSave(zx *ZenZX, a Action) error {
 	return nil
 }
 
-// loadAddr defaults to 0x8000; startAddr defaults to the load address.
+// loadAddr defaults to 0x8000; startAddr defaults to the load address. A fourth word names a RAM
+// page (a bank, or a Next's 8K page) to load into instead of the memory as the CPU sees it.
 func (s *Scheduler) doBin(zx *ZenZX, a Action) error {
 	if len(a.Args) < 1 {
-		return fmt.Errorf("usage: bin <path> [loadAddr] [startAddr]")
+		return fmt.Errorf("usage: bin <path> [loadAddr] [startAddr] [page]")
 	}
 	path := a.Args[0]
 
@@ -583,6 +590,23 @@ func (s *Scheduler) doBin(zx *ZenZX, a Action) error {
 			return fmt.Errorf("invalid start address %q: %v", a.Args[2], err)
 		}
 		start = v
+	}
+
+	// A page names the RAM page to put it in, as -binpage does, and loadAddr is then the address in
+	// the page: it is the fourth word, so a start is given before it (-1 for none).
+	if len(a.Args) >= 4 {
+		page, err := ParsePage(a.Args[3])
+		if err != nil {
+			return fmt.Errorf("invalid page: %v", err)
+		}
+		if page >= 0 {
+			msg, err := zx.LoadBINAt(path, page, addr, start)
+			if err != nil {
+				return err
+			}
+			s.logf("script: frame %d -> bin %s: %s", s.frame, path, msg)
+			return nil
+		}
 	}
 
 	if err := zx.LoadBIN(path, addr, start); err != nil {

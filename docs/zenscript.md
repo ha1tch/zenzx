@@ -82,9 +82,9 @@ partitions.
 
 | Verb | Arguments | Description |
 |------|-----------|-------------|
-| `snapshot` | `<path> [format]` | Load a snapshot (`.sna`, `.z80`, `.szx`, `.zxs`), or start playing a recording (`.rzx`, on the model it was made on). Format defaults to auto-detection. |
+| `snapshot` | `<path> [format]` | Load a snapshot (`.sna`, `.z80`, `.szx`, `.zxs`) into the machine the run has, which it must be of: one of another kind is refused with the `-model` that starts the right one. Or start playing a recording (`.rzx`, on the model it was made on). Format defaults to auto-detection. |
 | `snapshot-save` | `<path> [format]` | Save the current machine state to a snapshot. Format defaults to the path extension, or `zxs`. `.szx` and `.rzx` cannot be saved. |
-| `bin` | `<path> [loadAddr] [startAddr]` | Load a raw binary blob into memory. `loadAddr` defaults to `0x8000`; `startAddr` defaults to the load address. Addresses accept `0x` hex or decimal. |
+| `bin` | `<path> [loadAddr] [startAddr] [page]` | Load a raw binary blob into memory. `loadAddr` defaults to `0x8000`; `startAddr` defaults to the load address. Addresses accept `0x` hex or decimal. A file that would land in the ROM is refused. `page` names a RAM page to load into, as `-binpage` does (a bank `0`-`7` on a 128K, +2, +2A or +3, an 8K page `0`-`223` on a Next): `loadAddr` is then the address in the page, and `startAddr` comes before it, `-1` for none: `0 bin patch.bin 0x0010 -1 6`. |
 | `sym` | `<path>` | Load a pasmo/zenas-format `.sym` file, mapping label names to addresses. Loading a second file replaces the table entirely. `wait-mem` and `expect-mem` resolve symbol names against the most recently loaded table; without one loaded, they accept only literal addresses. |
 | `scr` | `<path>` | Load a raw `.scr` screen dump onto the display. |
 | `tape-play` | none | Start tape playback (a tape must be loaded). |

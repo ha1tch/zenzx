@@ -75,6 +75,11 @@ func snapshotFormatWord(zx *ZenZX) string {
 	return strings.ToUpper(zx.snapshotFormat) + " (the -format option)"
 }
 
+// showDiagnostics opens the report in a window: Snapshot > Run Diagnostics, and F3.
+func (b *appMenuBar) showDiagnostics(zx *ZenZX) {
+	b.showInfo("DIAGNOSTICS", diagnosticsText(zx, b.currentModel()))
+}
+
 // diagnosticsText is the report. model is the model the menu has ticked ("" when it is none
 // of the menu's).
 func diagnosticsText(zx *ZenZX, model string) string {
@@ -125,12 +130,22 @@ func diagnosticsText(zx *ZenZX, model string) string {
 
 	lines = append(lines, "", "## Memory", "")
 	switch {
+	case mem.isNext:
+		lines = append(lines, infoLine("Layout", "Next: ROMs in SRAM, 8K MMU slots, 128K paging"))
 	case mem.isPlus3:
 		lines = append(lines, infoLine("Layout", "+3: four ROMs, eight RAM banks, special paging"))
 	case mem.is128K:
 		lines = append(lines, infoLine("Layout", "128K: two ROMs, eight RAM banks"))
 	default:
 		lines = append(lines, infoLine("Layout", "48K: one ROM, 48K of RAM, no banking"))
+	}
+	if what, ok := zx.nextROMWhat(); ok {
+		// which ROM the CPU reads, and the registers that say why: a patch to the wrong bank looks
+		// like a patch that does nothing, and this is how to tell
+		lines = append(lines,
+			infoLine("ROM live", what),
+			infoLine("ROM lock", fmt.Sprintf("%d (NextREG 0x8C is %02X)", (mem.nextAltROM>>4)&0x03, mem.nextAltROM)),
+			infoLine("ROM by ports", fmt.Sprintf("%d", mem.romBank)))
 	}
 	if mem.is128K || mem.isPlus3 {
 		lines = append(lines,
@@ -144,6 +159,8 @@ func diagnosticsText(zx *ZenZX, model string) string {
 			lines = append(lines, infoLine("Port 1FFD", fmt.Sprintf("%02X, special mode %d", mem.port1FFD, mem.specialMode)))
 		}
 	}
+
+	lines = append(lines, nextDiagnosticsLines(zx)...) // none unless this is a Next (diagnostics_next_gui.go)
 
 	lines = append(lines, "", "## Stack", "",
 		infoLine("SP", fmt.Sprintf("%04X, in %s", cpu.SP, diagWhere(cpu.SP))), "")
@@ -223,8 +240,8 @@ func diagnosticsText(zx *ZenZX, model string) string {
 		ok := mem.ramBankLow <= 7 && mem.ramBankHigh <= 7 && mem.ramBankTop <= 7 && mem.screenBank <= 7
 		lines = append(lines, diagCheck("Banks in range", ok, "a bank number is above 7"))
 	}
-	if st, err := os.Stat("quicksave.zxs"); err == nil && st.Size() == 0 {
-		lines = append(lines, infoLine("Quick save file", "CHECK: quicksave.zxs is empty"))
+	if st, err := os.Stat(snapshotPath(quickSaveName("zxs"))); err == nil && st.Size() == 0 {
+		lines = append(lines, infoLine("Quick save file", "CHECK: "+snapshotPath(quickSaveName("zxs"))+" is empty"))
 	}
 	return strings.Join(lines, "\n")
 }

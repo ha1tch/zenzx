@@ -48,6 +48,11 @@
         "name": "sync"
       },
       {
+        "name": "build-number",
+        "resumable": true,
+        "run": "sh ./bump_build.sh"
+      },
+      {
         "always": true,
         "name": "changelog",
         "run": "sh ./check_changelog.sh"

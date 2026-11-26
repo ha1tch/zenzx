@@ -139,6 +139,7 @@ func (d *machineDeck) revive(model string) int {
 		nz.audio.SetDevice(d.dev)
 		if err := nz.audio.Initialize(); err != nil {
 			sayf("Warning: Audio initialization failed: %v\n", err)
+			nz.notice("The sound could not be started for this machine: %v", err)
 		}
 	}
 	d.applyLayout()

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || cat VERSION 2>/dev/null || echo dev)
 mkdir -p build
 
@@ -21,7 +21,7 @@ docker run --rm --platform linux/amd64 -v $(pwd):/app -w /app golang:1.25 \
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo "✅ Compilación exitosa!"
+    echo "Compilación exitosa."
     echo ""
     echo "Detalles del binario:"
     ls -lh zenzx_linux
@@ -33,6 +33,6 @@ if [ $? -eq 0 ]; then
     du -h zenzx_linux
 else
     echo ""
-    echo "❌ Error en la compilación"
+    echo "Error en la compilación."
     exit 1
 fi

@@ -913,6 +913,10 @@ func (m *SpectrumMemory) SetROMBank(bank int, data []byte) error {
 }
 
 func (m *SpectrumMemory) LoadROM(data []byte) {
+	// A ROM makes a classic machine. A Next sets itself up after loading its ROM (EnableNext), so
+	// what is left over from one that was running is cleared here: a live switch from the Next to
+	// another model must not keep its 8K pages.
+	m.isNext = false
 	if len(data) == 16384 {
 		// 48K ROM
 		copy(m.rom[0][:], data)

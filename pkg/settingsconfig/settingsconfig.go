@@ -63,6 +63,60 @@ type Settings struct {
 	// "big" (under them, with the title written large on its label) or "hidden". Optional
 	// like TapeDeck, and "big" by default.
 	TapeCassette string `json:"tapeCassette,omitempty"`
+	// Escape is what the Escape key does when no menu or window is open to be closed by it --
+	// "off" (nothing: it never quits the program), "close" (it closes the debugger too, and
+	// never quits), "query" (a second Escape within two seconds quits) or "on" (it quits at
+	// once). Optional like TapeDeck, and "off" by default. The -escape switch overrides it for
+	// one session.
+	Escape string `json:"escape,omitempty"`
+	// Microdigital is the position of the language switch of the Microdigital clones (the
+	// TK90X and TK95) -- "spanish" or "portuguese". On those machines a diode, fitted or not,
+	// set the level of bit 7 of port 0xFE, and some of their ROMs read it before they show a
+	// message. Optional like Escape, and "spanish" by default (the bit reads high, as on every
+	// other Spectrum). The -language-switch switch overrides it for one session.
+	Microdigital string `json:"microdigital,omitempty"`
+	// RecentSnapshots are the snapshots that were named (saved with Snapshot > Save As, or loaded
+	// with Load Snapshot), newest first, for the Recent Snapshots menu. The ones Save Timestamped
+	// and Quick Save make are not in it: they have menus of their own. Optional like Escape.
+	RecentSnapshots []string `json:"recentSnapshots,omitempty"`
+}
+
+// RecentSnapshotPaths is RecentSnapshots, a copy that can be kept.
+func (s *Settings) RecentSnapshotPaths() []string {
+	if s == nil {
+		return nil
+	}
+	return append([]string(nil), s.RecentSnapshots...)
+}
+
+// MicrodigitalWords are the positions of the language switch, in the order the Preferences
+// window offers them.
+var MicrodigitalWords = []string{"spanish", "portuguese"}
+
+// MicrodigitalWord is Microdigital with its default, "spanish": the switch is left alone unless
+// it was turned to Portuguese. A word that is not one of MicrodigitalWords reads as the default.
+func (s *Settings) MicrodigitalWord() string {
+	if s != nil && s.Microdigital == "portuguese" {
+		return "portuguese"
+	}
+	return "spanish"
+}
+
+// EscapeWords are the words Escape can be, in the order the Preferences window offers them.
+var EscapeWords = []string{"off", "close", "query", "on"}
+
+// EscapeWord is Escape with its default, "off": the Escape key is disabled unless it was
+// turned on. A word that is not one of EscapeWords reads as the default as well.
+func (s *Settings) EscapeWord() string {
+	if s == nil {
+		return "off"
+	}
+	for _, w := range EscapeWords {
+		if s.Escape == w {
+			return w
+		}
+	}
+	return "off"
 }
 
 // TapeCassetteWord is TapeCassette with its default, "big".

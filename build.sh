@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # build.sh - Build the native GUI ZenZX binary (raylib + oto).
 #
 # Uses the Go package build so the file set is determined by build tags and

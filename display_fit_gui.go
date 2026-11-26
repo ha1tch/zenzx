@@ -64,6 +64,28 @@ func (dm *DisplayManager) debugWindow(canvas bool) {
 // fixed bar, or the bar as it is drawn when that is taller (barOverlay).
 func (dm *DisplayManager) frameTop() int { return max(dm.reservedTopHeight, dm.barOverlay) }
 
+// windowDrawable is drawableSize, a variable so that a test can say what the window is.
+var windowDrawable = drawableSize
+
+// inWindow takes a rectangle in the display's own window, the canvas's coordinates (bar band
+// included), to where it is in the real window: the same while the window is the size the display
+// has, and while the picture is in a canvas (windowKept), moved and scaled as the canvas is by
+// endPictureCanvas. A tiled layout places its own tiles in the window and is not moved.
+func (dm *DisplayManager) inWindow(r rl.Rectangle) rl.Rectangle {
+	if !dm.windowKept || dm.tiles != nil {
+		return r
+	}
+	w, h := windowDrawable()
+	p := centrePicture(w, h, dm.frameTop(), dm.currentWidth, dm.currentHeight-dm.reservedTopHeight)
+	return placeInPicture(r, p, float32(dm.reservedTopHeight))
+}
+
+// placeInPicture moves a rectangle of the canvas to where the canvas's picture p has it in the
+// window: the canvas's top band of band units is not drawn, so the picture starts below it.
+func placeInPicture(r rl.Rectangle, p pictureRect, band float32) rl.Rectangle {
+	return rl.Rectangle{X: p.X + r.X*p.Scale, Y: p.Y + (r.Y-band)*p.Scale, Width: r.Width * p.Scale, Height: r.Height * p.Scale}
+}
+
 // pictureNativeSize is the picture's size at a zoom of one: what the window is a whole zoom of.
 func (dm *DisplayManager) pictureNativeSize(showBorder bool) (w, h int) {
 	if showBorder {

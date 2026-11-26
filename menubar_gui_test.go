@@ -95,10 +95,10 @@ func TestNewAppMenuBarActionCounts(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	// Machine: Reset, Pause or Play, Stop only -- model switching now happens
+	// Machine: the title, Reset, Pause or Play, Stop only -- model switching now happens
 	// via the Standard/Spanish/Timex submenus (dispatched separately,
 	// not through b.actions), not one flat action per model.
-	wantMachine := 3
+	wantMachine := 4
 	if got := len(b.actions[barMachine]); got != wantMachine {
 		t.Errorf("len(actions[barMachine]) = %d, want %d", got, wantMachine)
 	}
@@ -181,14 +181,15 @@ func TestThemeAndFontMenusPopulated(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	if got := len(b.actions[barTheme]); got != len(zenui.Themes) {
-		t.Errorf("len(actions[barTheme]) = %d, want %d (one per zenui.Themes entry)", got, len(zenui.Themes))
+	// one per row of Theme's dropdown: a title, the themes, a separator, a title, and Font
+	if got, want := len(b.actions[barTheme]), len(zenui.Themes)+4; got != want {
+		t.Errorf("len(actions[barTheme]) = %d, want %d (one per zenui.Themes entry, and one for each title, separator and the Font row)", got, want)
 	}
-	// +1 for the separator between the font names and the zoom levels
-	// (a placeholder action, never actually invoked).
-	wantFontActions := len(fonts.All) + 1 + len(zoomLevels)
+	// +3 for the title of the fonts, the separator between the font names and the zoom levels, and
+	// the title of the zoom levels (placeholder actions, never actually invoked).
+	wantFontActions := len(fonts.All) + 3 + len(zoomLevels)
 	if got := len(b.fontActions); got != wantFontActions {
-		t.Errorf("len(fontActions) = %d, want %d (one per fonts.All entry, one separator placeholder, one per zoomLevels entry)", got, wantFontActions)
+		t.Errorf("len(fontActions) = %d, want %d (one per fonts.All entry, three title and separator placeholders, one per zoomLevels entry)", got, wantFontActions)
 	}
 }
 
@@ -448,11 +449,10 @@ func TestFontIsASubmenuOfThemeNotATopLevelLabel(t *testing.T) {
 }
 
 func TestThemeFontItemIndexMatchesDispatch(t *testing.T) {
-	// The dispatch in Update computes len(zenui.Themes)+1 as Font's own
-	// index within Theme's items -- confirm this actually matches
-	// where "Font" really landed at construction (themes, then a
-	// separator, then Font), so a future change to either side can't
-	// silently drift out of sync.
+	// The dispatch in Update reads themeFontAt as Font's own index within Theme's
+	// items -- confirm this actually matches where "Font" really landed at
+	// construction (a title, the themes, a separator, a title, then Font), so
+	// a future change to either side can't silently drift out of sync.
 	b, err := newAppMenuBar(testZX(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
 		t.Fatalf("newAppMenuBar: %v", err)
@@ -460,15 +460,21 @@ func TestThemeFontItemIndexMatchesDispatch(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barTheme)
-	wantIdx := len(zenui.Themes) + 1
+	wantIdx := b.themeFontAt
+	if wantIdx != len(zenui.Themes)+3 {
+		t.Errorf("themeFontAt = %d, want %d (after the title, the themes, a separator and a title)", wantIdx, len(zenui.Themes)+3)
+	}
 	if wantIdx >= len(items) {
 		t.Fatalf("computed Font index %d is out of range (len(items)=%d)", wantIdx, len(items))
 	}
 	if items[wantIdx].Label != "Font" {
-		t.Errorf("items[%d].Label = %q, want \"Font\" (len(zenui.Themes)+1 should land exactly on it)", wantIdx, items[wantIdx].Label)
+		t.Errorf("items[%d].Label = %q, want \"Font\" (themeFontAt should land exactly on it)", wantIdx, items[wantIdx].Label)
 	}
-	if !items[len(zenui.Themes)].Separator {
-		t.Errorf("items[%d] should be the separator between the theme choices and Font", len(zenui.Themes))
+	if !items[len(zenui.Themes)+1].Separator || !items[len(zenui.Themes)+2].Title {
+		t.Errorf("items[%d] and [%d] should be the separator and the title between the theme choices and Font", len(zenui.Themes)+1, len(zenui.Themes)+2)
+	}
+	if !items[0].Title || items[0].Label != "Theme" {
+		t.Errorf("items[0] is %+v, want the title Theme", items[0])
 	}
 }
 
@@ -492,7 +498,7 @@ func TestFontActionsSelectsCorrectFont(t *testing.T) {
 	if idx < 0 {
 		t.Fatal("fonts.All does not contain NameTomThumb")
 	}
-	b.fontActions[idx](zx)
+	b.fontActions[idx+1](zx) // after the title of the fonts
 	if *b.fontChecked[fonts.NameTomThumb] != true {
 		t.Error("fontChecked[TomThumb] should be true after selecting it via fontActions")
 	}
@@ -506,12 +512,18 @@ func TestTapeMenuHasSeparatorBetweenPlaybackAndSettings(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barTape)
-	wantLabels := []string{"Play / Stop", "Rewind", "", "Accurate/Fast Mode", "Show Info"}
+	wantLabels := []string{"Playback", "Play", "Stop", "Rewind", "", "Mode", "Accurate", "Fast", "", "Information", "Show Info"}
 	if len(items) != len(wantLabels) {
 		t.Fatalf("len(items) = %d, want %d", len(items), len(wantLabels))
 	}
-	if !items[2].Separator {
-		t.Error("items[2] should be the separator between playback and settings/info")
+	if !items[4].Separator {
+		t.Error("items[4] should be the separator between playback and settings/info")
+	}
+	if !items[8].Separator {
+		t.Error("items[8] should be the separator between the mode and the information")
+	}
+	if !items[0].Title || !items[5].Title || !items[9].Title {
+		t.Error("items[0], items[5] and items[9] should be the titles of the three sections")
 	}
 	for i, want := range wantLabels {
 		if want == "" {
@@ -586,12 +598,15 @@ func TestSnapshotMenuGrouping(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barSnapshot)
-	wantLabels := []string{"Quick Save", "Quick Load", "Save Timestamped", "Save As", "", "Snapshot Info", "Run Diagnostics"}
+	wantLabels := []string{"Save and Load", "Quick Save", "Quick Load", "Save Timestamped", "Load Timestamped", "Save As", "Load Snapshot...", "Recent Snapshots", "Save Multisnapshot...", "Load Multisnapshot...", "Manage Snapshots...", "Load Binary...", "", "Information", "Snapshot Info", "Run Diagnostics"}
 	if len(items) != len(wantLabels) {
 		t.Fatalf("len(items) = %d, want %d", len(items), len(wantLabels))
 	}
-	if !items[4].Separator {
-		t.Error("items[4] should be the separator between the save operations and info/diagnostics")
+	if !items[12].Separator {
+		t.Error("items[12] should be the separator between the save operations and info/diagnostics")
+	}
+	if !items[0].Title || !items[13].Title {
+		t.Error("items[0] and items[13] should be the titles of the two sections")
 	}
 	for i, want := range wantLabels {
 		if want == "" {

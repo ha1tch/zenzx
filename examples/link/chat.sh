@@ -17,18 +17,20 @@ set -e
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 root=$(CDPATH= cd -- "$here/../.." && pwd)
+examples_dir=$(CDPATH= cd -- "$here/.." && pwd)
+
+# Python runs the host: find it, or offer to fetch it, before a window opens.
+. "$examples_dir/tools/findpy.sh"
+[ -n "$PY" ] || exit 1
 
 # Look for zenzx: $ZENZX, then dist/ (the Makefile's output), the repo root,
-# then the PATH.
+# then the PATH. When there is none, launch.py offers to download it.
 zenzx=""
 for cand in "$ZENZX" "$root/dist/zenzx" "$root/zenzx"; do
     if [ -n "$cand" ] && [ -x "$cand" ]; then zenzx="$cand"; break; fi
 done
 [ -n "$zenzx" ] || zenzx=$(command -v zenzx 2>/dev/null) || {
-    echo "chat.sh: cannot find the zenzx GUI binary." >&2
-    echo "  Build it with 'make build' (it lands in dist/zenzx)," >&2
-    echo "  or set ZENZX=/path/to/zenzx." >&2
-    exit 1
+    exec "$PY" "$examples_dir/launch.py" chat "$@"
 }
 
 ports="16384,16385,16386,16387"
@@ -49,4 +51,4 @@ trap 'kill $gui 2>/dev/null' INT TERM EXIT
 # and each other's are printed here too, in colour.
 sleep 10
 echo "Host ready. Type a line and press Enter to chat; Ctrl-D to leave."
-python3 "$here/chatroom.py" 16384 16385 16386 16387
+"$PY" "$here/chatroom.py" 16384 16385 16386 16387

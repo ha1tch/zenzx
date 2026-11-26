@@ -37,8 +37,21 @@ and run.
   (stage data while existing code runs), or any address to enter elsewhere.
 
 Loading goes through the normal memory path, so RAM banking and the screen
-mirror are honoured and writes into ROM are ignored. The address is bank-aware:
-configure paging (e.g. via `-model`) before relying on a specific bank.
+mirror are honoured. The ROM is not written to, so a file that would land in it (or
+where no RAM is paged in) is refused, with the first address that is not RAM, and
+nothing is written. The address is bank-aware: configure paging (e.g. via `-model`)
+before relying on a specific bank.
+
+To name the RAM page instead of relying on what is paged in, give `-binpage`: a
+bank `0`-`7` on a 128K, +2, +2A or +3, an 8K page `0`-`223` on a Next (bank N is
+pages 2N and 2N+1). `-binaddr` is then the address *in the page*, a load that is
+longer than the page goes on into the next, and PC is left alone unless
+`-binstart` says. A 48K and a TS2068 have no pages and refuse it, and so does a
+page that is not there, or a load that would pass the last page; a page is always
+RAM, so it is the way to write what plain `-bin` refuses to put in ROM's place.
+```
+./zenzx-headless -model=plus3 -bin=data.bin -binpage=4 -binaddr=0x0100 -frames=1
+```
 
 ## Loading a screen dump
 

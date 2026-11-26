@@ -69,6 +69,10 @@ type deckMachine struct {
 	thumbH int
 	pixels []color.RGBA
 	mag    float32
+
+	// fromSnapshot is the file (snapshotKey) the machine was made for, or loaded last: the machine
+	// that a snapshot opened again is loaded into, and not followed by another (snapshotopen_gui.go).
+	fromSnapshot string
 }
 
 // machineDeck is the machines of one window and the dock.
@@ -104,6 +108,16 @@ type machineDeck struct {
 	dev AudioDevice
 	// make builds a new machine of a model, set up as the program's options ask.
 	make func(model string) *ZenZX
+	// retype makes a machine another model, and tells the menu bar so; the way a snapshot gets the
+	// machine it needs when none may be added (snapshotopen_gui.go).
+	retype func(zx *ZenZX, model string)
+	// cardDirs lists the folders card images are kept in, mountCards gives a Next the cards a snapshot of
+	// a Next was made over, askCards puts the question to the person when one is not to be found, and
+	// opened hears that a snapshot that had to wait for the answer has been loaded (snapshotopen_gui.go).
+	cardDirs   func() []string
+	mountCards func(zx *ZenZX, c cardSlots) error
+	askCards   func(a *cardsAsk)
+	opened     func(path string)
 
 	state          barState
 	progress       float32
@@ -156,6 +170,9 @@ type machineDeck struct {
 	addHover bool
 	addDown  bool
 	addHand  bool
+
+	// reveal is the dock being shown for a machine made for a snapshot (dockreveal_gui.go).
+	reveal dockReveal
 }
 
 // newMachineDeck makes a deck holding one machine, which has the display and
@@ -300,6 +317,7 @@ func (d *machineDeck) flip(i int) {
 		next.audio.SetDevice(d.dev)
 		if err := next.audio.Initialize(); err != nil {
 			sayf("Warning: Audio initialization failed: %v\n", err)
+			next.notice("The sound could not be started for this machine: %v", err)
 		}
 	}
 	d.front = i
@@ -340,7 +358,9 @@ func (d *machineDeck) runBehind(frameNo, debounceFrames int) {
 			// The turbo-aware frame, as for the front machine: a tape loading
 			// in turbo mode goes on loading behind.
 			m.zx.RunTurboAwareFrame(false)
-			m.zx.io.FDCTick(frameNo, debounceFrames)
+			if w := m.zx.io.FDCTick(frameNo, debounceFrames); w != "" {
+				m.zx.notice("%s", w)
+			}
 		}
 		// A machine nobody has named takes the name of the first BASIC
 		// program it loads, once.
@@ -664,7 +684,10 @@ func grown(r rl.Rectangle, mag float32) rl.Rectangle {
 }
 
 // screenRect is where machine i's picture is when it is the front one, so
-// that a picture flying out of the dock lands on its own place.
+// that a picture flying out of the dock lands on its own place, in the window: where the
+// window is a size the system gave it (maximised, full screen) the picture is drawn into a
+// canvas that is put in the middle of the window, and the place is the canvas's, moved and
+// scaled with it (inWindow).
 func (d *machineDeck) screenRect(i int) rl.Rectangle {
 	m := d.machines[i]
 	if d.tiled() {
@@ -676,9 +699,9 @@ func (d *machineDeck) screenRect(i int) rl.Rectangle {
 	if m.thumbW == 256 && m.thumbH == 192 && d.dm.borderView().Shown {
 		x, y := d.dm.classicScreenOffset()
 		mult := float32(d.dm.screen.multiplier)
-		return rl.Rectangle{X: float32(x), Y: float32(y), Width: 256 * mult, Height: 192 * mult}
+		return d.dm.inWindow(rl.Rectangle{X: float32(x), Y: float32(y), Width: 256 * mult, Height: 192 * mult})
 	}
-	return rl.Rectangle{X: 0, Y: top, Width: float32(d.dm.currentWidth), Height: float32(d.dm.currentHeight) - top}
+	return d.dm.inWindow(rl.Rectangle{X: 0, Y: top, Width: float32(d.dm.currentWidth), Height: float32(d.dm.currentHeight) - top})
 }
 
 // choose acts on tile i: a machine flies to the front, the "+" tile adds one
@@ -692,6 +715,7 @@ func (d *machineDeck) choose(i int, l dockLayout) {
 		}
 		if !d.multiAllowed() {
 			sayf("Machines: adding machines is off (File > Preferences...)\n")
+			d.machines[d.front].zx.notice("Adding machines is off: File > Preferences... turns it on")
 			return
 		}
 		at := l.tiles[i]
@@ -790,6 +814,7 @@ func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) 
 		t := float32(time.Since(d.stateChangedAt)) / float32(menuBarSlideTime)
 		if t >= 1 {
 			d.progress, d.state = 1, barShown
+			d.revealArrived(time.Now())
 		} else {
 			d.progress = easeInOutCubic(t)
 		}
@@ -802,6 +827,7 @@ func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) 
 		}
 	}
 	if d.state == barHidden {
+		d.revealTick(-1, time.Now()) // the chevron stays at the edge while its time lasts
 		return
 	}
 
@@ -838,6 +864,7 @@ func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) 
 	}
 	d.addHover = hover == len(d.machines)
 	wantHand = d.addCursorWanted(hover, busy)
+	d.revealTick(hover, time.Now())
 	if d.state != barShown || d.flying {
 		return
 	}
@@ -931,7 +958,7 @@ func (d *machineDeck) Update(screenW, screenH int, r zenui.Renderer, busy bool) 
 		case fmy < l.panel.Y:
 			d.hide()
 		}
-	case !d.byKey && !near:
+	case !d.byKey && !near && !d.revealHolds(time.Now()):
 		d.hide()
 	}
 }
@@ -1035,6 +1062,13 @@ func (d *machineDeck) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 			ink = theme.Disabled
 		}
 		r.DrawText(label, int(p.X+(p.Width-float32(r.TextWidth(label, l.text)))/2), int(p.Y+p.Height+4), l.text, ink)
+
+	}
+
+	// The chevron of a machine made for a snapshot: over the dock, or at the bottom of the window
+	// when the dock has gone.
+	if d.reveal.on {
+		d.drawReveal(d.layout(screenW, screenH, r.LineHeight(1)), screenH, time.Now())
 	}
 
 	// A machine being dragged: its picture under the pointer, and a frame
@@ -1270,7 +1304,7 @@ func (d *machineDeck) applyLayout() {
 // layout, snaps the window back to the layout's proportions. A no-op for a
 // single-machine view, whose own size is re-asserted by the display.
 func (d *machineDeck) HandleWindowResize() {
-	if d == nil || !d.tiled() || !rl.IsWindowResized() {
+	if d == nil || !d.tiled() || d.dm.fullscreen || !rl.IsWindowResized() { // a full screen window is not a drag
 		return
 	}
 	osW, osH := int(rl.GetScreenWidth()), int(rl.GetScreenHeight())
@@ -1349,8 +1383,8 @@ func (d *machineDeck) snapTiledResize(osW, osH int) {
 // a window of w by h to end inside its monitor: a tiled window is wider or
 // taller than the one it grew from, and would otherwise run off the edge.
 func keepOnMonitor(w, h, monW, monH int) {
-	if monW <= 0 || monH <= 0 || !rl.IsWindowReady() {
-		return
+	if monW <= 0 || monH <= 0 || !rl.IsWindowReady() || rl.IsWindowState(rl.FlagBorderlessWindowedMode) {
+		return // nor is a full screen window moved: it is the monitor's
 	}
 	origin := rl.GetMonitorPosition(rl.GetCurrentMonitor())
 	pos := rl.GetWindowPosition()
@@ -1447,6 +1481,9 @@ func saveDiskOnClose(zx *ZenZX) {
 	if zx.io.hasFDC && zx.io.fdc != nil && zx.io.fdc.IsModified() && zx.io.fdc.diskFilename != "" {
 		if err := zx.io.SaveDisk(); err != nil {
 			sayf("Warning: failed to save disk on exit: %v\n", err)
+			if zx.OnNotice != nil { // the window is still up when a machine is closed on its own
+				zx.notice("The disk changes were not saved when the machine closed: %v", err)
+			}
 		} else {
 			sayln("Disk changes saved on exit")
 		}

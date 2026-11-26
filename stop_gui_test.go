@@ -189,14 +189,14 @@ func TestMachineMenuHeadSaysWhatItWillDoAndHasItsIcon(t *testing.T) {
 		return l
 	}
 	b.refreshMachineItems(zx)
-	if got := labels(); got[0] != "Reset" || got[1] != "Pause" || got[2] != "Stop" {
+	if got := labels(); got[0] != "Machine" || got[1] != "Reset" || got[2] != "Pause" || got[3] != "Stop" {
 		t.Fatalf("a running machine: %v", got)
 	}
 	zx.paused = true
 	b.refreshMachineItems(zx)
 	head := b.widget.ItemsFor(barMachine)[:machineHeadRows]
-	if head[1].Label != "Play" || head[1].Icon == nil || head[2].Icon == nil || head[0].Icon != nil {
-		t.Errorf("a paused machine: %v, icons: pause/play %v stop %v reset %v", labels(), head[1].Icon != nil, head[2].Icon != nil, head[0].Icon != nil)
+	if !head[0].Title || head[2].Label != "Play" || head[2].Icon == nil || head[3].Icon == nil || head[1].Icon != nil {
+		t.Errorf("a paused machine: %v, icons: pause/play %v stop %v reset %v", labels(), head[2].Icon != nil, head[3].Icon != nil, head[1].Icon != nil)
 	}
 	// The rows still lead to the same things: the model rows keep their places after them.
 	items := b.widget.ItemsFor(barMachine)
@@ -228,23 +228,34 @@ func TestStopRowAsksTheDeckAndMachineRowsAreDisabledWhenNoneRuns(t *testing.T) {
 	b, zx := newTestBar(t, nil, "")
 	stopped := 0
 	b.stopMachine = func() { stopped++ }
-	b.actions[barMachine][2](zx)
+	b.actions[barMachine][3](zx) // Stop: after the title and Reset and Pause
 	if stopped != 1 {
 		t.Errorf("Stop asked the deck %d times, want once", stopped)
 	}
 	zx.stopped = true
 	b.refreshMachineItems(zx)
-	for i, it := range b.widget.ItemsFor(barMachine)[:machineHeadRows] {
+	for i, it := range b.widget.ItemsFor(barMachine)[1:machineHeadRows] { // the title is not a row to disable
 		if !it.Disabled {
 			t.Errorf("row %d (%s) is enabled with no machine running", i, it.Label)
 		}
 	}
-	for _, sel := range []zenui.MenuBarSelection{{BarIndex: barFile, ItemIndex: 0}, {BarIndex: barFile, ItemIndex: 1}, {BarIndex: barTape}, {BarIndex: barSnapshot}, {BarIndex: barFloppyDisk}, {BarIndex: barCustomROM}} {
+	// the rows of the Snapshot menu that act on a machine: Quick Save, Save Timestamped, Save As,
+	// Load Binary, Snapshot Info and Run Diagnostics
+	snapNeeds := map[string]bool{"Quick Save": true, "Save Timestamped": true, "Save As": true,
+		"Save Multisnapshot...": true, "Load Binary...": true, "Snapshot Info": true, "Run Diagnostics": true}
+	for i, e := range b.snapSpec {
+		sel := zenui.MenuBarSelection{BarIndex: barSnapshot, ItemIndex: i}
+		if got := b.needsMachine(sel); got != snapNeeds[e.label] {
+			t.Errorf("Snapshot > %q needs a machine: %v, want %v", e.label, got, snapNeeds[e.label])
+		}
+	}
+	for _, sel := range []zenui.MenuBarSelection{{BarIndex: barFile, ItemIndex: 1}, {BarIndex: barTape}, {BarIndex: barFloppyDisk}, {BarIndex: barCustomROM}} {
 		if !b.needsMachine(sel) {
 			t.Errorf("%+v is allowed with no machine", sel)
 		}
 	}
-	for _, sel := range []zenui.MenuBarSelection{{BarIndex: barFile, ItemIndex: 3}, {BarIndex: barFile, ItemIndex: 5}, {BarIndex: barMachine, ItemIndex: machineHeadRows}, {BarIndex: barView}, {BarIndex: barTheme}} {
+	// File > Open is allowed with none: a snapshot opened makes its machine
+	for _, sel := range []zenui.MenuBarSelection{{BarIndex: barFile, ItemIndex: 0}, {BarIndex: barFile, ItemIndex: 2}, {BarIndex: barFile, ItemIndex: 4}, {BarIndex: barMachine, ItemIndex: machineHeadRows}, {BarIndex: barView}, {BarIndex: barTheme}} {
 		if b.needsMachine(sel) {
 			t.Errorf("%+v is refused with no machine: it does not need one", sel)
 		}

@@ -12,6 +12,365 @@ rework, and a documentation sweep.
 
 ### Added
 
+- **A snapshot is loaded into a machine of its own kind, and the window makes one when it has none.**
+  A snapshot is the state of a 48K, a 128K or a +3, and loaded into another kind of machine (a 128K's
+  pages into a 48K) it was a picture that did not run. Now opening one (a Snapshot menu row, Manage
+  Snapshots, Quick Load and `F10`, File > Open or a drop) makes a machine of the snapshot's kind (a
+  48K, a 128K, a +2A or a +3 with the Sinclair ROMs: the file does not say which ROM it had), brings it
+  to the front and loads the snapshot into it, as the New tile of the dock adds a machine; the machine
+  that was shown goes on behind. The same snapshot opened again goes into the machine it made and
+  does not make another. Where adding machines is off in Preferences none is made: a snapshot of the
+  machine's kind goes into it, and any other turns it into the model the snapshot needs. One that
+  fails to load leaves no machine behind. **With no machine running** the snapshot functions are
+  there to choose: Quick Load (and `F10`), Load Timestamped and Manage Snapshots start the machine of
+  the snapshot that is chosen, File > Open takes a snapshot (and says "No machine is running" of any
+  other file), and the rows that save or look into a machine are greyed until one runs. `-snapshot`
+  starts the snapshot's model when `-model` (and `-multi`) is not given, in the window and in the
+  headless program. A snapshot loaded into a machine that is not of its kind by any other way is
+  refused ("the snapshot is of a 128K and this machine is a 48K"), as a script's `snapshot` verb is,
+  naming the `-model`; a TS2068 is not refused, as it never was, and a Next has a kind of its own (the
+  entry below). `snapshotmodel.go` (the
+  kinds, and reading what a `.zxs`, `.sna`, `.z80` or `.szx` is of), `snapshotopen_gui.go` (the deck),
+  `snapshotmodel_test.go` (every model and format, with the files `.zxs`, `.sna`, `.z80` and `.szx`
+  that are saved and the ones in `testdata`), `snapshotopen_gui_test.go`,
+  `snapshotstopped_gui_test.go`.
+- **A Next has snapshots (T-99).** Quick Save, Save Timestamped and Save As of a Next write a `.zxs` that holds its
+  whole state (`nextstate.go`: the SRAM, the NextREG file, DMA, copper, sprites, palettes, tilemap, Layer 2, DivMMC,
+  the SD controller, the sound chips), as a chunk (`NX`) beside a model code in the header, and loading one makes
+  a Next, as a 128K's makes a 128K (`classNext` beside the other kinds; `snapshot_next.go`). Before this a Next was
+  saved as a +3 without its drive, which kept the RAM of the Spanish +3 and none of the hardware, so that loading
+  it into the machine the window made (the +2A of its header) ran a program on a screen and a sound chip that
+  nothing had set up: Layer 2 came back, the program started, and the picture and the sound were noise. Loading
+  cancels what the boot cache had arranged for the machine (`zx.next.cachePending`, the hand-over and settle
+  watches) and clears the sprite and Layer 2 pictures kept for the graphics card, so that nothing of the machine
+  that was there is drawn under the one that comes. A Next snapshot is of one build: the state is read by the
+  layout of the program's structures, and a file that another build saved is refused with a message that says
+  so (the others are not); it does not hold what is on the SD card, but it records which cards the Next had and is
+  loaded over them (the next entry); and a Next that is loading a tape cannot be saved (it
+  says so). Snapshots made by earlier builds of a Next cannot be recovered and are to be saved again. A Next
+  takes only a Next's snapshot, and a Next's is loaded only by a Next. `-snapshot` and a script's `snapshot` verb
+  start and load a Next the same way. `snapshot_next_test.go` (round trip, the header and kind, mixing refused,
+  another build's layout refused, the boot cache called off), `snapshotopen_gui_test.go`.
+- **A Next snapshot knows which cards it was made over, and finds them again.** A snapshot of a Next that boots
+  NextZXOS says what was in each slot: the card's signature (the four bytes of its partition table's disk
+  signature, which survive anything NextZXOS writes to the card), its size and the layout of its partition
+  table, and the name of the file as a hint (never its folder: snapshots get sent to others). Only a
+  card that was mounted is recorded: the first, which the Next boots from, and the second only when the
+  firmware has read from it (`SDCard.served`: NextZXOS reads a card's partition table to mount it, and a card put
+  in after it started is not read until its Browser is told to remount; against the real firmware, a second card
+  put in before the start is read and one put in after is not). A card that was inserted and never mounted is
+  nothing the machine's state depends on, so it is not asked for and is not given a signature. The record is a
+  chunk of its own (`NC`, before the machine's state) that a build that does not know it skips. A card that has
+  no signature (the standard one has none) is given one the first time a snapshot is made over it, since
+  there is nothing else in a card that a copy of it does not also have; a card opened read-only cannot be, and
+  its snapshot is of its size and layout, which any copy of it shares, so any card like it is taken for it.
+  A card that ZenZX makes (New) is signed from the start, and a copy made in the SD Cards window is given a
+  signature of its own, so that a snapshot made over one is not taken to be made over the other. Loading finds
+  the cards by that, wherever they are and whatever they have been called: in the folders the boot files and
+  cards are kept in, the folders of the cards the machines have, and the snapshot's own; and says nothing when
+  it finds them all. When one is not to be found, the window says which, by the file name it had in quotes, its size
+  and the slot it was in (and the message that nothing was loaded when it is cancelled says it again), and asks for the card to be chosen. The dialogue is one line (the snapshot needs the card "name" (size),
+  which is in use by machine 2, or was not found, or could be any of several) and a list of the card images of the folders
+  looked through, as the SD Cards window lists its cards. The ones that can be chosen come first and are said to be **the same
+  card** (the signature), **same layout** (a copy: the card's size and partition layout with another signature) or **very
+  different**; then the ones that cannot, which are listed all the same and cannot be selected, by mouse or keys:
+  **IN USE, machine N**, **TAKEN BY CARD n** and **NOT A CARD IMAGE**. Buttons: **Cancel**, **Browse...** (the file
+  browser, for a card that is not in the list: it opens in the folder of the card in use, where its copies are, and then
+  in the folder of the last file chosen, and a file chosen is in the list afterwards), **Choose** (Enter) and **Load**, which
+  cannot be pressed while the first card has no file. Only the first sector of a card is read (size, partition layout,
+  signature): a file chosen that has the size and layout of the card is taken for it, as a copy is, without a note, and is
+  handed to the loader as approved. A file that is very different (another size, laid out very differently, no signature
+  to tell it by) is said to be, and Load goes ahead with it only after a note that says what it may come to (a Next that
+  was working with files on the card may not find them where the snapshot expects them, saving to the new card could
+  affect what is on it, and a file with no NextZXOS files on it is said to have none); **Choose another** lets it go and
+  brings the list back. The first card is needed, and a second that is not found may be left out, the second slot then
+  being empty. **Cancelling the file browser** (Escape, its Cancel, or a click outside it) brings the dialogue back as it
+  was: the old dialogue kept its answer to the click on its button and gave it again the moment the browser was gone, so
+  that the browser opened again for ever and the dialogue could not be left; the new one is not a `zenui.Modal`, and has
+  no answer to keep. Each of several machines' cards, in a multisnapshot, is chosen in turn, each with its machine said.
+  A Next that the window makes for a snapshot is given the boot chain and its cards **before** the
+  state goes over it: a Next the deck makes has no boot chain, and a snapshot taken at the NextZXOS menu loaded
+  into one had no card for the DivMMC to read. The loader refuses a snapshot over cards that are not its own
+  all the same, for the ways of loading one that have no window to ask in (a script, `-snapshot`), and says
+  which card; what the person chose to go on with is passed to it. A multisnapshot is the same for each of its
+  Nexts: the cards of all the machines are found, or asked for in one dialogue (each line says which machine),
+  before the question about closing the machines that are running, and a card that cannot be had refuses the
+  whole, as before. What a snapshot says about its cards is not believed, since a snapshot is a file that
+  comes from anywhere: the list is refused when it is bigger than any the program writes (64 KB: it is not read
+  past its header), has more than two cards, a slot that is not 1 or 2 or the same twice, a size that no card has
+  or a partition table that is not 64 bytes, and a name is cut to 80 characters and has no control or invisible
+  characters in it (a line break would write a line of the dialogue). The folders are read as they are (a name with
+  `[`, `*` or `?` was taken for a pattern and never searched; the empty name searched the folder the program
+  was in), and only an ordinary file is looked at, so a pipe or a device named `x.img` is no longer opened (it hung
+  the search). Cards that could each be the one, with nothing to tell them apart by name (cards that had no signature,
+  copies made outside ZenZX), are no longer picked between by their order in a folder: the dialogue says which
+  they could be and asks. The cards are looked at again at Load, before a machine is made or closed: a card
+  that another machine took, or that is gone, or one file given for two slots or two machines, is refused
+  by name and changes nothing (a machine was being turned into a Next first, and a card another machine had
+  was opened a second time), and a button that is not one of the dialogue's is no answer (it was Load). A
+  snapshot's chunk that claims more than the rest of the file holds is refused without making room for it (any
+  chunk of any snapshot: it could claim 4 GB). `pkg/nextcard/identity.go`, `cardrecords.go`, `cardsearch.go`, `cardsask_gui.go`,
+  `snapshotcards_gui.go`; `pkg/nextcard/identity_test.go`, `cardrecords_test.go`, `cardsearch_test.go`,
+  `snapshotcards_gui_test.go`, `cardcopy_identity_gui_test.go`, and against the real firmware (dormant guard
+  G-32) `snapshot_cards_hw_test.go` (which also checks which cards the firmware mounts), `sdcard_served_test.go`; the adversarial tests
+  `cardadversarial_test.go`, `cardadversarial_unix_test.go`, `cardadversarial_gui_test.go`,
+  `snapshot_hostile_chunk_test.go`, `pkg/nextcard/identity_special_unix_test.go`.
+- **Snapshot > Load Snapshot... and Recent Snapshots.** Load Snapshot... is a file browser that loads any
+  snapshot (`.zxs`, `.sna`, `.z80`, `.szx`, and `.zms`) and is there to choose with no machine running, as
+  Quick Load is. Recent Snapshots lists the named snapshots that were saved with Save As or loaded, the newest
+  first, fifteen at most, the file's name and its folder when two have one name; the ones that Save Timestamped
+  made and the quick save are not in it (they have menus of their own), a file that is gone is not shown, and
+  the list is kept in `settings.json` (`recentSnapshots`). `snapshotrecent.go`, `snapshotrecent_test.go`,
+  `snapshotrecent_gui_test.go`.
+- **Multisnapshots (`.zms`).** Snapshot > Save Multisnapshot... (for two machines or more) pauses every
+  machine, takes a snapshot of each, and saves them in one zip file, with how the window shows them: the layout
+  (Side by Side, Grid, a main tile...), which machine is in front, the zoom and the names the machines have in
+  the dock; the machines are then running or paused as they were. Snapshot > Load Multisnapshot..., Load
+  Snapshot..., File > Open, Recent Snapshots, Manage Snapshots and a file dropped on the window load one: **the
+  machines that are running are closed and replaced by the ones in it, and the window says so and asks for the
+  word `YES` first** (with none running it loads at once). It is all or nothing: every snapshot is read and every
+  machine made and loaded before the old machines go, so a file that cannot be loaded (damaged, of another
+  build, too many machines, Multi off in Preferences) leaves the window as it was and says which machine it
+  was. A multisnapshot is not dropped on a Next's card, whatever the Next is doing. `multisnapshot.go` (the
+  file), `multisnapshot_gui.go` (the deck), `multisnapshot_menu_gui.go`, `multisnapshot_test.go`,
+  `multisnapshot_gui_test.go`, `multisnapshot_open_gui_test.go`.
+- **The dock slides in for a machine that a snapshot made.** The machine appears in the dock, its picture
+  growing into place, with a chevron as wide as the picture bouncing over it (a big hop, a small one, and again; a white V of big
+  square pixels with a black outline, a 34 by 16 picture, its outline two pixels thick, expanded to the picture's width, to be seen against a game's busy screen). The dock stays three seconds after it is in and
+  then slides out as it does when the pointer leaves it; the chevron stays at the bottom of the window, pointing at where the dock is,
+  six seconds longer, until the pointer is on the picture, or the machine is gone. A pointer on the dock
+  keeps it open, as it always does, and so does a dock opened with `Alt+M`; with the dock off in
+  Preferences none is shown. A snapshot loaded again into the machine it made makes none, and no dock.
+  `dockreveal_gui.go`, `dockreveal_gui_test.go`, and dormant guard G-31 for the drawn chevron
+  (`dockreveal_gl_test.go`).
+- **Builds are numbered.** `-version` and the About window say `0.50.0 (build N)`: a whole number that
+  goes up by one with each release that is built and is never reset, by a new version or by a
+  re-release of one, so that two binaries that say the same version are told apart. 0 is a build made
+  from a tree between releases. The release adds one in its `build-number` step (`bump_build.sh`, which
+  edits `pkg/version/build.go`), before anything is built.
+- **What matters is no longer said on the console alone.** `Alt+I` opens the tape's window (as Tape > Show
+  Info) instead of printing the blocks, `F12` the snapshot info window and `Shift+F12` the diagnostics window
+  (as `F3`), and `F7` and `F5` say in a toast how to load a disk and how to use the blank one. A model or a
+  ROM that cannot be switched to, a font that cannot be used, settings that cannot be saved, a Next whose boot
+  files, SD card or second card cannot be used (or whose card is write-protected because it could not be
+  opened for writing), a disk that was not saved when its machine closed or before a blank one went in, a
+  disk whose file changed behind it (it is not written over; Save does it), sound that would not start,
+  "adding machines is off", and why the zoom and the border keys did nothing, are said in a toast. What is
+  found before the window is up (settings or `machines.json` that could not be read, snapshots moved into
+  their folder, a menu bar that could not be built) is said when it is: a toast for one thing, a Notices
+  window for several. The console says them too, as it did.
+- **Snapshot > Load Binary... is a window of three tabs over the machine's memory: Load file, Peek and
+  Poke, and Hot Memory.** Nothing is typed in it that is refused afterwards. **Load file** is `-bin`,
+  `-binaddr` and `-binstart` with a **Memory** list (a 48K and a TS2068 have none, and it is not
+  shown), an **Address** that is four hex digits that cannot hold more than the memory chosen has, and
+  a **Start at** tick with its own address, which follows the load address until it is typed in, and
+  is not offered in a RAM page. **Load** is greyed out until there is a file, it is not empty, and it
+  fits; the note says which of those it is not (a folder, a missing file, an address in ROM or where no
+  RAM is paged in, a run that would pass the end of the memory, with the way out: "choose a RAM page in
+  Memory"), or how many bytes go from where to where. **Peek and Poke** shows the dump as the machine
+  runs, with no Peek to press, steps it forward and back across the end of a page (the buttons are
+  greyed out at the ends), and takes the bytes to write as hex digits and nothing else, two to a byte;
+  **Poke** is on when they are whole bytes that can be written there. Bytes written as decimal with a
+  `#`, or as `0x3E` and `$3E`, are no longer accepted: there is no way to type one that is refused.
+  `Page Up` and `Page Down` page the Peek and Poke dump as well as the Hot Memory one, and the arrows,
+  the Page keys and Backspace go on while they are held (`withKeyRepeat`, `binary_gui.go`).
+  A click in an address selects it, so that the next digit replaces it; `Tab` goes round the boxes.
+  **Hot Memory** is a hex editor over the running machine: a drop-down chooses the
+  CPU's 64K as paged in now or one RAM page, each listed with where it is paged in and whether it is
+  the screen's; the dump is read again every frame and lights what changed. It types two ways, chosen
+  with the **Hex** and **ASCII** buttons, with `Tab`, or by clicking in the column to type in: hex
+  digits, which write a byte as the second goes in, or characters, one to a byte (printable ASCII;
+  the other keys are not taken). The place the next key goes is a block that flashes (half a second
+  lit, half dark, lit again at every key or move) on the digit or the character, and the byte is
+  outlined in the other column; **Go to** is a box of hex digits that cannot pass the end of the
+  space. ROM is shown dim, with no block, and refuses a write. What a page is depends on the
+  model, and is one layer (`pagedmem.go`, `hotmem.go`) under all three tabs and `-binpage`: none on a
+  48K and a TS2068; eight 16K banks, `0` to `7`, on a 128K, +2, +2A and +3; 224 pages of 8K, `0` to
+  `223`, on a Next, where bank N is pages 2N and 2N+1. A write to the bank that is on screen goes to the
+  picture too, as a CPU write does, and a Next page that is the screen's too; a +3 in special paging has
+  RAM at 0 and is all writable. The dumps are drawn in a monospaced face: the font chosen in
+  Preferences when it is monospaced, and otherwise the monospaced one whose cell is the closest in
+  size (`fonts.Monospaced`, `fonts.NearestMonospaced`: Tom Thumb, which is proportional, gets Spleen).
+  `binary_gui.go`, `hotmem_gui.go`, `monofont_gui.go`; `binary_gui_test.go`, `hotmem_test.go`,
+  `pagedmem_test.go` (every model: 48K, TS2068, the 128K family, the Spanish models and the Next),
+  `pkg/fonts/monospaced_test.go`, `TestGLHexDumpFontFollowsTheChosenFont` (dormant guard G-29).
+- **`-binpage` puts `-bin` in a RAM page.** `-bin` puts a file in the memory as the CPU sees it, so on a
+  128K, a +3 or a Next what it lands in depends on what is paged in; `-binpage` names the page (a bank
+  `0` to `7`, or on a Next an 8K page `0` to `223`), `-binaddr` is then the address in it, a longer
+  load goes on into the next page, and PC is left alone unless `-binstart` says. A page that is not
+  there, a model with no pages and a load that would pass the last page are refused, and in the
+  headless build the program exits with the reason. `-bin` alone is as it was: what it would put in ROM
+  is dropped without a word.
+- **Snapshot > Load Timestamped loads the snapshots that Save Timestamped made, ten of them, and
+  More... holds the rest.** The ten newest are rows of a submenu, each with its date and time (and
+  its format when it is not `.zxs`); with none the row says so and is greyed. Choosing one loads it
+  into the front machine, which waits paused or plays as Preferences says a loaded snapshot does.
+  **More...** opens a menu of the older ones where the pointer is, which is a menu of its own because
+  zenui has one level of submenu: up to twenty more are listed as they are, and past that they are
+  grouped, newest first, as **Today**, **Yesterday** and a group for each of the days of the last
+  week, a group for each **Week of** (from a Monday) for the five weeks after, and a group for each
+  month, each with its count and its snapshots as a submenu; a group of more than twenty-five lists
+  twenty-five and **N more: Manage Snapshots...**. Only a name that Save Timestamped makes is listed;
+  a snapshot that has been renamed or copied is in the Snapshots window. The menu is made again when
+  the folder changes (one `stat` a frame) or the day does. `snapshotmenu_gui.go`, `snapshotgroups.go`;
+  `TestLoadTimestampedRows`, `TestSnapshotMenuFollowsTheFolder`, `TestLoadTimestampedLoadsTheSnapshot`,
+  `TestMoreSnapshotsOpensTheGroups`, `TestMoreSnapshotsFlatWhenFew`, `TestMoreSnapshotsOfAFullGroup`,
+  `TestGroupSnapshotsByDayWeekAndMonth` and the other tests of `snapshotgroups_test.go`.
+
+- **Snapshot > Manage Snapshots... is a window that loads, duplicates, renames and deletes
+  snapshots,** as the SD Cards and Floppy Disks windows do for theirs. It lists every snapshot in the
+  folder, newest first, with size and date. **Duplicate** makes `name-2` (then `-3`, and so on)
+  beside it, never over another file. **Rename** asks for the name, checks it, and then asks whether
+  to go on; the extension stays (a name typed with another format's is refused: the extension is
+  what says how the file is read). **Delete** asks for the word `DELETE` typed exactly. `Enter`
+  loads the chosen one, `Escape` closes the window, and it fades in and out with the other windows.
+  The questions are the SD Cards window's, which now takes the noun, the extension and the size in
+  words (the card's own are as they were: `TestCardQuestionsAreUnchanged`).
+  `snapshots_gui.go`, `sdcards_manage_gui.go`; `TestSnapshotsWindow*`.
+
+- **Every snapshot goes in the `snapshots/` folder,** which `-snapshots-dir` can move. Quick Save
+  (`F9`), Save Timestamped (`Shift+F11`), Save As's browser, Quick Load (`F10`), Snapshot Info and
+  Diagnostics all use it; it is made when the first snapshot is saved. The quick saves and timestamped
+  snapshots that earlier versions left in the folder ZenZX runs in are moved into it at start, by
+  exact name, never over a file that is there already (it stays, and the console says so), and not
+  at all when the snapshots folder is that folder. `snapshotdir.go`, `input.go`, `snapshot.go`;
+  `TestMigrateSnapshots`, `TestListSnapshots`, `TestTimestampedNamesRoundTrip`.
+
+- **The Custom ROM menu reads the folders of `custom-roms/`, two levels down.** Each folder with a
+  ROM in it is a submenu, ahead of the ROMs of `custom-roms/` itself; a ROM in a folder of that
+  folder is listed in its submenu as `inner/x.rom` (zenui has one level of submenu, so a folder's
+  folders are flattened into it); a folder whose name begins with a dot, a folder with no ROM, and
+  anything deeper are left out. A folder with more ROMs than fit under its row goes in pages
+  (`Name`, `Name (2)`), and when the dropdown has more rows than half the window's height the rest
+  go under **More...** (`More... (2)` and so on), a folder's ROMs among them as `folder/x.rom`. The
+  `-custom-roms-menu` selector lists the same ROMs as `folder/x.rom`. A ROM picked from a folder
+  loads by its path under `custom-roms/` and then asks for the bank as before
+  (`custom_roms_tree.go`, `menubar_gui.go`).
+
+- **The menus have their groups titled, and the Tape menu has play and stop buttons.** Machine (its
+  Reset, Pause or Play and Stop), Tape, Snapshot, View, Theme and Theme's Font submenu now open each
+  group with a heading, as Help and Storage already did (File is one group with Quit set apart, and
+  Custom ROM lists the ROMs there are, so neither has any). The File menu loses the separator above
+  Preferences. **Tape > Play** and **Stop** are two rows, each with the Machine menu's play and stop
+  sprite, where there was one row, "Play / Stop": Play is greyed with no tape or while it plays, Stop
+  while it does not, and `Alt+P` still plays and stops with one key. **Rewind** has the tape deck's
+  rewind sprite, and is greyed with no tape loaded. **Accurate** and **Fast** are radio buttons under a "Mode" heading (a ring, with a dot
+  in the chosen one, drawn by the program; Turbo shows as Accurate), where one row toggled between them;
+  they are greyed with no tape. The rows' places in each menu moved
+  with the headings (`themeFontAt` is where Theme's Font row is). `tapemenu_gui.go`,
+  `menu_titles_gui_test.go`, `tapemenu_gui_test.go`.
+
+- **The Microdigital ROMs, checked against Rodolfo Guerra's package of the originals.** His five files
+  (`TK90X_v1ES`, `TK90X_v2BR`, `TK90X_v2ES`, `TK95BR`, `TK95ES`) are byte for byte the five Microdigital
+  ROMs of `custom-roms/`, so none changes and none is added; `custom-roms/README.md` now gives his
+  file name beside each, and says what each ROM does about the language (`TK90X-pt-BR.rom` is his
+  `v1ES`, the one that reads the switch, and shows Spanish at its default). His entry in
+  `ACKNOWLEDGEMENTS.md` (so in Help > Acknowledgements) now names his book, *Generación TK90X* (the history of the
+  TK90X), and his supplying that package; the window shows the title as `Generacion`, its font having no
+  accented letters (`ackPlain`).
+
+- **The Microdigital language switch, a setting.** The TK90X and TK95 had a diode that chose their
+  messages' language by the level of bit 7 of the ULA port, and Microdigital ROMs such as
+  `TK90X-pt-BR.rom` read it before they show a message; with nothing behind the port the bit always
+  read high, so that ROM answered in Spanish. File > Preferences > Machines > **Language switch**
+  (**Spanish**, the default, or **Portuguese**) now sets it, for the 48K models only (the Amstrad models,
+  the Timex and the Next read the port as they always did), and the choice is
+  saved (`"microdigital"` in `settings.json`); `-language-switch spanish|portuguese` sets it for one
+  run, in the window and in the headless program, and is not saved (`microdigital.go`, `io.go`).
+  Checked with the real ROM: the same error shows `Variable inexistente` at Spanish and `Variavel
+  inexistente` at Portuguese. The other four ROMs do not read it and answer as they did. The default
+  leaves the port as it was, so a program that never asked sees no change.
+
+- **Help > ZenZX Manual, and the manual on a panel of its own on the download page.** The row opens
+  `zenzx-<version>-manual.pdf` in the system's PDF reader when it is in the program's folder, the one
+  above it, a `docs` folder in either or the folder the program was started from (`manual.go`); else
+  it opens the release's copy on GitHub in the browser, or the releases page for a build that is not a
+  release. It needs no machine. The page (`tools/site_page.py`) gives the manual a panel between the
+  download and every file, with its size and SHA-256, and a **Manual** link in the header that goes
+  straight to the PDF; the "Every file" tables still list it. `manual_test.go`, `logomenu_gui_test.go`,
+  `scripts/test_build_site.py`. Not seen: the PDF opening in a real reader on Windows and macOS
+  (`rl.OpenURL` is handed the path).
+- **Custom ROM > Download more ROMs.** After the ROMs of the custom-roms folder the dropdown has a
+  separator and a **Download more ROMs** row with a submenu of two pages, opened in the browser:
+  **Rodolfo Guerra ROM mods** (<https://sites.google.com/view/rodolfoguerra/>) and **Speccy4ever ROM
+  archive** (<https://speccy4ever.speccy.org/>). Like the Help menu's website row it opens a page, so
+  it works with no machine running (`needsMachine`); the bank choice that follows picking a ROM does
+  not have it. `custom_roms_menu_gui_test.go`.
+- **The Download more ROMs pages come from `custom-roms/rom-archives.json`.** The submenu is built
+  from that file when it is there: a JSON array of `{"text_label", "url"}` objects, the label being
+  the row's text and the url an http or https page. The file shipped in `custom-roms/` lists the two
+  pages above, so the standard distribution looks as it did; without the file the menu has those two
+  in the program. An entry with no label, or with no http(s) address, is left out and a warning goes
+  to the console; a file that is not the list, or has no usable entry, gives the two standard pages;
+  `[]` takes the separator and the row away. The file is read again when it changes (its time and
+  size), so editing it shows in the menu without restarting; more pages than fit under the row are
+  cut to the ones that do. `rom_archives.go`, `rom_archives_test.go`, `custom_roms_archives_gui_test.go`.
+- **Full screen (T-97).** `Alt+Enter` and View > Full Screen put the window, without its border,
+  over the whole of the monitor it is on, at the mode that monitor already has, so the desktop's
+  resolution does not change; the same again puts it back, at the size and the zoom it had. Windows
+  has no full screen for a program that does not make one, and macOS and Linux have the window
+  manager's, which this does not replace. The window is then a size the system gave it, which the
+  display already copes with (T-75): the picture is the largest whole zoom (up to X 5) that fits,
+  in the middle of the frame; a tiled layout fills the window; and nothing asks the window for a
+  size meanwhile (the snap back after a drag, the zoom steps, `PgUp`/`PgDn`, the zoom rows of the
+  menu, the monitor clamp). The zoom the person chose is not changed and is the one the settings
+  keep. `F11` is full screen too, which it took from the timestamped snapshot it used to
+  save (that is `Shift+F11` now, and Snapshot > Save Timestamped as before). `fullscreen_gui.go`; `TestGLFullscreen` (G-22) drives it in a
+  window under Xvfb, `TestViewMenuFullScreenRow` the menu row. Seen only on Linux with no window
+  manager (T-97).
+- **The manual as a PDF and the examples as a zip, with every release (T-98).** The release workflow's
+  new Documents job (`documents.yml`) attaches `zenzx-<version>-manual.pdf` (A4, a contents list,
+  bookmarks, the pictures; `tools/build_manual.py`, with the runner's Chrome),
+  `zenzx-<version>-examples.zip` (`tools/build_examples.py`: the three examples with their
+  launchers and the prebuilt tape and `.nex` files, the same bytes for the same tree) and a
+  checksum file; the page lists them in a new section. `make manual-pdf` and `make examples-zip`
+  make them locally. The job runs after the release is published and a failure only leaves them
+  off. Its tools have tests (`scripts/test_build_manual.py`, `test_build_examples.py`), which CI
+  runs.
+- **Launchers for the examples, for people who have never heard of Python.** The connected world and
+  the chat room have a host program in Python. `examples/launch.py` starts an example on every
+  system: it finds ZenZX (a `bin` folder, the PATH, the `ZENZX` variable), or says that it is free
+  and offers to download the right one from the page, checked against the SHA-256 the page lists,
+  and starts it with what the example needs. Windows gets `run.cmd` and `chat.cmd` (double-click),
+  macOS `run.command` and `chat.command`, Linux `run.sh` and `chat.sh`, and the Next example one of
+  each (`next/run.*`). When there is no Python (the stand-in that Windows keeps under the name, and
+  Apple's, do not count) the launcher says in plain words what Python is and that nothing needs
+  installing, and Enter downloads a private copy into the examples' own `python` folder, by ZenZX
+  itself (`-fetch python`, below): python.org's embeddable Python on Windows (3.8 on Windows 7), a
+  python-build-standalone build on macOS and Linux, each checked against a SHA-256 in the program;
+  `O` on Windows opens the download page instead. On macOS and Linux, in a terminal, it asks how
+  instead, and offers only what the computer has: the private copy, Homebrew, the system's own
+  package (apt on Debian and Ubuntu, dnf or yum on Fedora and Red Hat, run as the administrator
+  or through `sudo`), a separate environment made by uv, conda, mamba or micromamba, or installing
+  it oneself. A window that would close on an error
+  waits for a key first. The `.cmd` files are kept CRLF by `.gitattributes`; every script
+  that starts with `#!` now has its execute bit, and the archive marks them by that. The shell
+  scripts are POSIX sh, for the `sh` of macOS and of Debian alike (`build.sh`, `build_headless.sh`,
+  `build_linux.sh` and `build_windows.sh` said `#!/bin/bash`, and the Makefile and
+  `run_next_divmmc.sh` ran scripts with `bash`); `scripts/test_shell_scripts.py` keeps them so.
+  `scripts/test_launch.py`, `scripts/test_findpy_sh.py`. The `.cmd` files were run under Wine with
+  the real Windows Python 3.12.10 and a stand-in `zenzx.exe`; Windows itself has not (T-98, G-23).
+- **ZenZX is a downloader (`pkg/fetch`, `-fetch`, in both builds).** What the Next's first-start
+  download did is now general, and the launchers use it to get Python, so that they need no curl,
+  wget or PowerShell (a Windows 7 has neither curl nor a PowerShell that speaks the TLS of today;
+  Go's own does). `-fetch python` fetches Python into `-fetch-to`; `-fetch ADDRESS` downloads a file
+  (`-fetch-sha256` checks it, `-fetch-unpack` takes a zip or `.tar.gz` apart, `-fetch-strip` drops
+  leading folders); `-fetch list` says what it knows by name; `-fetch-how` names the way,
+  `-fetch-yes` takes the first, `-fetch-force` fetches again. A download goes to a `.part` file, is
+  checked (SHA-256) before it takes its name, carries on from where a cut-off one stopped, tries
+  again with growing waits, gives up on a connection that has said nothing for 30 seconds, tries
+  its mirrors in order, honours the proxy of the environment, and says in plain words what went
+  wrong. The unpacker refuses names that go outside the folder (`..`, absolute, drive letters) and
+  links that do, and where links are not supported (Windows 7) it makes copies. An install is made
+  beside the folder and swapped in once it is whole and has the file it is meant to have, so a
+  failure leaves the old one. Windows 7 and Vista get Python 3.8.10 (found with `RtlGetVersion`,
+  which does not lie as `GetVersion` does). `pkg/nextcard` downloads through it too (`fetch.File`),
+  with its tests unchanged. `scripts/test_fetch_cli.py` runs the real program against a local
+  server (a checksum that does not match, a menu in a terminal, fake brew, apt-get and uv);
+  `scripts/test_findpy_cmd.py` runs `findpy.cmd` under Wine, including as a Windows 7 and with
+  the program for people (built for the windowed subsystem), which a batch file has to be told to
+  wait for. `get_python.ps1`, which did this on Windows with PowerShell and a signature check, is
+  gone. (T-98, G-23.)
 - **File > Export...** makes a program of one file from the machine on the
   screen: a copy of the ZenZX that is running, with the machine as it was at that moment after it
   (a `.zxs` snapshot, a model and a checksum, behind a trailer the program finds at its own
@@ -79,15 +438,31 @@ rework, and a documentation sweep.
   the tech team), and attached to the release as `zenzx-<version>-windows7-amd64.zip` and a `.msi`, beside
   the Windows 10 programs. windows/amd64 only. It is checked for `ProcessPrng`, the one function the
   standard build imports that Windows 7 lacks, and the `.msi` is installed on a current Windows. Built
-  here and started under Wine set to Windows 7; it has not been started on a real Windows 7 machine,
-  and the workflow has not run (guard G-21).
+  here and started under Wine set to Windows 7; a tester reported it working on a real Windows 7
+  machine (2026-11-25, the test build made here), and the workflow
+  ran in the release run and attached its zip and `.msi`, which no one has yet tried on Windows 7
+  (guard G-21).
+- **The download page lists the installers and the Windows 7 files**: the page builder
+  (`tools/build_site.py --extras`, tested in `scripts/test_build_site.py`) lists them with a link to
+  each on the release, its size and its SHA-256, and says what to do about the signing warnings;
+  `runners.json` is unchanged. The `pages` job of `release.yml` now waits for the release and for the
+  `installers` and `windows7` jobs, and a failure in either only leaves its files off the page. It shows
+  from the next tag.
+- **The documents were brought up to date.** The manual has "Installing a release", says the GUI needs
+  CGO on Linux only, lists `-focus-follow`, and points to the register items on tape loading instead of
+  a handover document that does not exist; the README has an Installing section and lists the documents
+  it did not; `docs/development.md` describes `installers.yml`, `windows7.yml`, `windows-smoke.yml` and
+  the page's new sections; `docs/KNOWN_ISSUES.md` no longer says that no model has contention, and says
+  that nothing is signed and which platforms are not built (T-96, new); the two stage trackers carry
+  `Updated:`; the proposals for the zen80 tracing hooks and the Next GPU compositing seam, both built,
+  have reconciliation banners; `TESTING.md` is regenerated for 0.50.0 (696 tests, none failed).
 - **Installers** (`tools/package.py`, `.github/workflows/installers.yml`, `docs/proposals/installers.md`): a
   `.deb` for Linux (amd64, arm64), a `.msi` for Windows (amd64, arm64) and a `.dmg` for macOS (both
   processors in one), each made from the release's own programs after it is published, installed,
   run and removed on a runner of its own system, and attached to the release with checksums only if
-  all five passed. `scripts/test_package.py` tests the tool (a CI step). The `.deb` has been installed,
-  run and removed in a Linux container; the `.msi` (WiX 3.14) and the `.dmg` have not been built yet,
-  and the workflow has not yet run (guard G-20). No file types are registered, because ZenZX ignores
+  all five passed. `scripts/test_package.py` tests the tool (a CI step). The `.deb` was installed,
+  run and removed in a Linux container, and the workflow ran in the release run of this version and
+  attached all five (guard G-20); nobody has yet installed one on a real machine. No file types are registered, because ZenZX ignores
   a file named on its command line (T-94), and nothing is signed. A Windows 7 program is T-95.
 - **The application icon** (`assets/icon/`): the Spectrum drawn in `speccy01.zani` (64 by 40), as
   `speccy.png`, enlarged by whole numbers with no smoothing to square pictures of 64 to 1024
@@ -196,7 +571,7 @@ rework, and a documentation sweep.
   format's files shown and its extension added to a name that has none, and the machine is saved
   where the person says in the format they chose. `.szx` and `.rzx` are read only and are not on
   the list. The result, saved or refused, is a toast, and so now is the result of Quick Save,
-  Quick Load and Save Timestamped (and `F9` to `F11`), which printed to the terminal only. The
+  Quick Load and Save Timestamped (and `F9` to `F11`, as they then were), which printed to the terminal only. The
   formats and the saving are `snapshotsaveas.go`, the menu `snapshotsaveas_gui.go`;
   `snapshotsaveas_test.go` saves each format and loads it back.
 - **A frame round a centred picture, with the picture's shadow.** Where the window is larger than
@@ -323,7 +698,11 @@ rework, and a documentation sweep.
   -next-examples-card PATH` builds one on demand.
 - **Custom ROMs in `custom-roms/`:** the Microdigital TK90X (standard, Brazilian,
   Uruguayan) and TK95 (Portuguese, Spanish), and our own zenpoint 48K swap ROMs
-  (Spanish, English).
+  (Spanish, English). The Microdigital ROMs name their language and country the one way, as a
+  language tag (BCP 47, language then country): `TK90X-pt-BR.rom`, `TK90X-es-UY.rom`,
+  `TK95-pt.rom` and `TK95-es.rom`, where they had been `TK90X-BR.rom` and `TK90X-UY.rom` (a country)
+  beside `TK95-PT.rom` and `TK95-ES.rom` (a language); the files are the same bytes. The TK95
+  ones carry no country because none was known.
 - **A File menu, first on the bar.** **Open...** is a file browser for anything the
   program loads (`.tap .tzx .sna .z80 .szx .zxs .scr .dsk .nex`); what is chosen goes where
   the same file dropped on the window would, through the same code. **Quit** ends the
@@ -375,6 +754,49 @@ rework, and a documentation sweep.
 
 ### Changed
 
+- **View > Border Display closes the menu** as a choice does, instead of staying open: the window changes size
+  with the border, and an open menu drawn where it was looked displaced from its row.
+- **Quick Load opens the quick save as every snapshot is opened, and still waits paused.** It went into
+  the machine that was shown, whatever kind that was; it now goes through the same path (a machine of
+  the snapshot's kind), and says why when it cannot. The machine it loads waits for Play or `F2`
+  whatever Preferences say, as it always did. A 128K `.sna` or `.z80` no longer loads into a +2A or a
+  +3 (a 128K's state in a machine with a disc controller and four ROMs is not that machine): a
+  128K machine is made for it.
+- **The Escape key is disabled by default, and it is a setting.** ZenZX used to start with Escape
+  quitting the program (`-escape=on`), whatever was in the settings file. It now starts with the key
+  disabled: it still closes an open menu or window, but with nothing open it does nothing, and it
+  no longer closes the debugger (`-escape=close` does, `-escape=query` asks before quitting,
+  `-escape=on` quits at once). The choice is a new `"escape"` key of `settings.json` (`"off"`,
+  `"close"`, `"query"`, `"on"`) and the **Escape** row on the new **Keyboard** tab of File > Preferences
+  (Disabled, Closes windows only, Asks before quitting, Quits at once), which changes it at once and
+  saves it. A settings file with no `"escape"`, or an older one, is disabled; the schema refuses a word
+  that is none of the four, as it does for the other choices, and an unknown `-escape` word is `off`
+  with a warning, where it used to be `on`. The `-escape` switch, when given, wins for that run
+  without being saved, until the Preferences row is used. The zero value of the mode is off, so a
+  machine built without being told is off too. `pkg/settingsconfig` (`Escape`, `EscapeWord`),
+  `escape_mode_test.go`, `escape_setting_gui_test.go`; the real GUI was run under Xvfb with the key
+  sent by `xdotool`: it stays up by default and with an old settings file, quits with the saved
+  `"on"` or `-escape=on`, and `-escape=off` beats a saved `"on"`.
+- **The download page helps a person find the right build, and looks like ZenZX.** It reads what the
+  browser says about the computer (Windows 10 or 11, Windows 7, a 32-bit Windows, a Mac, Linux on
+  Intel, AMD or ARM, a phone) and opens that system's tab, marks the one build that fits as
+  **Recommended for you** and offers it as one large button, in plain words (Windows 10 or 11 on an
+  Intel or AMD PC, a Mac with Apple silicon) and not as `amd64`. Each system has the installer and the
+  bare program side by side and a short note on how to tell which processor the computer has; a
+  Windows 32-bit visitor is told there is no build for it, and a phone is told to come back from a
+  computer. With no script every system is listed one after another. It is drawn as the program is:
+  the Spectrum theme's bar that fades to black with the rainbow at its end, white panels, cyan where
+  something is chosen, the Spectrum icon (`assets/icon/speccy.png`), Spleen (the menu bar's own
+  face, made into web fonts by `tools/make_site_font.py`, BSD 2-Clause, its licence beside it: spaced by
+  the width of each letter for the text, and in the program's own cells for code and checksums), and
+  the figure that waits in an empty window, standing at the left of the black box of the recommendation and
+  moving as `sprites/wait/sequence.txt` says (still when the person asks for less motion). Nothing is
+  fetched from another site. What a release lacks is not mentioned. `tools/site_page.py`,
+  `scripts/test_build_site.py` (19 tests of the page and its files, and 6 in Chromium, G-24).
+- **Rodolfo Guerra is in the acknowledgements** (`ACKNOWLEDGEMENTS.md`, so in Help > Acknowledgements
+  too): for his help with internationalisation and testing, his knowledge of the Spectrum and of
+  Microdigital's Brazilian and Uruguayan clones, the TK90X and the TK95, and the modified ROMs he
+  publishes on his website.
 - **The tape deck starts at the top, with a big cassette.** A `settings.json` with no `"tapeDeck"`
   or `"tapeCassette"` of its own (a new installation, or one from before them) now has the deck
   at the top of the border and the cassette big, where it was Off and small. Both are still the
@@ -479,13 +901,75 @@ rework, and a documentation sweep.
   drawn in the same face. A GL test, `TestGLFPSCounter`, draws it in a window and finds the
   font's own glyph pixels (dormant guard G-14).
 - **Toasts have a white face inside a pitch-black stroke, on a darkened rounded box, and are never
-  wider than half the window.** The old orange text is gone; the sparks around it stay. The box is
+  wider or taller than half the window.** The old orange text is gone; the sparks around it stay. The box is
   black, more see-through at its top edge than at its bottom one (45% to 80%, the direction of
   the dock panel's gradient), with round corners, and it fades out with the text. A message too
-  long for half the window is drawn one notch smaller, and then broken into lines, so the box
-  never passes half the window (`toastlayout.go`, tested without a window in
+  long for half the window is broken into lines at the usual size (see the next entry for when it goes
+  smaller), so the box never passes half the window (`toastlayout.go`, tested without a window in
   `toastlayout_test.go`). `TestGLToastOverTheDemos` checks the white face, the black stroke, the
   box, the width and the corners, and writes pictures over the Next demos (dormant guard G-14).
+- **View > Show Status is gone; F3 opens the diagnostics report.** The row only printed a few lines
+  to the console, which the window has no use for, and the Diagnostics report (Snapshot > Run
+  Diagnostics) already said all of it: the memory banking, the floppy drive and the tape. The one thing
+  only Show Status said, on a Next, which ROM the CPU reads at 0x0000-0x3FFF and the registers that decide
+  it (the lock bits, NextREG 0x8C, the ROM the ports choose), is now in the report, in
+  three lines under Memory (the MMU slots are in the Next sections below), and the report no longer calls a Next a +3 in its Layout line. `F3`, which
+  printed the same lines, opens the report in its window, as the menu row does. The View menu's rows after
+  Full Screen moved up by one. `diagnostics_gui.go`, `TestDiagnosticsOfANextSaysWhichROMIsLive`.
+- **The Diagnostics report has the Next's hardware.** On a Next the report gains three sections after
+  Memory: **Next: CPU and memory** (the CPU speed, the machine timing, all eight MMU slots with FF marked
+  as ROM, the interrupt mode, the pending interrupts, the line interrupt and its line, how many CTC
+  channels are counting), **Next: picture** (the layer order, the ULA mode, LoRes, Layer 2 with its size
+  and bank, the tilemap and its width, the sprites and whether they show over the border) and **Next:
+  devices** (the DMA with its mode, direction, addresses and length, the copper with its start control and
+  where it is, and the DivMMC: paged or not, by CONMEM or the automap, MAPRAM, SRAM page). Left out for
+  now: the sound chips, the palettes, the sprite pattern state, the scroll and clip windows, the
+  UART, I2C and RTC, the Multiface and a NextREG dump. Everything is read from the machine as it is and
+  changes nothing (a NextREG is read from the register file, not through the port, which has side
+  effects); a machine that is no Next has none of it. `diagnostics_next_gui.go`,
+  `TestDiagnosticsOfANextHasItsHardware`, `TestNextDiagnosticsWords`.
+- **The popup menus cast a drop shadow.** The menus that open from the bar, their submenus and the logo
+  menu have the shadow that the picture has in its frame, drawn from the same texture and clipped to
+  below the bar, so that the bar itself has none and the shadow does not fall on it. zenui is not
+  changed: a renderer between it and the real one draws the shadow just before a menu's panel is
+  filled (`popupShadowRenderer`, `popupshadow_gui.go`; `drawBoxShadow`, which the frame uses too, in
+  `pictureframe_gui.go`). A menu too small for the texture's nine-patch has the whole texture squeezed
+  to its size. `popupshadow_gui_test.go`, `TestGLPopupMenuHasADropShadowAndTheBarHasNone` (dormant guard
+  G-28). The shadow of the menus is 30% lighter than the picture's (`menuShadowStrength`, `drawBoxShadowAt`);
+  the picture's own is as it was. `popupshadow_strength_gui_test.go`.
+- **The submenu of timestamped snapshots says `None` when there are none**, not a sentence.
+- **The pointer is a hand over the tabs of the Load Binary window**, as it is over those of Preferences.
+- **A machine picked from the dock lands on its picture in a maximised or full screen window.** In a
+  window that is not the size the display asked for, the picture is drawn into a canvas that is put in
+  the middle of the window (T-75), but the picture that flew out of the dock to the front was taken to
+  the canvas's coordinates in the window, and landed short of the real picture by the margin round
+  it, and the wrong size when the picture was scaled down. It now lands where the picture is
+  (`inWindow`, `placeInPicture`, `display_fit_gui.go`; `TestFlyLandsOnThePictureOfAMaximisedWindow`,
+  `TestPlaceInPictureFollowsTheCanvas`).
+- **A window that closes fades out, and shrinks a little as it goes.** Help, About, Acknowledgements,
+  Preferences, the file browsers, the Export form, the SD card and floppy windows and the Next setup
+  window are drawn once more after they close, for 160 ms, fainter and smaller each frame (down to
+  94%, about the middle of the window), with the backdrop lightening as they go; a window opened during
+  the fade ends it. It is all on ZenZX's side of zenui, which has no notion of a window on its way
+  out: the bar draws the closed window one last time into a texture, holding back its backdrop (the
+  rectangle over the whole screen, which would show its edges if it shrank), and draws the texture
+  scaled and faded each frame. zenui is not changed. `dialogfade.go` (the curve, tested without a window
+  in `dialogfade_test.go`), `dialogfade_gui.go`, `TestGLDialogFadesAndShrinksWhenClosed` (dormant guard G-27).
+  The dialog that asks what to do with files dropped on a Next fades too, though the program draws it
+  and not the bar (`TestGLDropChoiceFadesToo`); the demo overlay's test dialogs (Shift+F1 to F3) do not.
+- **The shipped ROMs are in folders of `custom-roms/`: `Microdigital` and `Zenpoint Project`.** The five
+  TK90X and TK95 ROMs are in `custom-roms/Microdigital/` and the two zenpoint swap ROMs in
+  `custom-roms/Zenpoint Project/`, where they had been loose in `custom-roms/`; in the window's Custom ROM
+  menu each folder is a submenu, and the selector (`-custom-roms-menu`) lists them as
+  `Microdigital/TK90X.rom`. No file changed (checked byte for byte) and none was renamed. A
+  `-rom0` to `-rom3` that names one of them by path needs the folder in it. `custom-roms/README.md`,
+  `docs/ROMS.md` and the Acknowledgements say where they are now;
+  `TestShippedCustomROMsAreInTheirFolders` (`custom_roms_layout_gui_test.go`).
+- **A toast that is too long for one line is wrapped at the usual size.** It had been drawn one
+  notch smaller first, which left some in a font too small to read, without word wrapping. It is now
+  broken between words into as many lines as it takes at the usual size, and goes one notch down
+  only when those lines would stand taller than half the window or a word is wider than a line
+  (`toastLayout`, `toastlayout_test.go`; G-14).
 - **The debugger HUD and the audio debug overlay no longer call the windowing layer themselves.**
   The HUD's `HandleInput` and `UpdateResize` take the frame's `zenui.Input` (typed characters,
   Enter, Backspace, the pointer) like every other zenui surface, and its caret blinks on the
@@ -545,6 +1029,46 @@ rework, and a documentation sweep.
 
 ### Fixed
 
+- **A multi machine window with holes in it showed black there.** When the layout does not cover the whole
+  client area (a main tile with room left over, two machines in a window made for four), the space left is now
+  painted as the single machine's window is: the grey gradient, top to bottom, with the five embossed lines.
+  `TestGLTiledBackground` (dormant guard G-14).
+- **Switching from a Next to another model in the window left the machine a Next.** The memory kept
+  its Next mode (the 224 pages of 8K, the Next ports, the layers) and the CPU its Z80N, so a 128K
+  switched to from a Next showed 8K pages in the memory editors, and a 48K or a TS2068 showed pages
+  it does not have. A ROM loaded now makes a classic memory (`SpectrumMemory.LoadROM`), the model
+  loader says so for every model but the Next (`loadModelROMs`, `DisableZ80N`), and the same is true
+  of a TS2068, which loads its ROMs another way. `modelswitch_next_gui_test.go`.
+- **Switching a paused machine to another model left the old machine's screen showing.** A model chosen
+  from the Machine menu reset the machine, and a reset keeps RAM and does not touch the picture the display
+  last drew; a Next's reset waits for the next frame to be run, which a paused machine does not do. So
+  a 128K paused and switched to a Next drew the 128K's screen and border as the Next's, and Play then
+  changed the picture to something the person had not seen; with Layer 2 or the second screen of the 128K
+  in use the picture was worse, and a TS2068's screen mode outlived the TS2068. A switch is a new machine
+  now: its RAM and screen are cleared, the first screen is shown, the border is black, the video mode of
+  a TS2068 is dropped, and a Next's reset is done there and then, so that a paused machine draws what a
+  new machine of its model draws. `modelswitch_paused_gui_test.go`, for every pair of models.
+- **`-bin` and ZenScript's `bin` dropped a file that was to land in the ROM, without a word.** The
+  bytes went to a memory that does not take writes there, so `-bin=x.bin -binaddr=0` ended with the
+  load reported and nothing changed. They are refused now, with the first address that is not RAM,
+  and nothing is written (`LoadBIN`; the Load Binary window, `-binpage` and Poke already did).
+  `bin` also takes a RAM page as its fourth word, as `-binpage` does, which it could not before:
+  `0 bin patch.bin 0x0010 -1 6` (`docs/zenscript.md`). `binrom_test.go`.
+- **A run of bytes that passed the last page said "by 1 bytes".**
+- **The text boxes of the SD Cards, Snapshots and Export dialogs showed no caret, and Backspace in
+  them cut a byte.** The box where DELETE is typed to confirm a delete, the box for a new name, and
+  the file name of an export looked as if they were not waiting for typing: zenui's form drew a
+  text box with a border and no caret, and its Backspace removed a byte, so it cut a letter that is
+  not ASCII in two. zenui 0.3.5 draws a caret at the end of the text, where the next key goes, shows
+  the end of a text that is longer than the box, and removes a whole rune; zenzx uses it, and needs
+  it. Every text box of the program was checked: the others (the Load Binary and Hot Memory boxes,
+  the file name of the file browser, the machine deck's name) already had one.
+  `formcaret_gui_test.go`.
+- **Page Up and Page Down zoom the picture only when nothing else is open.** They did not zoom in a
+  dialog, since the machine is given no keys while one is up; `dialoginput_gui_test.go` now keeps
+  that true of every window, as they are used there to page a dump.
+- **The manual had a line that began with `#B6B6B6`**, which some Markdown readers (python-markdown,
+  so the PDF) take for a heading. The line is reflowed, and a test keeps it so.
 - **The GUI stopped at its first frame on macOS, and would have on Windows.** It panicked with
   `ffi: calling with too many arguments` in `SetWindowSize`. raylib-go v0.60.0, which the
   cgo-free macOS and Windows builds reach raylib through, prepared that function without its

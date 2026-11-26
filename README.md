@@ -52,13 +52,25 @@ made, and [`next`](next/README.md) is the folder for the Next's cards and ROMs.
 | ![gallop: Muybridge's horse crossing a Bierstadt painting](docs/img/next-example-gallop.png) | ![fuji: clouds drifting behind Hokusai's Red Fuji at dusk](docs/img/next-example-fuji.png) | ![orbit: the Moon and Phobos in front of the Earth](docs/img/next-example-orbit.png) |
 | gallop -- Muybridge's horse over a Bierstadt painting | fuji -- clouds behind Hokusai's Red Fuji | orbit -- the Moon and Phobos before the Earth |
 
+## Installing
+
+[The release page](https://github.com/ha1tch/zenzx/releases) and
+[ha1tch.github.io/zenzx](https://ha1tch.github.io/zenzx/) have a `.deb` for Linux (amd64, arm64), a
+`.msi` for Windows (amd64, arm64) and a `.dmg` for macOS, and the programs as they are, in archives and as
+bare files. Windows 7 has a program of its own, 64-bit, as a `.zip` and a `.msi`; the others need Windows 10.
+Nothing is signed, so Windows and macOS ask for permission the first time; the manual says how to give it
+([Installing a release](docs/MANUAL.md#installing-a-release)).
+
+Each release also has the manual as a PDF (`zenzx-<version>-manual.pdf`) and the examples as a zip
+(`zenzx-<version>-examples.zip`). The examples start with a double click on Windows (`run.cmd`,
+`chat.cmd`) and with `sh run.sh` elsewhere; when Python 3 or ZenZX is missing they say so, say where
+to get it, and on Windows offer to fetch it
+([The examples](docs/MANUAL.md#the-examples-and-their-launchers)).
+
 ## Building
 
-Prebuilt programs for Linux, macOS and Windows are on [the release page](https://github.com/ha1tch/zenzx/releases)
-and at [ha1tch.github.io/zenzx](https://ha1tch.github.io/zenzx/).
-
-Go 1.26.5 or later. The GUI also needs a C compiler and the raylib and oto system libraries
-(OpenGL, X11 or Wayland, ALSA on Linux).
+Go 1.26.5 or later. On Linux the GUI also needs a C compiler and the raylib and oto system libraries
+(OpenGL, X11 or Wayland, ALSA); the release builds the macOS and Windows GUI without one.
 
 ```
 ./build.sh            # the GUI
@@ -125,6 +137,8 @@ full account.
 | [`docs/MANUAL.md`](docs/MANUAL.md) | The reference: flags, models, keyboard, joystick and mouse, media, the Next, configuration |
 | [`docs/gui.md`](docs/gui.md) | The window: menu bar, `machines.json` and `settings.json`, keys, drag and drop |
 | [`docs/headless.md`](docs/headless.md) | The headless program: the debugging workflow, loading binaries and screens, its flags |
+| [`docs/link.md`](docs/link.md) | Several machines at once, the socket each one offers, and autorun |
+| [`docs/ROMS.md`](docs/ROMS.md) | Where a machine's ROM comes from, how to replace it, patch it or make one |
 | [`docs/zenscript.md`](docs/zenscript.md) | The scripts that drive a machine |
 | [`docs/next-programs.md`](docs/next-programs.md) | The programs on the Next's card and how each fares |
 | [`docs/NEXT_BOOT_REFERENCE.md`](docs/NEXT_BOOT_REFERENCE.md) | How a Next boots |
@@ -134,6 +148,9 @@ full account.
 | [`docs/RESOLVED.md`](docs/RESOLVED.md), [`CHANGELOG.md`](CHANGELOG.md) | What was closed, and what shipped |
 | [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) | Full per-patch changelog detail for older minor versions the main changelog now summarises |
 | [`docs/development.md`](docs/development.md) | Versioning, releases, continuous integration, the source's layout |
+| [`docs/MACHINE_MAP.md`](docs/MACHINE_MAP.md) | What separates the machine from the two programs, for a program that imports it |
+| [`docs/proposals/`](docs/proposals) | Designs, each with a note where what was built differs; [the installers](docs/proposals/installers.md) are one |
+| [`TESTING.md`](TESTING.md) | The tests, generated from the source |
 | [`docs/ZENBENCH.md`](docs/ZENBENCH.md) | Zenbench: what ZenZX and zenplay are both built from, and what is to come of it |
 
 ## Contact

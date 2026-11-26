@@ -49,4 +49,5 @@ thirdparty/
 # What the emulator writes beside itself while it is used: quick saves, screenshots
 /snapshot_*.zxs
 /snapshot_*.json
+/snapshots/
 /st-*.png

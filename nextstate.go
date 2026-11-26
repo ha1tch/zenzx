@@ -44,6 +44,7 @@ func nextStatePolicy() *machinestate.Policy {
 			"zenzx.ZenZX.nextSettle":       true,
 			"zenzx.ZenZX.romPatches":       true,
 			"zenzx.ZenZX.card2":            true,
+			"zenzx.ZenZX.cardsApproved":    true,
 			"zenzx.ZenZX.running":          true,
 			"zenzx.ZenZX.paused":           true,
 			"zenzx.ZenZX.escape":           true,

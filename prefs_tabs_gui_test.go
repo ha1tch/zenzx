@@ -18,7 +18,7 @@ func prefsClickAt(w *prefsWindow, r zenui.Renderer, x, y int) prefsResult {
 func TestPreferencesTabsGroupEveryRow(t *testing.T) {
 	b, zx := newTestBar(t, nil, "")
 	w := newPrefsWindow(b.prefSections(zx), "", func() {})
-	if want := []string{"Appearance", "Machines", "Files"}; !reflect.DeepEqual(w.tabNames, want) {
+	if want := []string{"Appearance", "Machines", "Keyboard", "Files"}; !reflect.DeepEqual(w.tabNames, want) {
 		t.Fatalf("tabs %v, want %v", w.tabNames, want)
 	}
 	if !reflect.DeepEqual(w.tabs.Labels, w.tabNames) {
@@ -37,7 +37,7 @@ func TestPreferencesTabsGroupEveryRow(t *testing.T) {
 		"Theme": "Appearance", "Font": "Appearance", "Font zoom": "Appearance",
 		"Display zoom": "Appearance", "Fixed menu bar": "Appearance",
 		"Machine dock": "Machines", "Several machines": "Machines", "A loaded snapshot": "Machines",
-		"A plain drop": "Files", "With Shift held": "Files",
+		"A plain drop": "Files", "With Shift held": "Files", "Escape": "Keyboard",
 	} {
 		if tabOf[label] != tab {
 			t.Errorf("%q is on %q, want %q", label, tabOf[label], tab)
@@ -137,6 +137,9 @@ func TestPreferencesKeysMoveBetweenTabs(t *testing.T) {
 	key(zenui.KeyTab)
 	if w.tabs.Selected != 2%n {
 		t.Errorf("Tab: tab %d, want 2", w.tabs.Selected)
+	}
+	for w.tabs.Selected != n-1 { // on to the last tab, however many there are
+		key(zenui.KeyRight)
 	}
 	key(zenui.KeyRight)
 	if w.tabs.Selected != 0 {

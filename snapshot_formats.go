@@ -211,6 +211,14 @@ func (zx *ZenZX) LoadSnapshotFormat(filename string, format string) error {
 		}
 	}
 
+	// A snapshot is loaded into the machine it is of (snapshotmodel.go): a 128K's pages put
+	// into a 48K are not a game that runs.
+	if filename != embeddedSnapshot && format != "rzx" {
+		if err := zx.checkSnapshotFits(filename, format); err != nil {
+			return err
+		}
+	}
+
 	switch format {
 	case "sna":
 		return zx.LoadSNA(filename)

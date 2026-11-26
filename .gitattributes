@@ -1,0 +1,4 @@
+# The Windows scripts keep their line ends: cmd.exe misreads a label in a file with bare LFs.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

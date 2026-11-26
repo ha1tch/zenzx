@@ -220,16 +220,13 @@ func (zx *ZenZX) noteROMPatchesForFirmware() {
 	zx.warnROMSwitchesWaitForFirmware()
 }
 
-// NextROMLive says which ROM the CPU reads at 0x0000-0x3FFF of a Next, and why: the boot ROM,
-// the config window, the DivMMC, RAM paged over the ROM, or one of the SRAM's ROM banks, with
-// the lock bits, NextREG 0x8C, the ROM the ports choose and the two lowest MMU slots. A patch to
-// the wrong bank looks like a patch that does nothing, and this is how to tell.
-func (zx *ZenZX) NextROMLive() string {
+// nextROMWhat is which ROM the Next's CPU reads at 0x0000-0x3FFF, as words, and false when this
+// is not a Next (the first half of NextROMLive).
+func (zx *ZenZX) nextROMWhat() (what string, ok bool) {
 	m := zx.memory
 	if m == nil || !m.isNext {
-		return ""
+		return "", false
 	}
-	var what string
 	switch {
 	case m.bootROMEnabled:
 		what = "the boot ROM (config mode before the firmware has chosen the machine)"
@@ -244,6 +241,20 @@ func (zx *ZenZX) NextROMLive() string {
 	default:
 		what = fmt.Sprintf("ROM %d, SRAM bank %d", m.nextROMIndex(), m.nextROMIndex())
 	}
+	return what, true
+}
+
+// NextROMLive says which ROM the CPU reads at 0x0000-0x3FFF of a Next, and why: the boot ROM,
+// the config window, the DivMMC, RAM paged over the ROM, or one of the SRAM's ROM banks, with
+// the lock bits, NextREG 0x8C, the ROM the ports choose and the two lowest MMU slots. A patch to
+// the wrong bank looks like a patch that does nothing, and this is how to tell. The Diagnostics
+// report has the same, a line each (diagnostics_gui.go).
+func (zx *ZenZX) NextROMLive() string {
+	what, ok := zx.nextROMWhat()
+	if !ok {
+		return ""
+	}
+	m := zx.memory
 	return fmt.Sprintf("Next ROM live: %s. ROM lock %d, ports choose ROM %d, NextREG 0x8C=0x%02X, MMU slots 0/1 = 0x%02X/0x%02X",
 		what, (m.nextAltROM>>4)&0x03, m.romBank, m.nextAltROM, m.nextSlots[0], m.nextSlots[1])
 }

@@ -22,7 +22,7 @@ func TestSnapshotSaveAsMenu(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barSnapshot)
-	const saveAs = 3
+	const saveAs = 5 // after the title of the section, Quick Save, Quick Load, Save Timestamped and Load Timestamped
 	if items[saveAs].Label != "Save As" || len(items[saveAs].SubItems) != len(snapshotSaveFormats) {
 		t.Fatalf("items[%d] = %q with %d choices, want Save As with %d formats", saveAs, items[saveAs].Label, len(items[saveAs].SubItems), len(snapshotSaveFormats))
 	}
@@ -69,18 +69,18 @@ func TestSnapshotMenuActionsSpeakToTheHost(t *testing.T) {
 	defer os.Chdir(prev)
 
 	got := notices(zx, func() { zx.handleQuickSave() })
-	if len(got) != 1 || !strings.Contains(got[0], "Quick saved to quicksave.zxs") {
+	if len(got) != 1 || !strings.Contains(got[0], "Quick saved to "+filepath.Join(SnapshotDir, "quicksave.zxs")) {
 		t.Errorf("Quick Save said %q", got)
 	}
 	got = notices(zx, func() { zx.handleAutoSave() })
-	if len(got) != 1 || !strings.Contains(got[0], "Saved snapshot: snapshot_") {
+	if len(got) != 1 || !strings.Contains(got[0], "Saved snapshot: "+SnapshotDir+"/snapshot_") {
 		t.Errorf("Save Timestamped said %q", got)
 	}
 	got = notices(zx, func() { zx.handleQuickLoad() })
-	if len(got) != 1 || !strings.Contains(got[0], "Quick loaded from quicksave.zxs") {
+	if len(got) != 1 || !strings.Contains(got[0], "Quick loaded from "+filepath.Join(SnapshotDir, "quicksave.zxs")) {
 		t.Errorf("Quick Load said %q", got)
 	}
-	os.Remove("quicksave.zxs")
+	os.Remove(filepath.Join(SnapshotDir, "quicksave.zxs"))
 	got = notices(zx, func() { zx.handleQuickLoad() })
 	if len(got) != 1 || !strings.Contains(got[0], "No quick save found") {
 		t.Errorf("Quick Load with nothing saved said %q", got)

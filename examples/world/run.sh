@@ -20,6 +20,11 @@ set -e
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 root=$(CDPATH= cd -- "$here/../.." && pwd)
+examples_dir=$(CDPATH= cd -- "$here/.." && pwd)
+
+# Python runs the host: find it, or offer to fetch it, before a window opens.
+. "$examples_dir/tools/findpy.sh"
+[ -n "$PY" ] || exit 1
 
 # --- locate the binaries ----------------------------------------------------
 # find_bin NAME [candidate ...]: the first candidate path that is executable,
@@ -36,10 +41,8 @@ find_bin() {
 
 # zenzx: $ZENZX, then dist/ (where `make build` puts it), the repo root.
 zenzx=$(find_bin zenzx "$ZENZX" "$root/dist/zenzx" "$root/zenzx") || {
-    echo "run.sh: cannot find the zenzx GUI binary." >&2
-    echo "  Build it with 'make build' (it lands in dist/zenzx)," >&2
-    echo "  or set ZENZX=/path/to/zenzx." >&2
-    exit 1
+    # none here: launch.py offers to download it
+    exec "$PY" "$examples_dir/launch.py" world "$@"
 }
 # zenas is optional: a prebuilt world.tap ships with the example, so it runs
 # without an assembler. zenas is only needed to rebuild the tape. Look in a
@@ -71,6 +74,8 @@ if [ "$need_build" = yes ]; then
     fi
 fi
 
+
+
 # --- the nine link ports, one per machine, read row by row ------------------
 ports=16384,16385,16386,16387,16388,16389,16390,16391,16392
 taps=$(printf '%s,' "$tap" "$tap" "$tap" "$tap" "$tap" "$tap" "$tap" "$tap" "$tap")
@@ -85,7 +90,7 @@ gui=$!
 
 # --- a moment to boot and load, then the host that routes the crossings -----
 sleep 10
-python3 "$here/host.py" --rows 3 --cols 3 \
+"$PY" "$here/host.py" --rows 3 --cols 3 \
     16384 16385 16386 16387 16388 16389 16390 16391 16392 &
 host=$!
 

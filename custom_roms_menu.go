@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -16,25 +15,15 @@ import (
 // standard, embedded set (embedded_roms.go).
 const CustomROMDir = "custom-roms"
 
-// listCustomROMs returns every .rom file directly inside dir, sorted by
-// name. A missing or empty directory returns an empty slice, not an
-// error -- custom-roms/ having nothing in it yet is a perfectly normal
-// state, not a failure.
+// listCustomROMs returns every .rom file in dir, sorted by name: those directly in it, then those
+// of its folders, down to customROMDepth, as a path under dir with slashes ("sub/x.rom"). A
+// missing or empty directory returns an empty slice, not an error -- custom-roms/ having nothing
+// in it yet is a perfectly normal state, not a failure.
 func listCustomROMs(dir string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
+	names, folders := scanCustomROMs(dir)
+	for _, f := range folders {
+		names = append(names, f.ROMs...)
 	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if strings.EqualFold(filepath.Ext(e.Name()), ".rom") {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
 	return names
 }
 

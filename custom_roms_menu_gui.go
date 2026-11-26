@@ -121,7 +121,7 @@ func showConfirmationOSD(message string, text *zenuiraylib.BDFText) {
 		screenW, screenH := int(rl.GetScreenWidth()), int(rl.GetScreenHeight())
 		dt := rl.GetFrameTime()
 
-		caption.Update(dt, 0, message, screenW)
+		caption.Update(dt, 0, message, screenW, screenH)
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Black)

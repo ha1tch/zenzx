@@ -15,6 +15,15 @@ import "fmt"
 // the first machine of a run is still set up by the start-up code of each
 // program, which has the command line's own options to apply as it goes.
 func loadModelROMs(zx *ZenZX, model, romDir string) (label string, known, loaded bool) {
+	if model != "next" {
+		// what is left of a Next that was running: the machine switched to is not one, whichever way its
+		// ROMs are loaded
+		zx.DisableZ80N()
+		zx.memory.isNext = false
+	}
+	if model != "ts2068" {
+		zx.memory.isTS2068 = false // what is left of a TS2068 that was running
+	}
 	switch model {
 	case "48k":
 		if data, err := resolveROMBytes("48.rom", romDir); err == nil {

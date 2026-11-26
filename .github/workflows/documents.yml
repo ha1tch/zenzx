@@ -1,0 +1,101 @@
+name: Documents
+
+# The manual as a PDF and the examples as a zip, attached to a release beside its programs:
+# zenzx-<version>-manual.pdf, zenzx-<version>-examples.zip and zenzx-<version>-documents.sha256.
+#
+# The manual is docs/MANUAL.md printed by the Chrome that the runner has (tools/build_manual.py);
+# the examples are examples/ with its launchers, packed by tools/build_examples.py. Both are made
+# from the release's own source (the tag); the tools that make them are the ones at the commit this
+# workflow runs at.
+#
+# Run by the Release workflow once the release is published, and by hand for a release that already
+# exists (Actions > Documents > Run workflow, the tag such as v0.50.0). A failure leaves the release
+# as it was, and the page is made without them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release to attach the manual and the examples to, such as v0.50.0"
+        required: true
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  documents:
+    name: The manual and the examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5          # the tools, at this commit
+
+      - uses: actions/checkout@v5          # what is printed and packed, at the tag
+        with:
+          ref: ${{ env.TAG }}
+          path: src
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-go@v6          # the launchers' tests build the program that fetches Python
+        with:
+          go-version: '1.26'
+
+      - name: Install the markdown package
+        run: pip install markdown
+
+      - name: Test the tools
+        run: |
+          set -euo pipefail
+          google-chrome --version
+          python3 scripts/test_build_manual.py
+          python3 scripts/test_build_examples.py
+          python3 scripts/test_launch.py
+          python3 scripts/test_fetch_cli.py
+          python3 scripts/test_findpy_sh.py
+
+      - name: Build the manual and pack the examples
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          mkdir dist
+          python3 tools/build_manual.py --version "$VERSION" --repo src --out dist
+          python3 tools/build_examples.py --version "$VERSION" --repo src --out dist
+          ls -l dist
+
+      - name: Start the packed launcher where the archive puts it
+        # Not the examples themselves, which need a display: that the unpacked launcher runs, finds
+        # no ZenZX, and says where to get it.
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          mkdir check
+          unzip -q "dist/zenzx-${VERSION}-examples.zip" -d check
+          cd "check/zenzx-${VERSION}-examples"
+          test -x examples/launch.py
+          set +e
+          out=$(PATH=/usr/bin:/bin ZENZX= ZENZX_SITE=file:///nonexistent/ python3 examples/launch.py chat </dev/null 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          test "$rc" -eq 2
+          echo "$out" | grep -q "cannot find the zenzx program"
+
+      - name: Checksums and upload
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          cd dist
+          sha256sum * > "zenzx-${VERSION}-documents.sha256"
+          cat "zenzx-${VERSION}-documents.sha256"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber *

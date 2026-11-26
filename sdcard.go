@@ -81,8 +81,12 @@ type SDCard struct {
 	persistentByte uint8
 
 	initialised bool
-	appCmd      bool // set true by CMD55, consumed by the next command
-	hostSDHC    bool // latched from ACMD41's HCS argument bit (30)
+	// served is whether the machine has read a block of the image since the card was put in: the
+	// firmware starts a card and reads its partition table to mount it, so a card that has not been
+	// read is one that was inserted and never mounted (cardrecords.go).
+	served   bool
+	appCmd   bool // set true by CMD55, consumed by the next command
+	hostSDHC bool // latched from ACMD41's HCS argument bit (30)
 
 	// multiBlock/multiBlockSector track an open CMD18
 	// (READ_MULTIPLE_BLOCK) stream: true between CMD18 and whatever
@@ -357,6 +361,7 @@ func (c *SDCard) loadNextMultiBlock() {
 	}
 	buf := make([]byte, sectorSize)
 	_, _ = c.img.ReadAt(buf, offset)
+	c.served = true
 	c.noteBlock(offset, buf)
 	crc := sdCRC16(buf)
 	resp := make([]byte, 0, 2+sectorSize+2)
@@ -566,6 +571,7 @@ func (c *SDCard) cmd17ReadSingleBlock(sector uint32) {
 	}
 	buf := make([]byte, sectorSize)
 	_, _ = c.img.ReadAt(buf, offset)
+	c.served = true
 	c.noteBlock(offset, buf)
 	crc := sdCRC16(buf)
 	resp := make([]byte, 0, 5+sectorSize+2)
@@ -596,6 +602,7 @@ func (c *SDCard) cmd18ReadMultipleBlock(sector uint32) {
 	}
 	buf := make([]byte, sectorSize)
 	_, _ = c.img.ReadAt(buf, offset)
+	c.served = true
 	c.noteBlock(offset, buf)
 	crc := sdCRC16(buf)
 	resp := make([]byte, 0, 5+sectorSize+2)

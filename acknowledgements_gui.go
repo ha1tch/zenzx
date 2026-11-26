@@ -43,7 +43,7 @@ func newAcknowledgementsModal() *zenui.TextModal {
 
 // acknowledgementsModalText turns the markdown of ACKNOWLEDGEMENTS.md into what a
 // TextModal reads. The font has no em dash, nor any other character beyond ASCII, so
-// those are written as their ASCII stand-ins.
+// those are written as their ASCII stand-ins, and so are the accented letters of Spanish.
 func acknowledgementsModalText(md string) string {
 	type item struct{ kind, head, text string } // kind: h1, entry, para
 	var items []item
@@ -105,6 +105,8 @@ func ackPlain(s string) string {
 		return "[" + seen + "](" + url + ")" // still a link, for the window to make clickable
 	})
 	s = ackEmphasis.ReplaceAllString(s, "$1")
-	s = strings.NewReplacer("—", "-", "–", "-", "’", "'", "‘", "'", "“", `"`, "”", `"`).Replace(s)
+	s = strings.NewReplacer("—", "-", "–", "-", "’", "'", "‘", "'", "“", `"`, "”", `"`,
+		"á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ñ", "n", "ü", "u",
+		"Á", "A", "É", "E", "Í", "I", "Ó", "O", "Ú", "U", "Ñ", "N", "Ü", "U").Replace(s)
 	return strings.Join(strings.Fields(s), " ")
 }

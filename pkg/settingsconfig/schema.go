@@ -32,5 +32,8 @@ func Schema(validThemes, validFonts []string) qf.Schema {
 		Field("dropShift", builders.String().Enum("ask", "copy", "run")).
 		Field("snapshotStart", builders.String().Enum("paused", "play")).
 		Field("tapeDeck", builders.String().Enum("off", "top", "bottom")).
-		Field("tapeCassette", builders.String().Enum("small", "big", "hidden"))
+		Field("tapeCassette", builders.String().Enum("small", "big", "hidden")).
+		Field("escape", builders.String().Enum("off", "close", "query", "on")).
+		Field("microdigital", builders.String().Enum("spanish", "portuguese")).
+		Field("recentSnapshots", builders.Array().Of(builders.String().MinLength(1)).MaxItems(100))
 }

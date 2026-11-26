@@ -3,6 +3,7 @@ package zenzx
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -87,6 +88,31 @@ func clip(s string) string {
 	return s
 }
 
+// snapshotForModel is the snapshot a test loads into a machine of model: the file, when it is of
+// the kind of machine the model is, and otherwise (a +3 has no snapshot among the files, a
+// snapshot being of the machine it was taken on) one that a +3 of that model saves of itself after
+// it has run for a while.
+func snapshotForModel(t *testing.T, model, file, format string) (string, string) {
+	t.Helper()
+	sm, err := readSnapshotMachine(file, format)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := classOfModel(model); c == classOther || c == sm.Class {
+		return file, format
+	}
+	src, err := newMachine(model, "./rom")
+	if err != nil {
+		t.Skipf("%s: %v", model, err)
+	}
+	resetRun(src, 100)
+	path := filepath.Join(t.TempDir(), model+".zxs")
+	if err := src.SaveSnapshot(path); err != nil {
+		t.Fatal(err)
+	}
+	return path, "zxs"
+}
+
 func resetRun(zx *ZenZX, frames int) {
 	for i := 0; i < frames; i++ {
 		zx.RunFrame()
@@ -119,7 +145,8 @@ func TestResetIsASwitchOn(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := zx.LoadSnapshotFormat(snaps+c.file, c.format); err != nil {
+			snapFile, snapFormat := snapshotForModel(t, c.model, snaps+c.file, c.format)
+			if err := zx.LoadSnapshotFormat(snapFile, snapFormat); err != nil {
 				t.Fatalf("loading %s: %v", c.file, err)
 			}
 			zx.paused = false

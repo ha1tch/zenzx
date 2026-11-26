@@ -41,6 +41,10 @@ var ZXPaletteRGBA = []rl.Color{
 // Display Manager
 // ============================================================================
 type DisplayManager struct {
+	// OnNotice is where the host hears why a key did nothing (the zoom at its limit, a border
+	// that is not a choice here), as a toast. The console says it too.
+	OnNotice func(msg string)
+
 	screen           *SpectrumScreen
 	showFPS          bool
 	showBorder       bool
@@ -113,6 +117,17 @@ type DisplayManager struct {
 	// picture's size without asking the window to be that size. Zooming from the menu asks for
 	// a size, and ends it.
 	windowKept bool
+
+	// fullscreen is true while the window covers its monitor (fullscreen_gui.go). The window is then
+	// the size the system gave it, not one the display asked for: nothing sets its size, the
+	// picture is fitted to it and centred (display_fit_gui.go), and a tiled layout is drawn to fill it.
+	fullscreen bool
+
+	// windowedMultiplier, windowedW and windowedH are the zoom and the window's size when full
+	// screen began, which are put back when it ends, and which the settings keep in the meantime:
+	// the zoom a full screen window is fitted to is not one the person chose.
+	windowedMultiplier   int
+	windowedW, windowedH int
 
 	// tiles, when set, draws the window's whole content below the reserved
 	// top in place of one machine's picture: the tiled layouts of
@@ -402,6 +417,14 @@ func (dm *DisplayManager) minMultiplierForMode() int {
 	return 1
 }
 
+// explain says on the console, and in the window when there is one, why a key did nothing.
+func (dm *DisplayManager) explain(msg string) {
+	fmt.Println(msg)
+	if dm.OnNotice != nil {
+		dm.OnNotice(msg)
+	}
+}
+
 func (dm *DisplayManager) ToggleDebugOverlay() {
 	dm.showDebugOverlay = !dm.showDebugOverlay
 	fmt.Printf("Debug overlay: %v\n", dm.showDebugOverlay)
@@ -413,7 +436,7 @@ func (dm *DisplayManager) ToggleFPS() {
 
 func (dm *DisplayManager) ToggleBorder() {
 	if v := dm.borderView(); !v.Choosable {
-		fmt.Printf("Border: %s\n", v.Why)
+		dm.explain("Border: " + v.Why)
 		return
 	}
 	dm.showBorder = !dm.showBorder
@@ -462,7 +485,7 @@ func (dm *DisplayManager) tiledNoScale() bool {
 	if dm.tiles == nil {
 		return false
 	}
-	fmt.Println("Scale: the zoom is for one machine filling the window; a tiled layout sizes its tiles itself (View menu)")
+	dm.explain("Scale: the zoom is for one machine filling the window; a tiled layout sizes its tiles itself (View menu)")
 	return true
 }
 
@@ -478,7 +501,7 @@ func (dm *DisplayManager) ScaleUp() bool {
 		return true
 	}
 	if limit < MaxMultiplier {
-		fmt.Printf("Scale: %dx is the most that fits this display\n", limit)
+		dm.explain(fmt.Sprintf("Scale: %dx is the most that fits this display", limit))
 	}
 	return false
 }
@@ -503,6 +526,9 @@ func (dm *DisplayManager) ScaleDown() bool {
 // which jump straight to a specific scale rather than stepping one at a
 // time the way ScaleUp/ScaleDown do.
 func (dm *DisplayManager) SetScale(n int) bool {
+	if dm.fullscreen {
+		return false // the zoom is fitted to the screen, and comes back when full screen ends
+	}
 	if dm.tiledNoScale() {
 		return false
 	}
@@ -542,7 +568,7 @@ func (dm *DisplayManager) syncCurrentToWindow(w, h int) {
 // It is for the single-machine path only (the deck has its own
 // HandleWindowResize for tiled layouts).
 func (dm *DisplayManager) HandleSingleResize() {
-	if !rl.IsWindowResized() {
+	if dm.fullscreen || !rl.IsWindowResized() { // a full screen window is the monitor's size, not a drag
 		return
 	}
 	w, h := int(rl.GetScreenWidth()), int(rl.GetScreenHeight())
@@ -553,11 +579,14 @@ func (dm *DisplayManager) HandleSingleResize() {
 	dm.isAnimating = true // animateResize snaps current -> target and calls SetWindowSize
 }
 
-// renderTiles is Render while the window is tiled: the tiles, then what
+// renderTiles is Render while the window is tiled: the background, the tiles over it, then what
 // Render draws over any picture.
 func (dm *DisplayManager) renderTiles(paused bool) {
 	rl.BeginDrawing()
-	rl.ClearBackground(rl.Black)
+	// What the tiles leave uncovered shows the background that is around a picture (drawFrame), the
+	// gradient and its lines: no picture, and so no shadow, as for a window with no machine.
+	w, h := drawableSize()
+	dm.drawFrame(pictureRect{}, dm.frameTop(), w, h)
 	dm.tiles()
 	if dm.showFPS {
 		dm.drawFPS()
@@ -584,6 +613,10 @@ func (dm *DisplayManager) RenderBlank() {
 }
 
 func (dm *DisplayManager) updateTargetSize() {
+	if dm.fullscreen {
+		dm.followFullscreen() // the window is the monitor's: what changes is what is drawn in it
+		return
+	}
 	dm.windowKept = false // the window is being sent to a size: it is no longer left as it was
 	showBorder := dm.borderView().Shown
 	dm.borderApplied = showBorder
@@ -689,6 +722,10 @@ func (dm *DisplayManager) SetReservedTopHeight(h int) {
 // that is being kept as it is follows the picture's size (adoptPictureSize), and any other is
 // sent to its new size.
 func (dm *DisplayManager) retarget() {
+	if dm.fullscreen {
+		dm.followFullscreen()
+		return
+	}
 	if dm.windowKept && dm.tiles == nil {
 		dm.adoptPictureSize()
 		return
@@ -707,6 +744,10 @@ func (dm *DisplayManager) followBorder() {
 
 func (dm *DisplayManager) UpdateWindowSize() {
 	dm.followBorder()
+	if dm.fullscreen {
+		dm.holdFullscreen() // nothing asks a full screen window for a size
+		return
+	}
 	if !dm.isAnimating {
 		return
 	}

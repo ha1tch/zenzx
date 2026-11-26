@@ -143,10 +143,10 @@ func TestInfoItemsOpenAWindow(t *testing.T) {
 		says       string
 		tall       bool // a text too long for a panel of its own height: it scrolls
 	}{
-		{barTape, 4, "TAPE INFO", "No tape is loaded", false},
+		{barTape, 10, "TAPE INFO", "No tape is loaded", false},
 		{barFloppyDisk, 8, "DISK INFO", "Drive A: is empty", false}, // index 8: the Floppy Disk title comes first
-		{barSnapshot, 5, "SNAPSHOT INFO", "Quick Save", true},
-		{barSnapshot, 6, "DIAGNOSTICS", "## CPU", true},
+		{barSnapshot, snapRow(t, b, "Snapshot Info"), "SNAPSHOT INFO", "Quick Save", true},
+		{barSnapshot, snapRow(t, b, "Run Diagnostics"), "DIAGNOSTICS", "## CPU", true},
 	}
 	for _, c := range cases {
 		b.activeModal = nil

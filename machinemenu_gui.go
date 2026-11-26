@@ -7,14 +7,14 @@ package zenzx
 
 import "github.com/ha1tch/zenui"
 
-// The head of the Machine menu: Reset, then Pause or Play, then Stop, and after them the model
+// The head of the Machine menu: a title, Reset, then Pause or Play, then Stop, and after them the model
 // rows (machines.json). The second row says what it will do, not what it is: Pause while the
 // machine runs, Play while it is paused, each with the transport sprite the debugger and the
 // paused machine's button use. Stop ends the machine (the deck's stompStop, machinedeck_gui.go);
 // with no machine to act on, all three are disabled.
 
 // machineHeadRows is how many rows come before the model rows.
-const machineHeadRows = 3
+const machineHeadRows = 4
 
 // transportIcons are the transport sprites, parsed once.
 var transportIcons = parseTransportSprites()
@@ -51,6 +51,7 @@ func (b *appMenuBar) machineHead(zx *ZenZX) []zenui.Item {
 	}
 	off := zx.stopped || zx.stopping
 	return []zenui.Item{
+		{Label: "Machine", Title: true},
 		{Label: "Reset", Disabled: off},
 		{Label: label, Icon: transportIcon(sprite), Disabled: off},
 		{Label: "Stop", Icon: transportIcon("stop"), Disabled: off},
@@ -66,16 +67,26 @@ func (b *appMenuBar) refreshMachineItems(zx *ZenZX) {
 }
 
 // needsMachine says the menu row chosen acts on the machine, so that with none running it has
-// nothing to act on: the File menu's Open and Export, and every row of the menus that are about
-// the machine's tape, discs, ROMs and snapshots. The Machine menu's own head rows are disabled
+// nothing to act on: the File menu's Export, and every row of the menus that are about
+// the machine's tape, discs and ROMs, and the rows of the Snapshot menu that save or look into one. The Machine menu's own head rows are disabled
 // then, and its model rows start a machine.
 func (b *appMenuBar) needsMachine(sel zenui.MenuBarSelection) bool {
 	switch sel.BarIndex {
 	case barFile:
-		return sel.ItemIndex <= 1 // Open, Export
+		// Export acts on the machine. Open does not have to: a snapshot opened makes the machine
+		// it is of (the other files say there is none: loadDroppedFile)
+		return sel.ItemIndex == 1
 	case barMachine:
 		return sel.ItemIndex < machineHeadRows
-	case barCustomROM, barTape, barFloppyDisk, barSnapshot:
+	case barCustomROM:
+		return !b.isRomSites(sel) // the row of links to ROM pages opens a page, whatever is running
+	case barSnapshot:
+		// Loading a snapshot makes the machine it is of; the rows that act on a machine need one
+		if i := sel.ItemIndex; i >= 0 && i < len(b.snapSpec) {
+			return b.snapSpec[i].needsMachine
+		}
+		return true
+	case barTape, barFloppyDisk:
 		return true
 	}
 	return false

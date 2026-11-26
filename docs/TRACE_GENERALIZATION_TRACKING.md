@@ -1,7 +1,6 @@
 # Trace harness generalization — stage tracker
 
-Version: 0.6.10
-Last reviewed: 2026-08-29
+Updated: 2026-11-25
 
 Stage-status table for `docs/TRACE_GENERALIZATION_DEVELOPMENT_PLAN.md`
 (frozen once Stage 1 begins; record deviations here, don't edit the plan
@@ -60,4 +59,5 @@ to match reality). Status legend: ✓ done · ◐ partial · ☐ not started ·
   release the plan's own "Blocked on" line specified. Deliberate,
   matching this repo's own established pattern for this exact
   situation (see the 0.6.7 CHANGELOG entry) — but genuinely not what
-  "done" meant when the plan was written, hence both stay ◐.
+  "done" meant when the plan was written, hence both stayed ◐ then. They
+  are ✓ now: see the first deviation above.

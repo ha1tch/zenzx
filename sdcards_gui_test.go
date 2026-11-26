@@ -184,8 +184,12 @@ func TestCardsWindowNewAndCopy(t *testing.T) {
 	}
 	want, _ := os.ReadFile(filepath.Join(dir, "b.img"))
 	got, _ := os.ReadFile(filepath.Join(dir, "b-2.img"))
-	if !bytes.Equal(want, got) {
+	// the same card in every byte but its signature, which the copy has of its own
+	if len(want) != len(got) || !bytes.Equal(want[:0x1B8], got[:0x1B8]) || !bytes.Equal(want[0x1BC:], got[0x1BC:]) {
 		t.Error("the copy differs from the card")
+	}
+	if bytes.Equal(want[0x1B8:0x1BC], got[0x1B8:0x1BC]) {
+		t.Error("the copy has the card's own signature")
 	}
 }
 

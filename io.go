@@ -3,6 +3,7 @@ package zenzx
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // ============================================================================
@@ -375,6 +376,12 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 		// Returning a frozen last-tape-level here is not just
 		// imprecise: Speedlock-class hardware checks detect it.
 		result |= 0xA0
+		// The Microdigital language switch (microdigital.go): at Portuguese the diode pulls
+		// bit 7 low, which the ROMs that read it take for the Portuguese messages. The clones
+		// were 48K machines, so only a 48K reads it: the Amstrad models and the rest do not.
+		if microdigitalPortuguese.Load() && io.memory.isPlain48K() {
+			result &^= 0x80
+		}
 		if io.tapePlayingFn != nil && io.tapePlayingFn() {
 			if io.tapeEar {
 				result |= 0x40
@@ -812,14 +819,20 @@ func (io *SpectrumIO) LoadDisk(filename string) error {
 // FDCTick advances the FDC frame clock and runs the auto-commit debounce. The
 // front-end calls it once per frame. A modified disk is flushed to its file
 // after it has been quiet for debounceFrames and the controller is idle.
-func (io *SpectrumIO) FDCTick(frame, debounceFrames int) {
+func (io *SpectrumIO) FDCTick(frame, debounceFrames int) (warning string) {
 	if io.fdc == nil || !io.hasFDC {
-		return
+		return ""
 	}
 	io.fdc.Tick(frame)
+	said := io.fdc.conflictSaid
 	if io.fdc.AutoCommit(debounceFrames) {
 		sayf("Disk auto-committed: %s\n", io.fdc.diskFilename)
 	}
+	if !said && io.fdc.conflictSaid {
+		// the file changed under the disk: it was not written over, and the person is told, once
+		return fmt.Sprintf("The disk %s was not saved: the file has changed since it was read. Save writes over it", filepath.Base(io.fdc.diskFilename))
+	}
+	return ""
 }
 
 // SaveDisk saves the current disk image

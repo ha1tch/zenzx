@@ -12,7 +12,7 @@ require (
 	github.com/ha1tch/zen80 v0.5.7
 	github.com/ha1tch/zendis v0.8.2
 	github.com/ha1tch/zentools v0.16.1
-	github.com/ha1tch/zenui v0.3.4
+	github.com/ha1tch/zenui v0.3.5
 )
 
 require (
@@ -25,6 +25,6 @@ require (
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/image v0.45.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.41.0 // indirect
 )

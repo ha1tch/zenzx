@@ -206,7 +206,8 @@ func TestARestoredMachineIsTheMachineThatWasExported(t *testing.T) {
 			if err != nil {
 				t.Skipf("%s: %v", c.model, err)
 			}
-			if err := zx.LoadSnapshotFormat(snaps+c.file, c.format); err != nil {
+			snapFile, snapFormat := snapshotForModel(t, c.model, snaps+c.file, c.format)
+			if err := zx.LoadSnapshotFormat(snapFile, snapFormat); err != nil {
 				t.Fatalf("loading %s: %v", c.file, err)
 			}
 			zx.paused = false

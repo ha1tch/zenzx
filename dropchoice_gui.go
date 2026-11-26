@@ -133,6 +133,8 @@ func planDrop(files []string, c dropContext) dropPlan {
 	for _, f := range files {
 		ext := strings.ToLower(filepath.Ext(f))
 		switch {
+		case ext == ".zms":
+			p.load = append(p.load, f) // a multisnapshot is the window's own: it is never copied to a card
 		case dropChoiceExts[ext]:
 			switch act {
 			case dropAsk:
@@ -233,6 +235,12 @@ func (d *dropChoice) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.Th
 	if !d.active {
 		return
 	}
+	d.paint(r, screenW, screenH, theme)
+}
+
+// paint draws the dialog as it was last asked, whether it is open or not: it is what the fade
+// of a closed dialog draws once more (dialogfade_gui.go).
+func (d *dropChoice) paint(r zenui.Renderer, screenW, screenH int, theme zenui.Theme) {
 	d.layout(r, screenW, screenH)
 	lh := r.LineHeight(1)
 	pad := lh

@@ -140,7 +140,7 @@ func (m *mountDrawer) Tick() {
 	if m.toast == nil || m.toastTxt == nil {
 		return
 	}
-	m.toast.Update(rl.GetFrameTime(), m.seq, m.msg, rl.GetScreenWidth())
+	m.toast.Update(rl.GetFrameTime(), m.seq, m.msg, rl.GetScreenWidth(), rl.GetScreenHeight())
 }
 
 // armRemount schedules a NextZXOS Browser refresh after a mount onto the live
@@ -266,7 +266,7 @@ func (m *mountDrawer) Update(pointerTaken bool) bool {
 // machine (handled by loadDroppedFile) rather than being copied onto a card.
 var machineLoadExts = map[string]bool{
 	".scr": true, ".zxs": true, ".sna": true, ".z80": true, ".szx": true, ".rzx": true,
-	".dsk": true, ".tap": true, ".tzx": true, ".nex": true,
+	".dsk": true, ".tap": true, ".tzx": true, ".nex": true, ".zms": true,
 }
 
 // allMachineLoadable reports whether every dropped file is a machine-load type.

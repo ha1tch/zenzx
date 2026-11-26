@@ -194,7 +194,7 @@ func TestDiskActionsSpeakToTheHost(t *testing.T) {
 	zx.handleEjectDisk()
 	expect("There is no disk in the drive") // a new drive is empty
 	zx.handleInsertBlankDisk()
-	expect("A blank formatted disk is in the drive")
+	expect("A blank formatted disk is in the drive: SAVE \"name\" puts a BASIC program on it, CAT lists it, F8 keeps it in a file")
 	zx.handleEjectDisk()
 	expect("The disk is ejected")
 	zx.handleEjectDisk()

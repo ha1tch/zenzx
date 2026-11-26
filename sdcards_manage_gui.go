@@ -35,6 +35,9 @@ const cardAskScale = 2
 // deleteWord is what must be typed to delete a card image.
 const deleteWord = "DELETE"
 
+// replaceWord is what must be typed to load a multisnapshot over the machines that are running.
+const replaceWord = "YES"
+
 // cardAsk is the question the window is asking.
 type cardAsk int
 
@@ -42,6 +45,7 @@ const (
 	askRenameName cardAsk = iota // the new name
 	askRenameSure                // whether to rename
 	askDelete                    // the word DELETE
+	askReplace                   // the word YES: the machines that are running are to be replaced (a multisnapshot)
 )
 
 // cardQuestion is the question the window has put, and what has been answered so far.
@@ -54,6 +58,12 @@ type cardQuestion struct {
 	text     string   // what has been typed in the box
 	target   string   // for askRenameSure: the path the card would get
 	why      string   // why the last answer was refused
+	noun     string   // what it is a question about: "card" when empty (the Snapshots window asks about snapshots)
+	ext      string   // the extension its files have, which renaming keeps: ".img" when empty
+	sizeText string   // the file's size in words, when it is not in MB
+	machines int      // for askReplace: how many machines are running
+	incoming int      // and how many the multisnapshot has
+	plan     cardPlan // for askReplace: the cards the multisnapshot's Nexts are given
 	said     []string // the lines the dialogue says, for a test to read
 	whyAt    []int    // which of them say why an answer was refused: drawn in the accent colour
 }
@@ -62,9 +72,15 @@ type cardQuestion struct {
 // or why it cannot have that name. ".img" is added when the name does not end in it, since
 // the window lists the files that do.
 func renameTarget(old, typed string) (target, why string) {
+	return renameTargetExt(old, typed, ".img")
+}
+
+// renameTargetExt is renameTarget for files whose names end in ext: the Snapshots window names its
+// files with it too.
+func renameTargetExt(old, typed, ext string) (target, why string) {
 	name := strings.TrimSpace(typed)
 	switch {
-	case name == "" || strings.EqualFold(name, ".img"):
+	case name == "" || strings.EqualFold(name, ext):
 		return "", "Type a name."
 	case strings.ContainsAny(name, "/\\\x00"):
 		return "", "A name has no slashes in it."
@@ -75,8 +91,8 @@ func renameTarget(old, typed string) (target, why string) {
 	case len(name) > 100:
 		return "", "That name is too long."
 	}
-	if !strings.HasSuffix(strings.ToLower(name), ".img") {
-		name += ".img"
+	if !strings.HasSuffix(strings.ToLower(name), strings.ToLower(ext)) {
+		name += ext
 	}
 	if name == filepath.Base(old) {
 		return "", "That is its name already."
@@ -113,6 +129,30 @@ func plainError(err error) string {
 	return err.Error()
 }
 
+// word is what the question is about.
+func (q *cardQuestion) word() string {
+	if q.noun == "" {
+		return "card"
+	}
+	return q.noun
+}
+
+// extension is what a name ends in.
+func (q *cardQuestion) extension() string {
+	if q.ext == "" {
+		return ".img"
+	}
+	return q.ext
+}
+
+// sizeWords is the size of the file, as the question says it.
+func (q *cardQuestion) sizeWords() string {
+	if q.sizeText != "" {
+		return q.sizeText
+	}
+	return fmt.Sprintf("%d MB", q.size>>20)
+}
+
 // build makes the dialogue for the question as it stands.
 func (q *cardQuestion) build() {
 	name := filepath.Base(q.path)
@@ -142,25 +182,42 @@ func (q *cardQuestion) build() {
 	title, buttons := "", []string(nil)
 	switch q.kind {
 	case askRenameName:
-		title, buttons = "RENAME CARD", []string{"Cancel", "Rename"}
+		title, buttons = "RENAME "+strings.ToUpper(q.word()), []string{"Cancel", "Rename"}
 		say("Rename " + name)
-		say("Type the new name. .img is added if it is left out.")
+		say("Type the new name. " + q.extension() + " is added if it is left out.")
 		if q.why != "" {
 			sayWhy(q.why)
 		}
 		box()
 	case askRenameSure:
-		title, buttons = "RENAME CARD", []string{"No", "Yes"}
+		title, buttons = "RENAME "+strings.ToUpper(q.word()), []string{"No", "Yes"}
 		say("Rename " + name + " to " + filepath.Base(q.target) + "?")
-		say("What the card holds is not touched.")
+		say("What the " + q.word() + " holds is not touched.")
 	case askDelete:
-		title, buttons = "DELETE CARD", []string{"Cancel", "Delete"}
-		say(fmt.Sprintf("Delete %s, %d MB?", name, q.size>>20))
+		title, buttons = "DELETE "+strings.ToUpper(q.word()), []string{"Cancel", "Delete"}
+		say(fmt.Sprintf("Delete %s, %s?", name, q.sizeWords()))
 		say("The file is deleted for good: it is not kept in a bin, and it cannot be got back.")
 		if q.standard {
 			say("It is the standard system card. Make bootable, and every Next that boots NextZXOS, use it.")
 		}
 		say("Type " + deleteWord + ", in capitals, and press Delete.")
+		if q.why != "" {
+			sayWhy(q.why)
+		}
+		box()
+	case askReplace:
+		title, buttons = "REPLACE THE MACHINES", []string{"Cancel", "Load"}
+		running := "The machine that is running now is"
+		if q.machines != 1 {
+			running = fmt.Sprintf("The %d machines that are running now are", q.machines)
+		}
+		have := "one machine"
+		if q.incoming != 1 {
+			have = fmt.Sprintf("its %d machines", q.incoming)
+		}
+		say("Load " + name + "?")
+		say(running + " going to be closed and replaced by " + have + ". Whatever they hold that is not in a snapshot is lost.")
+		say("Type " + replaceWord + ", in capitals, and press Load.")
 		if q.why != "" {
 			sayWhy(q.why)
 		}

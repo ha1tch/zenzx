@@ -156,8 +156,8 @@ func TestViewMenuBorderRowTellsTheTruth(t *testing.T) {
 		return zenui.Item{}
 	}
 	dm := zx.window()
-	if it := border(); it.Disabled || !it.Toggle || it.Checked != &dm.showBorder {
-		t.Errorf("when the border is the user's to choose the row is the checkbox on showBorder: %+v", it)
+	if it := border(); it.Disabled || it.Toggle || it.Checked != &dm.showBorder {
+		t.Errorf("when the border is the user's to choose the row is ticked by showBorder and closes the menu: %+v", it)
 	}
 	// Tiled, with the choice off: the border is on the screen, so the row says so, and
 	// cannot be changed.

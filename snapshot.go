@@ -241,6 +241,9 @@ func calculateChecksum(data []byte) string {
 
 // getModelName returns human-readable model name
 func getModelName(zx *ZenZX) string {
+	if zx.memory.isNext {
+		return "ZX Spectrum Next"
+	}
 	if zx.isPlus3 {
 		return "Spectrum +3"
 	} else if zx.is128K {
@@ -374,6 +377,11 @@ func (zx *ZenZX) SaveSnapshot(filename string) error {
 	metadata.Debug["cycleCount"] = zx.cycleCount
 	metadata.Debug["paused"] = zx.paused
 	metadata.Debug["running"] = zx.running
+
+	// A Next is saved whole, in a snapshot of its own (snapshot_next.go)
+	if zx.memory.isNext {
+		return zx.saveNextSnapshot(filename, metadata)
+	}
 
 	// Create binary snapshot data
 	file, err := os.Create(filename)
@@ -584,6 +592,14 @@ func (zx *ZenZX) loadSnapshotData(data []byte, metadata *SnapshotMetadata) error
 		return fmt.Errorf("unsupported snapshot version: %d", header.Version)
 	}
 
+	// A snapshot is loaded into the machine it is of: its state is that machine's, and in another it
+	// is a picture of one machine in the memory of another (snapshotmodel.go).
+	if have := zx.machineClass(); have != classOther {
+		if want := snapshotMachineOfHeader(header); want.Class != have {
+			return &snapshotMismatch{Snapshot: want.Class, Machine: have}
+		}
+	}
+
 	// Save current state that we want to preserve
 	currentDisplay := zx.display // Preserve display manager
 	currentEscape := zx.escape   // Preserve user preferences
@@ -611,7 +627,11 @@ func (zx *ZenZX) loadSnapshotData(data []byte, metadata *SnapshotMetadata) error
 			break
 		}
 
-		// Read chunk data
+		// Read chunk data. A chunk is no bigger than what is left of the snapshot: a header that says
+		// otherwise is not to be made room for (it may say 4 GiB).
+		if int64(chunkHeader.Size) > int64(reader.Len()) {
+			return fmt.Errorf("reading chunk data: %w", io.ErrUnexpectedEOF)
+		}
 		chunkData := make([]byte, chunkHeader.Size)
 		if _, err := io.ReadFull(reader, chunkData); err != nil {
 			return fmt.Errorf("reading chunk data: %w", err)
@@ -674,6 +694,16 @@ func (zx *ZenZX) loadSnapshotData(data []byte, metadata *SnapshotMetadata) error
 		case ChunkDisk:
 			if err := loadDiskChunk(zx, chunkReader); err != nil {
 				return fmt.Errorf("loading disk image: %w", err)
+			}
+
+		case ChunkCards:
+			if err := zx.checkSnapshotCards(chunkData); err != nil {
+				return err
+			}
+
+		case ChunkNext:
+			if err := zx.loadNextChunk(chunkData); err != nil {
+				return fmt.Errorf("loading the Next: %w", err)
 			}
 
 		default:
@@ -745,6 +775,8 @@ func getChunkName(id uint16) string {
 		return "fdc"
 	case ChunkDisk:
 		return "disk"
+	case ChunkNext:
+		return "next"
 	default:
 		return ""
 	}
@@ -756,7 +788,10 @@ func getChunkName(id uint16) string {
 
 // QuickSave saves to a fixed filename for quick save functionality
 func (zx *ZenZX) QuickSave() error {
-	filename := "quicksave.zxs"
+	filename := snapshotPath(quickSaveName("zxs"))
+	if err := ensureSnapshotDir(); err != nil {
+		return err
+	}
 	if err := zx.SaveSnapshot(filename); err != nil {
 		return err
 	}
@@ -766,7 +801,7 @@ func (zx *ZenZX) QuickSave() error {
 
 // QuickLoad loads from the quick save file
 func (zx *ZenZX) QuickLoad() error {
-	filename := "quicksave.zxs"
+	filename := snapshotPath(quickSaveName("zxs"))
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		return fmt.Errorf("no quick save found")
 	}
@@ -780,7 +815,10 @@ func (zx *ZenZX) QuickLoad() error {
 // AutoSave creates an autosave with timestamp
 func (zx *ZenZX) AutoSave() error {
 	timestamp := time.Now().Format("20060102_150405")
-	filename := fmt.Sprintf("autosave_%s.zxs", timestamp)
+	filename := snapshotPath(fmt.Sprintf("autosave_%s.zxs", timestamp))
+	if err := ensureSnapshotDir(); err != nil {
+		return err
+	}
 	if err := zx.SaveSnapshot(filename); err != nil {
 		return err
 	}
