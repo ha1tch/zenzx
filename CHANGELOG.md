@@ -430,6 +430,12 @@ rework, and a documentation sweep.
   the programs that need no C compiler (the headless program for every system, the window program
   for macOS and Windows) and checks them first (`check_release_binaries.sh`, the `binaries` step).
   Tests: `scripts/test_check_binaries.py`, which builds a program for each system.
+- **The installers' and the Windows 7 package's checks read `-version` as the program says it.** The
+  program says `ZenZX 0.50.0 (build N)` since the build number was added to the version line, and the
+  `.deb`, `.dmg`, `.msi` and Windows 7 `.msi` checks (`installers.yml`, `windows7.yml`) still wanted
+  `ZenZX 0.50.0`, so each installed the program, ran it and refused it. They now want the version
+  followed by `(build N)`, and a version line without the build is refused, as is one with another
+  version.
 - **A guard on raylib-go's cgo-free calls** (`scripts/check_purego_ffi.py`, `make check-purego`,
   and a CI step). It compares, for every function the library prepares, the number of argument
   types with every call made through it, which the library checks only when the call is made.

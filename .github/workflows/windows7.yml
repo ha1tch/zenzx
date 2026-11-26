@@ -175,7 +175,7 @@ jobs:
                    -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           Get-Content out.txt; Get-Content err.txt
           if ($run.ExitCode -ne 0) { throw 'the installed program did not start' }
-          if ((Get-Content out.txt -Raw).Trim() -ne "ZenZX $v") { throw "it printed something other than 'ZenZX $v'" }
+          if ((Get-Content out.txt -Raw).Trim() -notmatch ('^ZenZX ' + [regex]::Escape($v) + ' \(build \d+\)$')) { throw "it printed something other than 'ZenZX $v (build N)'" }
           $p = Start-Process msiexec.exe -ArgumentList '/x', "`"$msi`"", '/qn', '/l*v', 'uninstall.log' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "the removal failed ($($p.ExitCode); see uninstall.log)" }
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\ZenZX')) { throw 'the install folder is left behind' }

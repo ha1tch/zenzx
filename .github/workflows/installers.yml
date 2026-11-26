@@ -72,7 +72,9 @@ jobs:
           VERSION="${TAG#v}"
           sudo apt-get update -qq
           sudo apt-get install -y -qq ./out/zenzx_*.deb desktop-file-utils
-          test "$(zenzx -version)" = "ZenZX ${VERSION}"
+          out="$(zenzx -version)"
+          echo "$out"
+          case "$out" in "ZenZX ${VERSION} (build "[0-9]*")") ;; *) echo "-version printed something other than: ZenZX ${VERSION} (build N)"; exit 1 ;; esac
           test -x /usr/bin/zenzx
           test -f /usr/share/icons/hicolor/256x256/apps/zenzx.png
           desktop-file-validate /usr/share/applications/zenzx.desktop
@@ -183,7 +185,7 @@ jobs:
                  -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           "exit code $($p.ExitCode)"; Get-Content out.txt; Get-Content err.txt
           if ($p.ExitCode -ne 0) { throw 'the installed program did not start' }
-          if ((Get-Content out.txt -Raw).Trim() -ne "ZenZX $v") { throw "it printed something other than 'ZenZX $v'" }
+          if ((Get-Content out.txt -Raw).Trim() -notmatch ('^ZenZX ' + [regex]::Escape($v) + ' \(build \d+\)$')) { throw "it printed something other than 'ZenZX $v (build N)'" }
 
       - name: Remove it
         run: |
@@ -252,7 +254,9 @@ jobs:
           lipo -info "$RUNNER_TEMP/zv/ZenZX.app/Contents/MacOS/zenzx"
           codesign --verify --deep --strict "$RUNNER_TEMP/zv/ZenZX.app"
           plutil -lint "$RUNNER_TEMP/zv/ZenZX.app/Contents/Info.plist"
-          test "$("$RUNNER_TEMP/zv/ZenZX.app/Contents/MacOS/zenzx" -version)" = "ZenZX ${VERSION}"
+          out="$("$RUNNER_TEMP/zv/ZenZX.app/Contents/MacOS/zenzx" -version)"
+          echo "$out"
+          case "$out" in "ZenZX ${VERSION} (build "[0-9]*")") ;; *) echo "-version printed something other than: ZenZX ${VERSION} (build N)"; exit 1 ;; esac
           hdiutil detach "$RUNNER_TEMP/zv"
           echo "opened, checked and run from the image"
 
