@@ -169,6 +169,24 @@ class CheckBinaries(unittest.TestCase):
         rc, text = run(self.need("linux", "amd64", "p-linux-amd64"), "--forbid", "main.main")
         self.assertEqual(rc, 1, text)
 
+    def test_homebrews_path_on_linux_is_not_a_build_path(self):
+        # pkg/fetch looks for brew in Homebrew's prefix on Linux, so the program names it.
+        brew = os.path.join(self.bin, "p-linux-amd64-brew")
+        shutil.copy(self.need("linux", "amd64", "p-linux-amd64"), brew)
+        with open(brew, "ab") as f:
+            f.write(b"\0/home/linuxbrew/.linuxbrew/bin\0")
+        rc, text = run(brew)
+        self.assertEqual(rc, 0, text)
+        # a build path after it is still found, and is the one that is said
+        with open(brew, "ab") as f:
+            f.write(b"\0/home/builder/work/probe/main.go\0")
+        rc, text = run(brew)
+        self.assertEqual(rc, 1, text)
+        self.assertRegex(text, r"FAIL\s+strings\s+'/home/' at byte \d+ \(.*builder")
+        # and --allow lets another path through
+        rc, text = run(brew, "--allow", "/home/builder/")
+        self.assertEqual(rc, 0, text)
+
     def test_a_static_program_needs_no_glibc(self):
         exe = self.need("linux", "amd64", "p-linux-amd64")
         rc, text = run(exe)  # a static Go program needs no glibc at all

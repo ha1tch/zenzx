@@ -423,7 +423,13 @@ rework, and a documentation sweep.
   the release workflow, whose builds now use `-trimpath` to keep those paths out. Every expectation
   has an option that overrides it (`--skip`, `--allow-import`, `--allow-lib`, `--max-min-macos`,
   `--max-glibc`, `--forbid`, `--subsystem`, `--os`, `--arch`, `--kind`), and `--warn-only` reports
-  without failing. Tests: `scripts/test_check_binaries.py`, which builds a program for each system.
+  without failing. Homebrew's prefix on Linux, `/home/linuxbrew/`, is let through, because the
+  downloader looks for programs there and so names it (`--allow` lets another path through, and
+  every `/home/` in a program is looked at, not only the first). That path failed every build of the
+  Release workflow on the tag, which no check before the tag had looked at; the release now builds
+  the programs that need no C compiler (the headless program for every system, the window program
+  for macOS and Windows) and checks them first (`check_release_binaries.sh`, the `binaries` step).
+  Tests: `scripts/test_check_binaries.py`, which builds a program for each system.
 - **A guard on raylib-go's cgo-free calls** (`scripts/check_purego_ffi.py`, `make check-purego`,
   and a CI step). It compares, for every function the library prepares, the number of argument
   types with every call made through it, which the library checks only when the call is made.

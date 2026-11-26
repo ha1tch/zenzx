@@ -97,6 +97,12 @@
         "timeout": 300
       },
       {
+        "name": "binaries",
+        "resumable": true,
+        "run": "sh ./check_release_binaries.sh",
+        "timeout": 900
+      },
+      {
         "always": true,
         "builtin": "archive",
         "name": "archive"

@@ -67,6 +67,9 @@ MACOS_LIB_PREFIXES = ("/usr/lib/", "/System/Library/")
 # The strings a program must not carry: the path of the machine it was built on, which
 # `go build -trimpath` takes out.
 DEFAULT_FORBIDDEN = ["/home/", "/root/", "/Users/", "C:\\Users\\"]
+# Paths that contain one of those and are not the build machine's: Homebrew's fixed prefix on
+# Linux, which a program that looks for programs there (pkg/fetch) has to name.
+DEFAULT_ALLOWED = ["/home/linuxbrew/"]
 
 NAME_RE = re.compile(r"(linux|darwin|windows|freebsd)[-_](amd64|arm64)")
 OS_NAMES = ("linux", "darwin", "windows", "freebsd")
@@ -294,15 +297,31 @@ def check_file(path, opts, skip):
     except OSError as e:
         add("strings", False, "cannot read it: %s" % e)
         return out
+    allowed = ([] if opts.no_default_forbid else list(DEFAULT_ALLOWED)) + (opts.allow or [])
     found = []
     for s in forbidden:
-        at = data.find(s.encode("utf-8"))
+        needle = s.encode("utf-8")
+        at = data.find(needle)
+        while at >= 0 and excused(data, at, needle, allowed):
+            at = data.find(needle, at + 1)
         if at >= 0:
             around = data[max(0, at - 8):at + len(s) + 40]
             snippet = "".join(chr(c) if 32 <= c < 127 else "." for c in around)
             found.append("%r at byte %d (%s)" % (s, at, snippet))
     add("strings", not found, "none of %d" % len(forbidden) if not found else "; ".join(found))
     return out
+
+
+def excused(data, at, needle, allowed):
+    """Whether the forbidden string at data[at:] is part of one of the allowed strings that contain it."""
+    for a in allowed:
+        raw = a.encode("utf-8")
+        i = raw.find(needle)
+        while i >= 0:
+            if at >= i and data[at - i:at - i + len(raw)] == raw:
+                return True
+            i = raw.find(needle, i + 1)
+    return False
 
 
 def colour(text, code, on):
@@ -351,7 +370,8 @@ def build_parser():
     g.add_argument("--max-min-macos", default="12.0", metavar="VER", help="macOS: the highest minimum system version allowed (default 12.0)")
     g.add_argument("--max-glibc", metavar="VER", help="Linux: the highest glibc version it may need, such as 2.35 (default: reported, not limited)")
     g.add_argument("--forbid", action="append", metavar="STRING", help="a string it must not contain, besides the defaults " + " ".join(DEFAULT_FORBIDDEN) + " (repeatable)")
-    g.add_argument("--no-default-forbid", action="store_true", help="forbid only the --forbid strings")
+    g.add_argument("--no-default-forbid", action="store_true", help="forbid only the --forbid strings (and allow nothing the defaults allow)")
+    g.add_argument("--allow", action="append", metavar="STRING", help="a string that holds a forbidden one and is let through, besides the defaults " + " ".join(DEFAULT_ALLOWED) + " (repeatable)")
     return p
 
 
