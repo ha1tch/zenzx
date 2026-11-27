@@ -67,7 +67,7 @@ func TestViewMenuFullScreenRow(t *testing.T) {
 	if !*items[3].Checked {
 		t.Error("Full Screen is not ticked while the window is full screen")
 	}
-	for i := 6; i < 9; i++ {
+	for i := 7; i < 10; i++ { // X 1 to X 3
 		if !items[i].Disabled {
 			t.Errorf("%s is offered in full screen", items[i].Label)
 		}

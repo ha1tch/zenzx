@@ -1077,3 +1077,22 @@ func TestToolbarButtonsArePictures(t *testing.T) {
 		seen[icon] = it.icon
 	}
 }
+
+// The burger's three lines are an equal gap apart, and the gap is at least two pixels at the usual
+// size of the bar: a pixel more than it was, with the top line a pixel higher and the bottom one a
+// pixel lower.
+func TestBurgerLinesAreSpacedApart(t *testing.T) {
+	for _, rc := range []zenui.Rect{{X: 900, Y: 1, W: 24, H: 22}, {X: 10, Y: 1, W: 32, H: 30}, {X: 10, Y: 1, W: 48, H: 46}} {
+		r := newTestDrawRecorder()
+		drawBurger(r, circleIconBox(rc), zenui.Colour{A: 255})
+		calls := *r.calls
+		if len(calls) != 3 {
+			t.Fatalf("%+v: %d lines, want three", rc, len(calls))
+		}
+		g1 := calls[1].rect.Y - (calls[0].rect.Y + calls[0].rect.H)
+		g2 := calls[2].rect.Y - (calls[1].rect.Y + calls[1].rect.H)
+		if g1 != g2 || g1 < 2 {
+			t.Errorf("%+v: gaps %d and %d between the lines, want equal and at least 2", rc, g1, g2)
+		}
+	}
+}

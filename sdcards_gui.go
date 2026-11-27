@@ -560,7 +560,7 @@ func (w *cardsWindow) headLines() []string {
 			"that boots, or Copy one to make it, and then Boot from it.",
 		}
 	}
-	slot1, slot2 := "none: this machine is not a Next booting NextZXOS", "empty"
+	slot1, slot2 := "none: not a Next booting NextZXOS", "empty"
 	if w.zx.next != nil {
 		slot1 = filepath.Base(w.zx.next.files.Card)
 	}
@@ -569,7 +569,7 @@ func (w *cardsWindow) headLines() []string {
 	}
 	return []string{
 		fmt.Sprintf("## Machine %d", w.machine),
-		"Slot 1, the card it boots from: " + slot1,
+		"Slot 1 (boots from it): " + slot1,
 		"Slot 2: " + slot2,
 		"A card is in one slot of one machine at a time.",
 	}
@@ -692,16 +692,13 @@ func (w *cardsWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 	if w.must {
 		title = "SD CARDS: A CARD FOR THIS NEXT"
 	}
-	r.DrawText(title, x, y, 2, theme.Text)
+	r.DrawText(fitHead(r, title, w.panel.W-2*pad, 2), x, y, 2, theme.Text)
 	y += r.LineHeight(2) + 8
-	for _, line := range w.head {
-		zenui.DrawTextLine(r, line, x, y, w.scale, theme)
-		y += w.lineH
-	}
+	y = drawDialogHead(r, w.head, x, y, w.panel.W-2*pad, w.scale, w.lineH, theme)
 
 	r.StrokeRect(zenui.Rect{X: w.listArea.X - 1, Y: w.listArea.Y - 1, W: w.listArea.W + 2, H: w.listArea.H + 2}, theme.Border, 1)
 	if len(w.cards) == 0 {
-		r.DrawText("No card images in "+w.dir, w.listArea.X+4, w.listArea.Y+4, w.scale, theme.DimText)
+		drawWrapped(r, "No card images in "+w.dir, w.listArea.X+4, w.listArea.Y+4, w.listArea.W-8, w.scale, w.lineH, 3, theme.DimText)
 	}
 	w.list.Draw(r, theme, w.listArea, w.scale)
 
@@ -720,12 +717,7 @@ func (w *cardsWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 				note += ". Make bootable puts the system on it."
 			}
 		}
-		for i, line := range zenui.WrapText(note, 68, "") {
-			if i > 1 {
-				break
-			}
-			r.DrawText(line, w.progress.X, w.progress.Y+i*w.lineH, w.scale, theme.DimText)
-		}
+		drawWrapped(r, note, w.progress.X, w.progress.Y, w.listArea.W, w.scale, w.lineH, 2, theme.DimText)
 	}
 	w.buttons.Draw(r, theme, w.barArea, w.scale)
 	if w.ask != nil {

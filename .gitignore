@@ -10,6 +10,9 @@
 
 # Release artifacts
 zenzx-v*-checkpoint.zip
+# Local only: it points the build at a sibling checkout of zenui; never to be committed or archived.
+go.work
+go.work.sum
 
 # Test / coverage artifacts
 cover.out

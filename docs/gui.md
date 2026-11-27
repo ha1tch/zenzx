@@ -21,15 +21,17 @@ any menu is already engaged.
 The text of the bar itself is magnified to suit the window, and the bar's text is the one
 thing the **Font zoom** setting does not touch (that is the size of the dropdowns' text). The
 bar takes the greatest of X1, X2 and X3 that fits the window both ways: its labels, with a
-blank space after each, take no more than 60% of the window's width (in the default
-face, Spleen: X2 from a window 950 pixels wide and X3 from 1425; the faces differ in width, and
+blank space after each, take no more than 80% of the window's width (in the default
+face, Spleen: X2 from a window 713 pixels wide and X3 from 1069; the faces differ in width, and
 so do the thresholds), and the strip that holds the text
 takes no more than an eighth of the window's height (X2 from 256 high, X3 from 384). It is
 worked out afresh every frame, so it follows the window as it is resized. The text has room
 above and below it, half its own height and never under 4 pixels, so the strip is 24 pixels
 high at X1, 32 at X2 and 48 at X3; the Spectrum logo (the rainbow, in the Spectrum theme), its two buttons and the room
 reserved at the top of a window with a fixed bar all follow the strip's height. The
-dropdowns are not part of this: they stay at **Font zoom**.
+dropdowns are not part of this: they stay at **Font zoom**. In a window too narrow for all the labels
+even at X1, the last ones, the ones that would run under the Help button, are not drawn, and the
+pointer does nothing over where they were.
 
 A dropdown that is in groups opens each group with a small heading, as Help and Storage do:
 **Machine** (Reset, Play, Pause, Stop, ahead of the makers' groups), **Playback**, **Mode** and **Information** (Tape),
@@ -221,7 +223,10 @@ live one.
   to the screen at the largest whole zoom that fits (up to X 5) and put in the middle of the
   frame, a tiled layout fills it, and leaving brings the window back to the size and the zoom
   it had; the zoom you chose is not changed by it, nor saved from it, and **X 1**/**X 2**/**X 3** and
-  `PgUp`/`PgDn` do nothing meanwhile. Below a separator, **X 1**/**X
+  `PgUp`/`PgDn` do nothing meanwhile. Below Full Screen is **Screenshot**, a submenu: **PNG**, **SCR**
+  and the other formats the picture on the machine can be saved in (greyed where they do not apply), **GIF**
+  (two seconds), and **Manage Screenshots...**, a window that lists the files of the `screenshots/` folder with a thumbnail
+  of each and previews, renames and deletes them; see "Screenshots (GUI)" in the manual. Below a separator, **X 1**/**X
   2**/**X 3** set the emulated display's own scale directly (the same
   scale `PgUp`/`PgDn` step through one at a time), with a checkmark on
   the current one and any scale too large for the current monitor
@@ -237,10 +242,7 @@ live one.
   prints what the window reports, one line for each change, for finding out why one is not
   framed.) **Rotate
   Machines** moves each machine to the next place. See "Several
-  machines" in the manual. Below one more separator, **Screenshot**: **Save as PNG**, **Save as SCR**
-  and the other formats the picture on the machine can be saved in (greyed where they do not apply), **Save as GIF (2 seconds)**,
-  and **Manage Screenshots...**, a window that lists the files of the `screenshots/` folder with a thumbnail
-  of each and previews, renames and deletes them; see "Screenshots (GUI)" in the manual.
+  machines" in the manual.
 - **Theme** -- switch the bar's (and every dropdown's) colour scheme
   live, with a checkmark on the current selection: **Dark** (the
   default) and **Light** (a macOS Aqua-inspired scheme) both show the

@@ -556,11 +556,12 @@ func circleOf(rc zenui.Rect) zenui.Rect {
 }
 
 // circleIconBox is the room for a picture inside the circle of rc: a box that sits inside it, wider
-// than high, with an odd width and height so that it is centred in the circle to the pixel.
+// than high, with an odd width and height so that it is centred in the circle to the pixel. The
+// burger's lines are spread over the whole height, so that is what sets the gaps between them.
 func circleIconBox(rc zenui.Rect) zenui.Rect {
 	rc = circleOf(rc)
 	d := min(rc.W, rc.H)
-	w, h := (d/2)|1, (d*5/16)|1
+	w, h := (d/2)|1, (d*5/16)|1+2 // two more rows than the lines need: a pixel more between them, the top one higher and the bottom one lower
 	return zenui.Rect{X: rc.X + (rc.W-w)/2, Y: rc.Y + (rc.H-h)/2, W: w, H: h}
 }
 
@@ -698,4 +699,15 @@ func (b *appMenuBar) paintBarButtons(screenW, barY int) {
 	pic.Y += barY
 	drawBurger(b.renderer, pic, b.theme.SideText)
 	b.drawTip(screenW, barY, mx, my, rl.GetTime())
+}
+
+// logoTick lets the time pass for the logo's colours on a frame that does not hand the menu bar its
+// input, as the toolbar does not (the labels have none while it is out), nor a dialog over the bar.
+// The pointer is put far away and nothing is pressed, so that nothing but the clock moves; a
+// dropdown that is open is left alone.
+func (b *appMenuBar) logoTick() {
+	if b.widget == nil || b.widget.Active() {
+		return
+	}
+	b.widget.Update(zenui.Input{MouseX: -1 << 20, MouseY: -1 << 20, DeltaTime: rl.GetFrameTime()})
 }

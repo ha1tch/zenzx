@@ -106,7 +106,7 @@ func (q *exportAsk) draw(r zenui.Renderer, screenW, screenH int, theme zenui.The
 	for _, i := range q.whyAt {
 		rec := q.modal.Form().FieldRect(i)
 		r.FillRect(rec, theme.Panel)
-		r.DrawText(q.said[i], rec.X, rec.Y+(rec.H-lh)/2, exportAskScale, theme.DirText)
+		r.DrawText(fitHead(r, q.said[i], rec.W, exportAskScale), rec.X, rec.Y+(rec.H-lh)/2, exportAskScale, theme.DirText)
 	}
 }
 

@@ -66,13 +66,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `sort`, `descending`). The edit boxes of the program (Preferences, the forms, the browsers' name
   field) take `Ctrl+C`, `Ctrl+X`, `Ctrl+V` and `Ctrl+A` (`Cmd` on a Mac), a caret, a selection and the
   word and line keys.
-- **View > Screenshot saves the picture, and Manage Screenshots shows what was saved.** Save as PNG
-  (with the border when Border is on), Save as SCR (the 6912 bytes of the display memory),
-  Save as Hi-Res SCR and Save as Hi-Colour SCR (the Timex screens, written as `.hires.scr` and
+- **View > Screenshot saves the picture, and Manage Screenshots shows what was saved.** PNG
+  (with the border when Border is on), SCR (the 6912 bytes of the display memory),
+  Hi-Res SCR and Hi-Colour SCR (the Timex screens, written as `.hires.scr` and
   `.hicol.scr` so that a file says which mode it holds and a `.scr` is always the standard 6912 bytes;
-  a hi-res file has the port's byte after its 12288, which holds its ink; a plain `.scr` of 12289 bytes is read as hi-res; File > Open, `-scr` and the script `scr` action load a `.hires.scr` or `.hicol.scr` into both screens and set the mode on a Next, or a hi-colour one on a classic machine with the hi-colour renderer, and refuse it elsewhere), Save as Layer 2 and Save as LoRes (`.nxi`: the palette
+  a hi-res file has the port's byte after its 12288, which holds its ink; a plain `.scr` of 12289 bytes is read as hi-res; File > Open, `-scr` and the script `scr` action load a `.hires.scr` or `.hicol.scr` into both screens and set the mode on a Next, or a hi-colour one on a classic machine with the hi-colour renderer, and refuse it elsewhere), Layer 2 and LoRes (`.nxi`: the palette
   and then the pixels, as zentools reads them), each greyed where it does not apply to what the
-  machine is showing, and **Save as GIF (2 seconds)**, which records the next two seconds as 50
+  machine is showing, and **GIF**, which records the next two seconds as 50
   frames (one of every two the machine draws, 25 a second, 4/100 of a second each) with the standard
   library's `image/gif` and a median-cut reduction to 256 colours for a picture that has more (one
   with 256 or fewer is kept exactly); it is encoded and written on its own goroutine, so the machine
@@ -106,6 +106,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The bar's text grows only while its labels take 80% of the window's width or less, not 60%,** so that X2 and X3 begin in narrower windows (in the default face, X2 from 713 pixels wide and X3 from 1069).
+- **A label that would run under the Help button is hidden.** In a window too narrow for all the labels the last ones are no longer drawn beneath the button, and the pointer does nothing over where they were.
+- **The burger's three lines are a pixel further apart.** The top line is a pixel higher and the bottom one a pixel lower, the middle one where it was, so that the picture is still centred in the circle to the pixel.
+- **The logo's colours go on moving in toolbar mode.** They had stopped while the toolbar was shown, because the menu bar's clock for them only ran when the labels were taking input; a frame that does not hand the bar its input (the toolbar, a dialog over the bar, the bar sliding) now moves the clock on all the same, with the pointer out of reach so that nothing else happens.
+- **No text in a dialog goes beyond its box.** The Snapshots, Tapes, Floppy Disks, SD Cards and Screenshots windows, the card-choice window and the Export and card questions cut a line that is wider than the dialog, with two dots, where they had drawn it out of the box: the head lines (the end of a folder's name is what is kept), the notes under the list, the line that says a list is empty, and the SD Cards title. The Snapshots window's own text is shorter (`N snapshots. Load puts the chosen one in the front machine.`), as are the SD card slot lines. A test draws each window with a folder name of 144 characters, at three screen sizes, and checks that every piece of text is inside its dialog.
 - **The Help menu is opened by a burger button at the right end of the bar, not by the logo.** The
   button is a thin circle with three thin lines in it, in the theme's text colour. The Spectrum
   logo (or rainbow) moved a little left to make room and is only a picture now; the menu is

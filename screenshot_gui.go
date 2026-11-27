@@ -16,13 +16,13 @@ import (
 
 // screenshotLabels are the rows of the Screenshot submenu.
 var screenshotLabels = map[ShotFormat]string{
-	ShotPNG:      "Save as PNG",
-	ShotSCR:      "Save as SCR",
-	ShotHiRes:    "Save as Hi-Res SCR (.hires.scr)",
-	ShotHiColour: "Save as Hi-Colour SCR (.hicol.scr)",
-	ShotLayer2:   "Save as Layer 2 (.nxi)",
-	ShotLoRes:    "Save as LoRes (.nxi)",
-	ShotGIF:      "Save as GIF (2 seconds)",
+	ShotPNG:      "PNG",
+	ShotSCR:      "SCR",
+	ShotHiRes:    "Hi-Res SCR",
+	ShotHiColour: "Hi-Colour SCR",
+	ShotLayer2:   "Layer 2",
+	ShotLoRes:    "LoRes",
+	ShotGIF:      "GIF",
 }
 
 // screenshotSpec is the Screenshot submenu as the machine stands: a row for each format, enabled

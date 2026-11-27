@@ -65,8 +65,8 @@ and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
   composed with its border already. An SCR does not hold a border at all (T-100, closed as a limit).
 
 - **A classic TS2068 does not draw the Timex hi-res mode.** It stores port 0xFF and draws the standard
-  screen (its Timex pictures are the opt-in hi-colour renderer), so Save as SCR saves what the machine
-  shows, and Save as Hi-Res SCR is offered for a Next in that mode (T-101, closed as no defect).
+  screen (its Timex pictures are the opt-in hi-colour renderer), so Screenshot > SCR saves what the machine
+  shows, and Hi-Res SCR is offered for a Next in that mode (T-101, closed as no defect).
 
 - **A sandbox may have no GUI system libraries.** With Mesa (GLX), the
   X11, Wayland and ALSA development packages and Xvfb installed, the GUI

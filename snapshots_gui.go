@@ -290,7 +290,7 @@ func (w *snapshotsWindow) headLines() []string {
 	}
 	return []string{
 		"Folder: " + w.dir + "/",
-		fmt.Sprintf("%d %s. Load puts the chosen one into the front machine; a multisnapshot replaces them all.", n, noun),
+		fmt.Sprintf("%d %s. Load puts the chosen one in the front machine.", n, noun),
 	}
 }
 
@@ -371,14 +371,11 @@ func (w *snapshotsWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zen
 	x, y := w.panel.X+pad, w.panel.Y+pad
 	r.DrawText("SNAPSHOTS", x, y, 2, theme.Text)
 	y += r.LineHeight(2) + 8
-	for _, line := range w.head {
-		zenui.DrawTextLine(r, line, x, y, w.scale, theme)
-		y += w.lineH
-	}
+	y = drawDialogHead(r, w.head, x, y, w.panel.W-2*pad, w.scale, w.lineH, theme)
 
 	r.StrokeRect(zenui.Rect{X: w.listArea.X - 1, Y: w.listArea.Y - 1, W: w.listArea.W + 2, H: w.listArea.H + 2}, theme.Border, 1)
 	if len(w.all) == 0 {
-		r.DrawText("No snapshots in "+w.dir+"/ yet: Snapshot > Save Timestamped makes one.", w.listArea.X+4, w.listArea.Y+4, w.scale, theme.DimText)
+		drawWrapped(r, "No snapshots yet: Snapshot > Save Timestamped makes one.", w.listArea.X+4, w.listArea.Y+4, w.listArea.W-8, w.scale, w.lineH, 3, theme.DimText)
 	}
 	w.list.Draw(r, theme, w.listArea, w.scale)
 
@@ -387,12 +384,7 @@ func (w *snapshotsWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zen
 		note = snapshotKind(f)
 	}
 	noteY := w.listArea.Y + w.listArea.H + pad
-	for i, line := range zenui.WrapText(note, 68, "") {
-		if i > 2 {
-			break
-		}
-		r.DrawText(line, w.listArea.X, noteY+i*w.lineH, w.scale, theme.DimText)
-	}
+	drawWrapped(r, note, w.listArea.X, noteY, w.listArea.W, w.scale, w.lineH, 3, theme.DimText)
 	w.buttons.Draw(r, theme, w.barArea, w.scale)
 	if w.ask != nil {
 		w.ask.draw(r, screenW, screenH, theme)

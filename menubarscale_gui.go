@@ -89,10 +89,9 @@ func (b *appMenuBar) barY() int {
 func (b *appMenuBar) drawBar(screenW, screenH int) int {
 	b.barK = b.barScale(screenW, screenH)
 	barY := b.barY()
-	var r zenui.Renderer = b.renderer
-	if k := b.scaleOfBar(); k > 1 {
-		r = &barScaleRenderer{Renderer: b.renderer, k: k, inBar: true}
-	}
+	// The labels are drawn at the bar's scale, and those that would run under the Help button are not
+	// drawn at all (labelsLimit).
+	var r zenui.Renderer = &barScaleRenderer{Renderer: b.renderer, k: b.scaleOfBar(), inBar: true, limit: b.labelsLimit(screenW)}
 	r = b.withPopupShadow(r, true, 0)
 	// The rainbow of the Spectrum theme is as tall as the strip and keeps its shape; the logo of
 	// the other themes is made from the strip's height by zenui itself.
@@ -114,6 +113,7 @@ type barScaleRenderer struct {
 	zenui.Renderer
 	k     int
 	inBar bool
+	limit int // a label whose box would end beyond this is not drawn; 0 for none
 }
 
 func (r *barScaleRenderer) scale(s int) int {
@@ -130,6 +130,9 @@ func (r *barScaleRenderer) TextWidth(s string, scale int) int {
 func (r *barScaleRenderer) LineHeight(scale int) int { return r.Renderer.LineHeight(r.scale(scale)) }
 
 func (r *barScaleRenderer) DrawText(s string, x, y, scale int, c zenui.Colour) {
+	if r.inBar && scale == 1 && r.limit > 0 && !labelFits(x-labelPadX, r.Renderer.TextWidth(s, r.k), r.limit) {
+		return // a label in the strip that does not fit before the Help button
+	}
 	r.Renderer.DrawText(s, x, y, r.scale(scale), c)
 }
 
@@ -138,4 +141,48 @@ func (r *barScaleRenderer) StrokeRect(rc zenui.Rect, c zenui.Colour, thickness i
 		r.inBar = false // the strip's bottom edge: the strip is done, the dropdown is next
 	}
 	r.Renderer.StrokeRect(rc, c, thickness)
+}
+
+// labelPadX is the room zenui puts at each side of a label's text: the label's box is the text's
+// width and twice this, and the text starts this far into it.
+const labelPadX = 8
+
+// labelFits says whether a label whose box starts at boxX and whose text is textW wide ends at or
+// before limit.
+func labelFits(boxX, textW, limit int) bool { return boxX+textW+2*labelPadX <= limit }
+
+// labelsLimit is where the labels must end: just before the Help button. A narrow window has no
+// room for all of them, and the ones that would run under the button are hidden, and have no
+// input (maskHiddenLabels), not drawn over it.
+func (b *appMenuBar) labelsLimit(screenW int) int { return b.helpButton(screenW).X - 2 }
+
+// hiddenLabelsFrom is where the first hidden label's box starts, or the largest int when every
+// label fits. It follows zenui's own layout of the strip: the first label starts 12 pixels in, past
+// the toolbar button's room, and each box is its text's width and 16.
+func (b *appMenuBar) hiddenLabelsFrom(screenW int) int {
+	left, _ := barInsetsFor(b.stripH())
+	x, limit, k := 12+left, b.labelsLimit(screenW), b.scaleOfBar()
+	for i := 0; ; i++ {
+		label := b.widget.LabelFor(i)
+		if label == "" {
+			return int(^uint(0) >> 1)
+		}
+		textW := b.renderer.TextWidth(label, k)
+		if !labelFits(x, textW, limit) {
+			return x
+		}
+		x += textW + 2*labelPadX
+	}
+}
+
+// maskHiddenLabels takes the pointer away from the menu bar on a frame in which it is over the strip
+// where hidden labels are, so that they cannot be hovered or chosen: it is put far off, and no
+// button is down.
+func (b *appMenuBar) maskHiddenLabels(in zenui.Input, screenW int) zenui.Input {
+	if in.MouseY >= b.stripH() || in.MouseX < b.hiddenLabelsFrom(screenW) {
+		return in
+	}
+	in.MouseX, in.MouseY = -1<<20, -1<<20
+	in.MouseDown, in.MousePressed, in.MouseRightDown, in.MouseRightPressed = false, false, false, false
+	return in
 }

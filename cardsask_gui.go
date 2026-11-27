@@ -667,7 +667,7 @@ func (a *cardsAsk) draw(r zenui.Renderer, screenW, screenH int, theme zenui.Them
 	r.StrokeRect(a.panel, theme.Border, theme.BorderThickness)
 	pad := r.LineHeight(1)
 	x, y := a.panel.X+pad, a.panel.Y+pad
-	r.DrawText(a.heading(), x, y, 2, theme.Text)
+	r.DrawText(fitHead(r, a.heading(), a.panel.W-2*pad, 2), x, y, 2, theme.Text)
 	y += r.LineHeight(2) + 8
 	why := map[int]bool{}
 	for _, i := range a.whyAt {
@@ -678,13 +678,13 @@ func (a *cardsAsk) draw(r zenui.Renderer, screenW, screenH int, theme zenui.Them
 		if why[i] {
 			col = theme.DirText
 		}
-		r.DrawText(line, x, y, a.scale, col)
+		r.DrawText(fitHead(r, line, a.panel.W-2*pad, a.scale), x, y, a.scale, col)
 		y += a.lineH
 	}
 	if a.listed() {
 		r.StrokeRect(zenui.Rect{X: a.listArea.X - 1, Y: a.listArea.Y - 1, W: a.listArea.W + 2, H: a.listArea.H + 2}, theme.Border, 1)
 		if len(a.rows) == 0 {
-			r.DrawText("No card images in the folders looked through: use Browse...", a.listArea.X+4, a.listArea.Y+4, a.scale, theme.DimText)
+			drawWrapped(r, "No card images in the folders looked through: use Browse...", a.listArea.X+4, a.listArea.Y+4, a.listArea.W-8, a.scale, a.lineH, 3, theme.DimText)
 		}
 		a.list.Draw(r, theme, a.listArea, a.scale)
 	}

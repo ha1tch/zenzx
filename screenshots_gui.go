@@ -909,15 +909,7 @@ func (w *screenshotsWindow) Draw(r zenui.Renderer, screenW, screenH int, theme z
 	x, y := w.panel.X+pad, w.panel.Y+pad
 	r.DrawText("SCREENSHOTS", x, y, 2, theme.Text)
 	y += r.LineHeight(2) + 8
-	for i, line := range w.head {
-		if i == 0 { // the folder's name is as long as the person made it: its end is what shows
-			line = fitTail(r, line, w.panel.W-2*pad, w.scale)
-		} else {
-			line = fitHead(r, line, w.panel.W-2*pad, w.scale)
-		}
-		zenui.DrawTextLine(r, line, x, y, w.scale, theme)
-		y += w.lineH
-	}
+	y = drawDialogHead(r, w.head, x, y, w.panel.W-2*pad, w.scale, w.lineH, theme)
 
 	r.StrokeRect(zenui.Rect{X: w.listArea.X - 1, Y: w.listArea.Y - 1, W: w.listArea.W + 2, H: w.listArea.H + 2}, theme.Border, 1)
 	if len(w.all) == 0 {

@@ -699,13 +699,13 @@ in the same second is saved a second later, and none is written over. A toast na
 
 | Row | Saves | Offered when |
 |-----|-------|--------------|
-| Save as PNG | the picture as it is shown, with the border when Border is on | always |
-| Save as SCR | the display memory, 6912 bytes: the bitmap and its attributes | the standard screen (a Next's ULA, or Timex screen 1) |
-| Save as Hi-Res SCR (.hires.scr) | the Timex hi-res screen: 12288 bytes, and after them the byte of the Timex port that holds its ink | the Timex hi-res mode (a Next) |
-| Save as Hi-Colour SCR (.hicol.scr) | the Timex hi-colour screen: 12288 bytes, the bitmap and an attribute for each of its bytes | the Timex hi-colour mode |
-| Save as Layer 2 (.nxi) | the palette, then the pixels as the layer holds them | Layer 2 is on (a Next) |
-| Save as LoRes (.nxi) | the palette, then the pixels | LoRes is on (a Next) |
-| Save as GIF (2 seconds) | an animated GIF of the next two seconds: 50 frames, one of every two the machine draws (25 a second), 4/100 of a second each, repeating | always |
+| PNG | the picture as it is shown, with the border when Border is on | always |
+| SCR | the display memory, 6912 bytes: the bitmap and its attributes | the standard screen (a Next's ULA, or Timex screen 1) |
+| Hi-Res SCR (.hires.scr) | the Timex hi-res screen: 12288 bytes, and after them the byte of the Timex port that holds its ink | the Timex hi-res mode (a Next) |
+| Hi-Colour SCR (.hicol.scr) | the Timex hi-colour screen: 12288 bytes, the bitmap and an attribute for each of its bytes | the Timex hi-colour mode |
+| Layer 2 (.nxi) | the palette, then the pixels as the layer holds them | Layer 2 is on (a Next) |
+| LoRes (.nxi) | the palette, then the pixels | LoRes is on (a Next) |
+| GIF (2 seconds) | an animated GIF of the next two seconds: 50 frames, one of every two the machine draws (25 a second), 4/100 of a second each, repeating | always |
 
 A row that does not apply to what the machine is showing is greyed, and all are with no machine
 running. The GIF is recorded as the machine runs (a paused machine records when it plays again) and

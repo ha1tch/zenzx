@@ -379,27 +379,32 @@ func TestRefreshViewItemsStructure(t *testing.T) {
 	b.refreshViewItems(zx)
 	items := b.widget.ItemsFor(barView)
 
-	if want := 11 + len(deckLayoutNames) + 1 + 3; len(items) != want {
-		t.Fatalf("len(items) = %d, want %d (a title and 3, separator, a title and 3 zooms, separator, a title, the layouts and Rotate, separator, a title and Screenshot)", len(items), want)
+	if want := 12 + len(deckLayoutNames) + 1; len(items) != want {
+		t.Fatalf("len(items) = %d, want %d (a title, 3 rows and Screenshot, separator, a title and 3 zooms, separator, a title, the layouts and Rotate)", len(items), want)
 	}
-	if rotate := items[len(items)-4]; rotate.Label != viewRotateLabel || !rotate.Disabled {
-		t.Errorf("the item before the capture group is %q (disabled %v), want Rotate Machines, greyed for one machine", rotate.Label, rotate.Disabled)
+	if rotate := items[len(items)-1]; rotate.Label != viewRotateLabel || !rotate.Disabled {
+		t.Errorf("the last item is %q (disabled %v), want Rotate Machines, greyed for one machine", rotate.Label, rotate.Disabled)
 	}
-	if shot := items[len(items)-1]; shot.Label != "Screenshot" || len(shot.SubItems) == 0 {
-		t.Errorf("the last item is %q with %d rows under it, want the Screenshot submenu", shot.Label, len(shot.SubItems))
+	if shot := items[4]; shot.Label != "Screenshot" || len(shot.SubItems) == 0 {
+		t.Errorf("items[4] is %q with %d rows under it, want the Screenshot submenu ending the Display group", shot.Label, len(shot.SubItems))
 	}
-	if !items[9].Separator {
-		t.Error("items[9] should be the separator between the zoom group and the layouts")
+	for _, it := range items {
+		if it.Label == "Capture" {
+			t.Error("there is a Capture group; Screenshot is in Display")
+		}
 	}
-	if !items[10].Title || items[10].Label != "Layout" {
-		t.Errorf("items[10] is %+v, want the title Layout", items[10])
+	if !items[10].Separator {
+		t.Error("items[10] should be the separator between the zoom group and the layouts")
+	}
+	if !items[11].Title || items[11].Label != "Layout" {
+		t.Errorf("items[11] is %+v, want the title Layout", items[11])
 	}
 	// With one machine and no dock: One Machine ticked, the tiled layouts
 	// greyed, the zoom available.
 	for i, name := range deckLayoutNames {
-		it := items[11+i]
+		it := items[12+i]
 		if it.Label != name {
-			t.Errorf("items[%d].Label = %q, want %q", 11+i, it.Label, name)
+			t.Errorf("items[%d].Label = %q, want %q", 12+i, it.Label, name)
 		}
 		if it.Checked == nil || *it.Checked != (i == 0) {
 			t.Errorf("%s: wrongly ticked for one machine", name)
@@ -416,11 +421,11 @@ func TestRefreshViewItemsStructure(t *testing.T) {
 	b.refreshViewItems(zx)
 	items = b.widget.ItemsFor(barView)
 	for i := range deckLayoutNames {
-		if items[11+i].Disabled || *items[11+i].Checked != (deckLayout(i) == layoutColumns) {
-			t.Errorf("%s with three machines side by side: disabled %v, ticked %v", deckLayoutNames[i], items[11+i].Disabled, *items[11+i].Checked)
+		if items[12+i].Disabled || *items[12+i].Checked != (deckLayout(i) == layoutColumns) {
+			t.Errorf("%s with three machines side by side: disabled %v, ticked %v", deckLayoutNames[i], items[12+i].Disabled, *items[12+i].Checked)
 		}
 	}
-	for i := 6; i < 9; i++ {
+	for i := 7; i < 10; i++ {
 		if !items[i].Disabled {
 			t.Errorf("%s is offered in a tiled layout", items[i].Label)
 		}
@@ -428,16 +433,16 @@ func TestRefreshViewItemsStructure(t *testing.T) {
 	b.layoutState = nil
 	b.refreshViewItems(zx)
 	items = b.widget.ItemsFor(barView)
-	if !items[4].Separator {
-		t.Error("items[4] should be the separator between the base options and the zoom group")
+	if !items[5].Separator {
+		t.Error("items[5] should be the separator between the Display group and the zoom group")
 	}
-	if !items[0].Title || items[0].Label != "Display" || !items[5].Title || items[5].Label != "Scale" {
-		t.Errorf("the titles are %+v and %+v, want Display and Scale", items[0], items[5])
+	if !items[0].Title || items[0].Label != "Display" || !items[6].Title || items[6].Label != "Scale" {
+		t.Errorf("the titles are %+v and %+v, want Display and Scale", items[0], items[6])
 	}
 	wantLabels := []string{"X 1", "X 2", "X 3"}
 	for i, want := range wantLabels {
-		if items[6+i].Label != want {
-			t.Errorf("items[%d].Label = %q, want %q", 6+i, items[6+i].Label, want)
+		if items[7+i].Label != want {
+			t.Errorf("items[%d].Label = %q, want %q", 7+i, items[7+i].Label, want)
 		}
 	}
 }
@@ -459,7 +464,7 @@ func TestRefreshViewItemsChecksCurrentScale(t *testing.T) {
 	items := b.widget.ItemsFor(barView)
 
 	for i, n := range []int{1, 2, 3} {
-		item := items[6+i]
+		item := items[7+i]
 		if item.Checked == nil {
 			t.Fatalf("X %d item has no Checked pointer", n)
 		}
@@ -486,7 +491,7 @@ func TestRefreshViewItemsDisablesScalesAboveLimit(t *testing.T) {
 
 	limit := zx.window().maxMultiplierThatFits()
 	for i, n := range []int{1, 2, 3} {
-		item := items[6+i]
+		item := items[7+i]
 		want := n > limit
 		if item.Disabled != want {
 			t.Errorf("X %d Disabled = %v, want %v (limit=%d)", n, item.Disabled, want, limit)
@@ -505,8 +510,8 @@ func TestViewZoomDispatchesToSetScale(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	// index 8 = "X 3" (0:title, 1:FPS, 2:Border, 3:Full Screen, 4:separator, 5:title, 6:X1, 7:X2, 8:X3)
-	b.actions[barView][8](zx)
+	// index 9 = "X 3" (0:title, 1:FPS, 2:Border, 3:Full Screen, 4:Screenshot, 5:separator, 6:title, 7:X1, 8:X2, 9:X3)
+	b.actions[barView][9](zx)
 	if zx.window().screen.multiplier != 3 {
 		t.Errorf("multiplier = %d, want 3 after dispatching the X 3 action", zx.window().screen.multiplier)
 	}

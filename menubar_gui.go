@@ -1180,6 +1180,8 @@ func (b *appMenuBar) viewSpec(zx *ZenZX) menuSpec {
 	fullscreen := dm.fullscreen
 	spec = append(spec,
 		menuEntry{label: "Full Screen", checked: &fullscreen, box: true, run: func(zx *ZenZX) { zx.window().ToggleFullscreen() }},
+		// Screenshot: the formats the picture can be saved in, and the window of what was (screenshot_gui.go)
+		menuEntry{label: "Screenshot", sub: b.screenshotSpec(zx)},
 		menuSep(),
 		menuTitle("Scale"),
 	)
@@ -1227,8 +1229,7 @@ func (b *appMenuBar) viewSpec(zx *ZenZX) menuSpec {
 			}
 		},
 	})
-	// Screenshot: the formats the picture can be saved in, and the window of what was (screenshot_gui.go)
-	return append(spec, menuSep(), menuTitle("Capture"), menuEntry{label: "Screenshot", sub: b.screenshotSpec(zx)})
+	return spec
 }
 
 // refreshViewItems rebuilds the View menu each frame the bar is shown, items and actions
@@ -1361,6 +1362,14 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	b.barK = b.barScale(int(rl.GetScreenWidth()), int(rl.GetScreenHeight())) // before the strip's height is asked for
 	b.updateBarCursor()
 	b.stepToolbar(rl.GetFrameTime())
+	// The logo's colours move with the menu bar's own Update, which the toolbar, a dialog and the bar
+	// being away all keep a frame from reaching; such a frame moves them here (logoTick, barbuttons_gui.go).
+	logoTicked := false
+	defer func() {
+		if !logoTicked {
+			b.logoTick()
+		}
+	}()
 	b.reconcileFixed(zx)
 	b.enforceSingleSurface()
 	if b.prefs != nil {
@@ -1531,7 +1540,8 @@ func (b *appMenuBar) Update(zx *ZenZX) {
 	if b.toolbarOn || b.toolbarT > 0 {
 		return // the labels are out of the strip: they have no input while the toolbar is, or is sliding
 	}
-	sel, ok := b.widget.Update(input)
+	logoTicked = true
+	sel, ok := b.widget.Update(b.maskHiddenLabels(input, int(rl.GetScreenWidth())))
 	if ok && zx.stopped && b.needsMachine(sel) {
 		zx.notice("No machine is running")
 		return

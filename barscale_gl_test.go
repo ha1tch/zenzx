@@ -14,9 +14,9 @@ import (
 )
 
 // TestGLBarScale draws the menu bar at several window widths and in two themes, and looks at
-// what comes out. The labels, with a blank space after each, may take 60% of the
+// what comes out. The labels, with a blank space after each, may take 80% of the
 // window, and the widths are the bar's own, at its face (Spleen, the default one: 285 pixels at
-// X1, 570 at X2 and 855 at X3, so X2 from 950 wide and X3 from 1425). The text has room above and
+// X1, 570 at X2 and 855 at X3, so X2 from 713 wide and X3 from 1069). The text has room above and
 // below it, half its height (so the strip is 24 high at X1, 32 at X2 and 48 at X3), and the strip
 // may take an eighth of the window's height: X2 from 256 high and X3 from 384. The pictures are
 // written to ZENZX_BAR_SHOTS, to be looked at.
@@ -43,8 +43,8 @@ func TestGLBarScale(t *testing.T) {
 	for _, th := range []zenui.ThemeName{zenui.Themes[0], zenui.Themes[len(zenui.Themes)-1]} {
 		b.ApplyTheme(th)
 		// The widths are the window's, either side of where X2 and X3 begin: the narrowest window
-		// in which the labels at that scale take no more than 60% of it.
-		x2, x3 := (b.barScaleWidth(2)*5+2)/3, (b.barScaleWidth(3)*5+2)/3
+		// in which the labels at that scale take no more than 80% of it.
+		x2, x3 := (b.barScaleWidth(2)*5+3)/4, (b.barScaleWidth(3)*5+3)/4
 		if x2 >= x3 || x2 < 300 {
 			t.Fatalf("setup: X2 begins at %d wide and X3 at %d", x2, x3)
 		}

@@ -6,8 +6,8 @@ package zenzx
 import "testing"
 
 func TestFitBarScale(t *testing.T) {
-	// Labels that take 400 pixels at X1, 800 at X2 and 1200 at X3. The labels may take 60%
-	// of the window: X1 from 667 wide, X2 from 1334, X3 from 2000.
+	// Labels that take 400 pixels at X1, 800 at X2 and 1200 at X3. The labels may take 80%
+	// of the window: X1 from 500 wide, X2 from 1000, X3 from 1500.
 	width := func(k int) int { return 400 * k }
 	// Strips of 24, 32 and 48 pixels, which the window's height may give an eighth of: X2 from a
 	// window 256 high and X3 from 384.
@@ -16,12 +16,12 @@ func TestFitBarScale(t *testing.T) {
 	for _, c := range []struct{ screenW, want int }{
 		{0, 1},    // no window to speak of: the bar is never smaller than it was
 		{300, 1},  // not even X1 fits: still X1
-		{666, 1},  // X1 does not quite fit, and is what there is
-		{667, 1},  // X1 fits
-		{1333, 1}, // X2 does not fit
-		{1334, 2}, // X2 fits (800 is under 60% of 1334)
-		{1999, 2}, // X3 does not fit
-		{2000, 3}, // X3 takes exactly 60%: it fits
+		{499, 1},  // X1 does not quite fit, and is what there is
+		{500, 1},  // X1 fits
+		{999, 1},  // X2 does not fit
+		{1000, 2}, // X2 takes exactly 80%: it fits
+		{1499, 2}, // X3 does not fit
+		{1500, 3}, // X3 takes exactly 80%: it fits
 		{5000, 3}, // the largest there is
 	} {
 		if got := fitBarScale(c.screenW, tall, width, strip); got != c.want {
