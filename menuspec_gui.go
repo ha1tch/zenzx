@@ -22,6 +22,7 @@ type menuEntry struct {
 	disabled bool
 	checked  *bool // a checkmark that follows the pointed-to bool
 	toggle   bool  // with checked: a checkbox that flips it and keeps the menu open
+	box      bool  // with checked: the checkbox glyph, but choosing the row closes the menu as any row does
 	// icon is a picture drawn before the label, as the Machine menu's Pause, Play and Stop have.
 	icon func(r zenui.Renderer, cell zenui.Rect, col zenui.Colour)
 	sub  menuSpec
@@ -62,6 +63,7 @@ func (s menuSpec) items() []zenui.Item {
 			Disabled:  e.disabled,
 			Checked:   e.checked,
 			Toggle:    e.toggle,
+			Box:       e.box,
 			Icon:      e.icon,
 		}
 		if len(e.sub) > 0 {

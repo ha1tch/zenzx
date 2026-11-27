@@ -4,7 +4,9 @@
 # on release archives (see `make release`), never on the binaries
 # themselves:
 #   * zenzx           the GUI (raylib + oto). Needs cgo on Linux (oto's ALSA
-#                      backend); cgo-free (purego) on macOS and Windows.
+#                      backend); cgo-free (purego) on macOS, Windows and FreeBSD
+#                      (FreeBSD plays through OSS, /dev/dsp, and opens raylib and
+#                      libffi from the system at run time).
 #   * zenzx-headless   no window, no audio device, renders to PNG. Always
 #                      cgo-free, cross-compiles cleanly to every platform.
 #
@@ -68,6 +70,11 @@ cross:
 	@for p in darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do \
 		os=$${p%/*}; arch=$${p#*/}; \
 		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 $(GO) build -o /dev/null ./cmd/zenzx && echo "ok  gui       $$p"; \
+	done
+	@echo "-- gui, cgo-free FreeBSD (raylib and libffi opened at run time; fakecgo needs -std) --"
+	@for p in freebsd/amd64 freebsd/arm64; do \
+		os=$${p%/*}; arch=$${p#*/}; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 $(GO) build -gcflags="github.com/ebitengine/purego/internal/fakecgo=-std" -o /dev/null ./cmd/zenzx && echo "ok  gui       $$p"; \
 	done
 	@echo "-- gui, native cgo (this host only) --"
 	@CGO_ENABLED=1 $(GO) build -o /dev/null ./cmd/zenzx && echo "ok  gui       $$(go env GOOS)/$$(go env GOARCH) (cgo)"

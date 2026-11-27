@@ -24,7 +24,7 @@ func TestMachineMenuFlatListStructure(t *testing.T) {
 	}
 
 	if got := len(b.actions[barMachine]); got != machineHeadRows {
-		t.Errorf("len(actions[barMachine]) = %d, want %d (the title, Reset, Pause or Play, Stop only)", got, machineHeadRows)
+		t.Errorf("len(actions[barMachine]) = %d, want %d (the title, Reset, Play, Pause, Stop only)", got, machineHeadRows)
 	}
 
 	// A "submenu" node occupies exactly one top-level slot (its own
@@ -33,7 +33,7 @@ func TestMachineMenuFlatListStructure(t *testing.T) {
 	// simply len(nodes) at the top level, regardless of whether any
 	// node happens to be a submenu.
 	nodes := machinesRes.Config.Items
-	wantTotal := machineHeadRows + len(nodes) // Reset, Pause or Play, Stop, then one row per top-level node
+	wantTotal := machineHeadRows + len(nodes) // Reset, Play, Pause, Stop, then one row per top-level node
 	items := b.widget.ItemsFor(barMachine)
 	if len(items) != wantTotal {
 		t.Fatalf("len(ItemsFor(barMachine)) = %d, want %d", len(items), wantTotal)
@@ -101,13 +101,13 @@ func TestMachineMenuModelRowDispatchesCorrectFlag(t *testing.T) {
 	items := b.widget.ItemsFor(barMachine)
 	idx := -1
 	for i, it := range items {
-		if it.Label == "  ZX Spectrum +3" {
+		if it.Label == "ZX Spectrum +3" {
 			idx = i
 			break
 		}
 	}
 	if idx < 0 {
-		t.Fatal("could not find \"  ZX Spectrum +3\" in the Machine menu")
+		t.Fatal("could not find \"ZX Spectrum +3\" in the Machine menu")
 	}
 	if b.machineModelFlags[idx] != "plus3" {
 		t.Errorf("machineModelFlags[%d] = %q, want \"plus3\"", idx, b.machineModelFlags[idx])
@@ -352,8 +352,11 @@ func TestViewBorderToggleResizesTheWindow(t *testing.T) {
 	withBorder := dm.targetWidth
 
 	item := b.widget.ItemsFor(barView)[2]
-	if item.Label != "Border Display" || item.Toggle || item.Disabled {
-		t.Fatalf("row 2 is %+v, want an enabled Border Display row that is not a checkbox (a checkbox keeps the menu open)", item)
+	if item.Label != "Border" || item.Toggle || !item.Box || item.Disabled {
+		t.Fatalf("row 2 is %+v, want an enabled Border row drawn as a box that does not toggle (a toggling checkbox keeps the menu open)", item)
+	}
+	if fs := b.widget.ItemsFor(barView)[3]; fs.Label != "Full Screen" || fs.Toggle || !fs.Box {
+		t.Errorf("row 3 is %+v, want Full Screen drawn as a box that closes the menu", fs)
 	}
 	b.viewSpec(zx)[2].run(zx) // picking the row
 	dm.followBorder()         // the first thing UpdateWindowSize does each frame
@@ -376,11 +379,14 @@ func TestRefreshViewItemsStructure(t *testing.T) {
 	b.refreshViewItems(zx)
 	items := b.widget.ItemsFor(barView)
 
-	if want := 11 + len(deckLayoutNames) + 1; len(items) != want {
-		t.Fatalf("len(items) = %d, want %d (a title and 3, separator, a title and 3 zooms, separator, a title, the layouts and Rotate)", len(items), want)
+	if want := 11 + len(deckLayoutNames) + 1 + 3; len(items) != want {
+		t.Fatalf("len(items) = %d, want %d (a title and 3, separator, a title and 3 zooms, separator, a title, the layouts and Rotate, separator, a title and Screenshot)", len(items), want)
 	}
-	if last := items[len(items)-1]; last.Label != viewRotateLabel || !last.Disabled {
-		t.Errorf("the last item is %q (disabled %v), want Rotate Machines, greyed for one machine", last.Label, last.Disabled)
+	if rotate := items[len(items)-4]; rotate.Label != viewRotateLabel || !rotate.Disabled {
+		t.Errorf("the item before the capture group is %q (disabled %v), want Rotate Machines, greyed for one machine", rotate.Label, rotate.Disabled)
+	}
+	if shot := items[len(items)-1]; shot.Label != "Screenshot" || len(shot.SubItems) == 0 {
+		t.Errorf("the last item is %q with %d rows under it, want the Screenshot submenu", shot.Label, len(shot.SubItems))
 	}
 	if !items[9].Separator {
 		t.Error("items[9] should be the separator between the zoom group and the layouts")
@@ -512,13 +518,12 @@ func TestInSpanishGroupListsExpectedModels(t *testing.T) {
 		t.Fatalf("machineconfig.Load: %v", err)
 	}
 
-	// The Spanish-market section is a flat run of indent=1 Models
+	// The Spanish-market section is a flat run of Models
 	// directly under one top-level "In Spanish" Title -- no
 	// per-manufacturer sub-titles (Sinclair/Investrónica/Amstrad)
 	// the way an earlier machines.json revision had it. The models
-	// sit at indent 1, level with every other maker's models (the
-	// Spanish group was brought up one level from the deeper indent 2
-	// an earlier revision used). This replaces the old
+	// are not indented, level with every other maker's models and
+	// with the Reset, Pause and Stop rows above them. This replaces the old
 	// TestEnEspanolAttributesEachModelToItsOwnManufacturer, which
 	// asserted a now-removed nested structure.
 	items := machinesRes.Config.Items
@@ -550,8 +555,8 @@ func TestInSpanishGroupListsExpectedModels(t *testing.T) {
 		if node.Type != machineconfig.Model {
 			continue
 		}
-		if node.Indent != 1 {
-			t.Errorf("model %q has indent %d, want 1", node.ID, node.Indent)
+		if node.Indent != 0 {
+			t.Errorf("model %q has indent %d, want 0", node.ID, node.Indent)
 		}
 		got = append(got, node.ID)
 	}

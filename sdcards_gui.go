@@ -102,7 +102,7 @@ func listCards(dir string, extra []string) []cardEntry {
 // stem-2.img, stem-3.img and so on.
 func freeCardName(dir, stem string) string { return freeImageName(dir, stem, ".img") }
 
-// freeImageName is freeCardName for any extension; the disc window names
+// freeImageName is freeCardName for any extension; the disk window names
 // its files with it too.
 func freeImageName(dir, stem, ext string) string {
 	p := filepath.Join(dir, stem+ext)

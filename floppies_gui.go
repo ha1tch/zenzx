@@ -19,34 +19,34 @@ import (
 // The Floppy Disks window
 //
 // The +3's drive is not like the Next's card slots in one respect that
-// decides what this window is for: a disc is read whole into memory when it
+// decides what this window is for: a disk is read whole into memory when it
 // goes in the drive, the machine works on that copy, and the file gets the
 // changes later (30 seconds after the last write, on Eject, on Save, at
-// exit). So at any moment there can be two versions of a disc, the one in
+// exit). So at any moment there can be two versions of a disk, the one in
 // memory and the one in the file, and either can be ahead of the other: the
 // memory when the machine has written, the file when something else has
 // rewritten it since. The window shows which, and has the three ways out:
 // write the memory to the file, read the file again, or keep both by saving
 // the memory under a new name.
 //
-// The rest is as the SD Cards window: the disc images of a folder, who has
-// each, putting one in the drive, copying, making a blank one. A disc file
+// The rest is as the SD Cards window: the disk images of a folder, who has
+// each, putting one in the drive, copying, making a blank one. A disk file
 // is in the drive of one machine at a time, for the same reason a card is.
 // ============================================================================
 
-// diskEntry is one disc image the window lists.
+// diskEntry is one disk image the window lists.
 type diskEntry struct {
 	path string
 	size int64
-	kind string // "raw 180K", "DSK 40x1", "EDSK 40x1"; "" when it is not a disc
+	kind string // "raw 180K", "DSK 40x1", "EDSK 40x1"; "" when it is not a disk
 	why  string // why not
 }
 
 // maxDiskFile is the largest file the window will read to see whether it is
-// a disc: a double-sided 80-track extended image is well under it.
+// a disk: a double-sided 80-track extended image is well under it.
 const maxDiskFile = 4 << 20
 
-// describeDisk reads what the window needs to know of a disc image.
+// describeDisk reads what the window needs to know of a disk image.
 func describeDisk(path string) diskEntry {
 	e := diskEntry{path: path}
 	st, err := os.Stat(path)
@@ -56,7 +56,7 @@ func describeDisk(path string) diskEntry {
 	}
 	e.size = st.Size()
 	if e.size > maxDiskFile {
-		e.why = "too large to be a +3 disc"
+		e.why = "too large to be a +3 disk"
 		return e
 	}
 	data, err := os.ReadFile(path)
@@ -84,7 +84,7 @@ func describeDisk(path string) diskEntry {
 	return e
 }
 
-// listDisks returns the disc images in dir, and those of extra that are not
+// listDisks returns the disk images in dir, and those of extra that are not
 // in it, in the order of their names.
 func listDisks(dir string, extra []string) []diskEntry {
 	seen := map[string]bool{}
@@ -139,7 +139,7 @@ type disksWindow struct {
 	zx      *ZenZX
 	machine int // its number in the dock
 	dir     string
-	// use tells which machine has a disc file in its drive, 0 for none;
+	// use tells which machine has a disk file in its drive, 0 for none;
 	// holder returns that machine.
 	use    func(path string) int
 	holder func(machine int) *ZenZX
@@ -180,7 +180,7 @@ func newDisksWindow(zx *ZenZX, machine int, use func(string) int, holder func(in
 // that has one.
 func (w *disksWindow) fdc() *FDC765 { return w.zx.io.fdc }
 
-// refresh reads the folder again and keeps the selection on the same disc.
+// refresh reads the folder again and keeps the selection on the same disk.
 func (w *disksWindow) refresh() {
 	keep := ""
 	if w.list.Selected >= 0 && w.list.Selected < len(w.disks) {
@@ -202,7 +202,7 @@ func (w *disksWindow) refresh() {
 	}
 }
 
-// selectPath puts the selection on the disc at path.
+// selectPath puts the selection on the disk at path.
 func (w *disksWindow) selectPath(path string) {
 	for i, d := range w.disks {
 		if same(d.path, path) {
@@ -211,7 +211,7 @@ func (w *disksWindow) selectPath(path string) {
 	}
 }
 
-// selected returns the chosen disc, if there is one.
+// selected returns the chosen disk, if there is one.
 func (w *disksWindow) selected() (diskEntry, bool) {
 	if w.list.Selected < 0 || w.list.Selected >= len(w.disks) {
 		return diskEntry{}, false
@@ -219,7 +219,7 @@ func (w *disksWindow) selected() (diskEntry, bool) {
 	return w.disks[w.list.Selected], true
 }
 
-// where says who has a disc and whether its memory is ahead of its file.
+// where says who has a disk and whether its memory is ahead of its file.
 func (w *disksWindow) where(path string) string {
 	n := w.use(path)
 	if n == 0 {
@@ -235,11 +235,11 @@ func (w *disksWindow) where(path string) string {
 	return s
 }
 
-// row is a disc's line in the list.
+// row is a disk's line in the list.
 func (w *disksWindow) row(d diskEntry) string {
 	kind := d.kind
 	if kind == "" {
-		kind = "no disc"
+		kind = "no disk"
 	}
 	name := filepath.Base(d.path)
 	if len(name) > 26 {
@@ -249,13 +249,13 @@ func (w *disksWindow) row(d diskEntry) string {
 }
 
 // headLines is the text above the list: the drive, and how far apart the
-// disc in memory and its file are.
+// disk in memory and its file are.
 func (w *disksWindow) headLines() []string {
 	fdc := w.fdc()
 	drive := "empty"
 	switch {
 	case fdc.HasDisk() && fdc.DiskFile() == "":
-		drive = "a blank disc with no file"
+		drive = "a blank disk with no file"
 		if fdc.IsModified() {
 			drive += ", written to: Save as new file keeps it"
 		}
@@ -275,7 +275,7 @@ func (w *disksWindow) headLines() []string {
 	return []string{
 		fmt.Sprintf("## Machine %d", w.machine),
 		"Drive A: " + drive,
-		"A disc is read whole into memory when it goes in the drive. Changes",
+		"A disk is read whole into memory when it goes in the drive. Changes",
 		"reach its file 30 seconds after the last write, on Eject and at exit.",
 	}
 }
@@ -299,7 +299,7 @@ func (w *disksWindow) setButtons() {
 		{ID: diskBtnReload, Label: label(diskBtnReload, "Read file again"), Disabled: fdc.DiskFile() == ""},
 		{ID: diskBtnSaveNew, Label: "Save as new file", Disabled: !fdc.HasDisk()},
 		{ID: diskBtnCopy, Label: "Copy", Disabled: !ok},
-		{ID: diskBtnNew, Label: "New blank disc"},
+		{ID: diskBtnNew, Label: "New blank disk"},
 		{ID: diskBtnOther, Label: "Other file..."},
 		{ID: diskBtnClose, Label: "Close"},
 	}
@@ -336,7 +336,7 @@ func (w *disksWindow) do(id string) bool {
 	case diskBtnInsert:
 		if fdc.HasDisk() && fdc.IsModified() {
 			if fdc.DiskFile() == "" {
-				w.note = "The blank disc in the drive has been written to and has no file. Save as new file first, or Eject it."
+				w.note = "The blank disk in the drive has been written to and has no file. Save as new file first, or Eject it."
 				return false
 			}
 			if fdc.Busy() {
@@ -344,23 +344,23 @@ func (w *disksWindow) do(id string) bool {
 				return false
 			}
 			if err := fdc.SaveDisk(); err != nil {
-				w.note = "The disc in the drive could not be written to its file: " + err.Error()
+				w.note = "The disk in the drive could not be written to its file: " + err.Error()
 				return false
 			}
 		}
 		if err := w.zx.io.LoadDisk(d.path); err != nil {
-			w.note = "That disc could not be read: " + err.Error()
+			w.note = "That disk could not be read: " + err.Error()
 		} else {
 			w.note = filepath.Base(d.path) + " is in the drive."
 		}
 
 	case diskBtnEject:
 		if fdc.IsModified() && fdc.DiskFile() == "" &&
-			!w.sure(id, "The blank disc has been written to and has no file: ejecting it loses that. Save as new file keeps it.") {
+			!w.sure(id, "The blank disk has been written to and has no file: ejecting it loses that. Save as new file keeps it.") {
 			return false
 		}
 		if fdc.IsModified() && fdc.FileChanged() &&
-			!w.sure(id, "Ejecting writes the disc to its file, which has changed on disk since it was read: that change would be lost.") {
+			!w.sure(id, "Ejecting writes the disk to its file, which has changed on disk since it was read: that change would be lost.") {
 			return false
 		}
 		fdc.EjectDisk()
@@ -372,25 +372,25 @@ func (w *disksWindow) do(id string) bool {
 			return false
 		}
 		if fdc.FileChanged() &&
-			!w.sure(id, "The file has changed on disk since it was read. Writing now replaces it with the disc in memory.") {
+			!w.sure(id, "The file has changed on disk since it was read. Writing now replaces it with the disk in memory.") {
 			return false
 		}
 		if err := fdc.SaveDisk(); err != nil {
-			w.note = "The disc could not be written: " + err.Error()
+			w.note = "The disk could not be written: " + err.Error()
 		} else {
-			w.note = "The file now has the disc as it is in memory."
+			w.note = "The file now has the disk as it is in memory."
 		}
 
 	case diskBtnReload:
 		if fdc.IsModified() &&
-			!w.sure(id, "The disc in memory has changes that are not in the file. Reading the file again loses them.") {
+			!w.sure(id, "The disk in memory has changes that are not in the file. Reading the file again loses them.") {
 			return false
 		}
 		file := fdc.DiskFile()
 		if err := w.zx.io.LoadDisk(file); err != nil {
 			w.note = "The file could not be read: " + err.Error()
 		} else {
-			w.note = "The drive has the disc as it is in the file."
+			w.note = "The drive has the disk as it is in the file."
 		}
 
 	case diskBtnSaveNew:
@@ -404,23 +404,23 @@ func (w *disksWindow) do(id string) bool {
 		}
 		path := freeImageName(w.dir, stem, ".dsk")
 		if err := w.zx.io.SaveDiskAs(path); err != nil {
-			w.note = "The disc could not be saved: " + err.Error()
+			w.note = "The disk could not be saved: " + err.Error()
 		} else {
-			w.note = fmt.Sprintf("The disc in the drive is now %s; the file it came from is as it was.", filepath.Base(path))
+			w.note = fmt.Sprintf("The disk in the drive is now %s; the file it came from is as it was.", filepath.Base(path))
 			w.refresh()
 			w.selectPath(path)
 		}
 
 	case diskBtnCopy:
-		// The copy is of the file, so a machine that has the disc writes
+		// The copy is of the file, so a machine that has the disk writes
 		// its memory to the file first.
 		if h := w.holder(w.use(d.path)); h != nil && h.io.fdc != nil && h.io.fdc.IsModified() {
 			if h.io.fdc.Busy() {
-				w.note = "The machine that has that disc is in the middle of writing to it. Try again in a moment."
+				w.note = "The machine that has that disk is in the middle of writing to it. Try again in a moment."
 				return false
 			}
 			if err := h.io.fdc.SaveDisk(); err != nil {
-				w.note = "The disc could not be written to its file before copying: " + err.Error()
+				w.note = "The disk could not be written to its file before copying: " + err.Error()
 				return false
 			}
 		}
@@ -440,7 +440,7 @@ func (w *disksWindow) do(id string) bool {
 			blank[i] = 0xE5
 		}
 		if err := os.WriteFile(path, blank, 0o644); err != nil {
-			w.note = "The disc could not be made: " + err.Error()
+			w.note = "The disk could not be made: " + err.Error()
 		} else {
 			w.note = fmt.Sprintf("Made %s, blank. +3DOS formats it: FORMAT \"a:\".", filepath.Base(path))
 			w.refresh()
@@ -449,7 +449,7 @@ func (w *disksWindow) do(id string) bool {
 
 	case diskBtnOther:
 		w.browse = zenui.NewDialog(zenui.DialogConfig{
-			Mode: zenui.ModeOpen, Title: "Another Disc Image", StartDir: w.dir,
+			Mode: zenui.ModeOpen, Title: "Another Disk Image", StartDir: w.dir,
 			Filters: []string{"dsk"}, FS: zenui.OSFS{},
 		})
 	}
@@ -548,7 +548,7 @@ func (w *disksWindow) Update(in zenui.Input, r zenui.Renderer, screenW, screenH 
 	return true
 }
 
-// diskPicture draws a small disc beside a row: filled for a disc image, in
+// diskPicture draws a small disk beside a row: filled for a disk image, in
 // outline for a file that is not one.
 func (w *disksWindow) diskPicture(isDisk bool) func(r zenui.Renderer, area zenui.Rect) {
 	return func(r zenui.Renderer, area zenui.Rect) {
@@ -589,13 +589,13 @@ func (w *disksWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 	}
 	r.StrokeRect(zenui.Rect{X: w.listArea.X - 1, Y: w.listArea.Y - 1, W: w.listArea.W + 2, H: w.listArea.H + 2}, theme.Border, 1)
 	if len(w.disks) == 0 {
-		r.DrawText("No disc images in "+w.dir, w.listArea.X+4, w.listArea.Y+4, w.scale, theme.DimText)
+		r.DrawText("No disk images in "+w.dir, w.listArea.X+4, w.listArea.Y+4, w.scale, theme.DimText)
 	}
 	w.list.Draw(r, theme, w.listArea, w.scale)
 
 	note := w.note
 	if d, ok := w.selected(); ok && note == "" && d.kind == "" {
-		note = "It is not a disc: " + d.why
+		note = "It is not a disk: " + d.why
 	}
 	for i, line := range zenui.WrapText(note, 68, "") {
 		if i > 1 {
@@ -606,7 +606,7 @@ func (w *disksWindow) Draw(r zenui.Renderer, screenW, screenH int, theme zenui.T
 	w.buttons.Draw(r, theme, w.barArea, w.scale)
 }
 
-// diskUser tells which of the window's machines has a disc file in its
+// diskUser tells which of the window's machines has a disk file in its
 // drive, 0 for none; with no dock there is the one machine.
 func (b *appMenuBar) diskUser(zx *ZenZX) func(path string) int {
 	return func(path string) int {
@@ -645,7 +645,7 @@ func (b *appMenuBar) updateDisks() {
 	}
 }
 
-// diskTakenElsewhere reports, with the machine's number, that a disc file is
+// diskTakenElsewhere reports, with the machine's number, that a disk file is
 // in the drive of a machine other than zx.
 func (b *appMenuBar) diskTakenElsewhere(zx *ZenZX, path string) (int, bool) {
 	n := b.diskUser(zx)(path)

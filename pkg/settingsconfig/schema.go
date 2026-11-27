@@ -25,9 +25,11 @@ func Schema(validThemes, validFonts []string) qf.Schema {
 		Field("fontZoom", builders.Number().Integer().Min(1).Max(3).Required()).
 		Field("displayScale", builders.Number().Integer().Min(1).Max(MaxDisplayScale).Required()).
 		Field("fixedMenuBar", builders.Bool().Required()).
+		Field("toolbar", builders.Bool()).
 		Field("dock", builders.Bool()).
 		Field("multi", builders.Bool()).
 		Field("stopAnimation", builders.Bool()).
+		Field("tapeAutoload", builders.Bool()).
 		Field("drop", builders.String().Enum("ask", "copy", "run")).
 		Field("dropShift", builders.String().Enum("ask", "copy", "run")).
 		Field("snapshotStart", builders.String().Enum("paused", "play")).
@@ -35,5 +37,14 @@ func Schema(validThemes, validFonts []string) qf.Schema {
 		Field("tapeCassette", builders.String().Enum("small", "big", "hidden")).
 		Field("escape", builders.String().Enum("off", "close", "query", "on")).
 		Field("microdigital", builders.String().Enum("spanish", "portuguese")).
-		Field("recentSnapshots", builders.Array().Of(builders.String().MinLength(1)).MaxItems(100))
+		Field("recentSnapshots", builders.Array().Of(builders.String().MinLength(1)).MaxItems(100)).
+		Field("recentFiles", builders.Array().Of(builders.String().MinLength(1)).MaxItems(100)).
+		Field("recentTapes", builders.Array().Of(builders.String().MinLength(1)).MaxItems(100)).
+		Field("openFolder", builders.String().MinLength(1)).
+		Field("diskFolder", builders.String().MinLength(1)).
+		Field("fileDialog", builders.Object().
+			Field("hidden", builders.Bool()).
+			Field("details", builders.Bool()).
+			Field("sort", builders.String().Enum(FileSortWords...)).
+			Field("descending", builders.Bool()))
 }

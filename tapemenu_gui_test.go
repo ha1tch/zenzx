@@ -30,7 +30,7 @@ func TestTapeMenuPlayAndStopHaveTheirButtons(t *testing.T) {
 	if rows["Rewind"].Icon == nil {
 		t.Error("Rewind has no icon")
 	}
-	if rows["Show Info"].Icon != nil {
+	if rows["Tape Info"].Icon != nil {
 		t.Error("a row that is no button has an icon")
 	}
 	// they draw the sprites of the Machine menu's Play and Stop

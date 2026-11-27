@@ -127,6 +127,15 @@ type ZenZX struct {
 	// auto is a pending autorun, nil once it has typed its keys: autorun.go.
 	auto *autorun
 
+	// typist is the phantom typist that starts a tape (phantomtypist.go). typistRunAhead is how many
+	// extra frames the host runs for each of its own while it types, 0 to keep the clock exact;
+	// typistMuted is whether the typist is what silenced the machine. customROM is whether a ROM of
+	// the person's is in the machine, which the typist does not know the keys of.
+	typist         *phantomTypist
+	typistRunAhead int
+	typistMuted    bool
+	customROM      bool
+
 	// rzx is an .rzx recording being played, nil when none is: rzx.go. OnRZX is where the host
 	// hears of how it ended.
 	rzx   *rzxReplay
@@ -244,6 +253,10 @@ type ZenZX struct {
 	// firstProgram is the first BASIC program the machine loaded, once it
 	// has loaded one (program_name.go).
 	firstProgram string
+
+	// shots is what the machine's screenshots have under way: the GIF being recorded and the
+	// ones that finished (screenshot_gif.go).
+	shots shotState
 }
 
 func NewZenZX(audioBackend AudioBackend) *ZenZX {
@@ -528,6 +541,7 @@ func (zx *ZenZX) OverrideROMBankBytes(bank int, data []byte) error {
 		return fmt.Errorf("rom bank %d not valid for this model (valid range: 0-%d)", bank, zx.maxROMBank())
 	}
 
+	zx.customROM = true // the typist keeps off a machine with a ROM of the person's
 	if zx.memory.isTS2068 {
 		switch bank {
 		case 0:
@@ -548,7 +562,8 @@ func (zx *ZenZX) OverrideROMBankBytes(bank int, data []byte) error {
 }
 
 func (zx *ZenZX) Reset() {
-	zx.rzxStop("") // a reset gives up a recording that is playing
+	zx.rzxStop("")   // a reset gives up a recording that is playing
+	zx.typist.stop() // and a tape that is being started: AutoloadTape starts it again after the reset
 	zx.cpu.Reset()
 	zx.cycleCount = 0
 	zx.frameCount = 0
@@ -672,6 +687,8 @@ func (zx *ZenZX) RunFrame() {
 	zx.io.EndFrame()
 
 	zx.frameCount++
+	zx.typistFrame() // the phantom typist's keys for the next frame (phantomtypist.go)
+	zx.shotFrame()   // the GIF being recorded takes the frame (screenshot_gif.go)
 }
 
 // loadingFrame is a leaner RunFrame for the tape-loading phase specifically:
@@ -719,6 +736,8 @@ func (zx *ZenZX) loadingFrame() {
 	zx.io.EndFrame()
 
 	zx.frameCount++
+	zx.typistFrame()
+	zx.shotFrame() // the GIF being recorded takes the frame (screenshot_gif.go)
 }
 
 // checkAMXInterrupt delivers the next queued AMX mouse step, if any, by

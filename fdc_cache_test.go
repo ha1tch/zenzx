@@ -8,28 +8,28 @@ import (
 	"time"
 )
 
-// The disc in the drive is a copy in memory of a file (fdc.go). These tests
+// The disk in the drive is a copy in memory of a file (fdc.go). These tests
 // are about the two drifting apart.
 
-// tempDSK copies the synthetic test disc to a new folder and returns its path.
+// tempDSK copies the synthetic test disk to a new folder and returns its path.
 func tempDSK(t *testing.T) string {
 	t.Helper()
 	data, err := os.ReadFile("testdata/synthetic.dsk")
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "disc.dsk")
+	path := filepath.Join(t.TempDir(), "disk.dsk")
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return path
 }
 
-// scribble changes the disc in memory, as a write from the machine does.
+// scribble changes the disk in memory, as a write from the machine does.
 func scribble(t *testing.T, fdc *FDC765) {
 	t.Helper()
 	if fdc.disk == nil || len(fdc.disk.Tracks) == 0 || len(fdc.disk.Tracks[0].Sectors) == 0 {
-		t.Fatal("the test disc has no first sector to write to")
+		t.Fatal("the test disk has no first sector to write to")
 	}
 	fdc.disk.Tracks[0].Sectors[0].Data[0] ^= 0xFF
 	fdc.markModified()
@@ -57,14 +57,14 @@ func TestBlankDiskReplacesADiskReadFromADSK(t *testing.T) {
 		t.Fatal(err)
 	}
 	if fdc.disk == nil {
-		t.Fatal("the test disc was not read as a DSK")
+		t.Fatal("the test disk was not read as a DSK")
 	}
 	fdc.CreateBlankDisk()
 	if fdc.disk != nil {
-		t.Error("after a blank disc is put in, reads would still come from the DSK that was there before")
+		t.Error("after a blank disk is put in, reads would still come from the DSK that was there before")
 	}
 	if !fdc.HasDisk() || fdc.DiskFile() != "" || fdc.IsModified() {
-		t.Errorf("a blank disc: present %v, file %q, modified %v", fdc.HasDisk(), fdc.DiskFile(), fdc.IsModified())
+		t.Errorf("a blank disk: present %v, file %q, modified %v", fdc.HasDisk(), fdc.DiskFile(), fdc.IsModified())
 	}
 }
 
@@ -87,14 +87,14 @@ func TestSaveDiskAsWritesTheDiskTheDriveReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Errorf("Save As wrote %d bytes that are not the disc in the drive (%d bytes): a DSK is in the parsed disc, not the flat image", len(got), len(want))
+		t.Errorf("Save As wrote %d bytes that are not the disk in the drive (%d bytes): a DSK is in the parsed disk, not the flat image", len(got), len(want))
 	}
 	if fdc.DiskFile() != out || fdc.IsModified() || fdc.FileChanged() {
 		t.Errorf("after Save As: file %q, modified %v, changed %v", fdc.DiskFile(), fdc.IsModified(), fdc.FileChanged())
 	}
 	again := NewFDC765()
 	if err := again.LoadDisk(out); err != nil {
-		t.Errorf("the saved disc cannot be read back: %v", err)
+		t.Errorf("the saved disk cannot be read back: %v", err)
 	}
 }
 
@@ -105,7 +105,7 @@ func TestFileChangedBehindTheDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	if fdc.FileChanged() {
-		t.Fatal("a disc just read is reported as changed on disk")
+		t.Fatal("a disk just read is reported as changed on disk")
 	}
 	touchOutside(t, path)
 	if !fdc.FileChanged() {
@@ -132,12 +132,12 @@ func TestAutoCommitDoesNotWriteOverAFileChangedOutside(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The ordinary case first: a quiet, modified disc is committed.
+	// The ordinary case first: a quiet, modified disk is committed.
 	fdc.Tick(0)
 	scribble(t, fdc)
 	fdc.Tick(100)
 	if !fdc.AutoCommit(50) {
-		t.Fatal("a modified disc that has been quiet was not committed")
+		t.Fatal("a modified disk that has been quiet was not committed")
 	}
 	if fdc.IsModified() || fdc.FileChanged() {
 		t.Fatalf("after a commit: modified %v, changed %v", fdc.IsModified(), fdc.FileChanged())
@@ -155,7 +155,7 @@ func TestAutoCommitDoesNotWriteOverAFileChangedOutside(t *testing.T) {
 		t.Fatal("the file changed although the commit was refused")
 	}
 	if !fdc.IsModified() {
-		t.Error("the refused commit dropped the disc's changes")
+		t.Error("the refused commit dropped the disk's changes")
 	}
 	// Save is the person's decision, and does write.
 	if err := fdc.SaveDisk(); err != nil {

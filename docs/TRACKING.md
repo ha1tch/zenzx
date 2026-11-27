@@ -76,6 +76,7 @@ Status legend: ✓ done · ◐ partial · ☐ not started · ✗ dropped.
 | T-96 | Platforms not built: windows/386 (headless builds, one test overflows a 32-bit int; no GUI) and the FreeBSD GUI (native build only) | ci | P4 | ☐ | — |
 | T-97 | Full screen has been seen only in a window on Linux with no window manager: not on Windows, macOS or under a window manager | windows | P3 | ◐ | — |
 | T-98 | The Windows launchers of the examples and the Python helper have never been run on Windows; the documents job (manual PDF, examples zip) has not run on GitHub | packaging | P2 | ◐ | — |
+| T-108 | ZenZX needs zenui v0.4.0 published: it builds only through a local go.work until then | release | P1 | ☐ | — |
 
 ## timing
 
@@ -797,6 +798,18 @@ The icon is the Spectrum in `assets/icon/` (`speccy01.zani`), already made as `.
 Order: `.deb` first (no signing, cheapest to check), then `.msi`, then `.dmg`. None of it changes the programs, so it does not wait for T-92. It does not fix T-92 either: the programs start on clean Windows machines (G-19), and an installer does not change where the libraries are written or what SmartScreen thinks of an unsigned file.
 
 Done when: each installer is built in the release workflow, installed and removed in a check job on its own system, attached to the release and linked from the page, and the manual says how to install each; what ran where is recorded here.
+
+
+## release
+
+### T-108. ZenZX needs zenui v0.4.0 published: it builds only through a local go.work until then
+
+Theme: release · Priority: P1 · Status: ☐
+
+- **Trigger:** 2026-11-27, adopting zenui 0.4.0 for T-104, T-106 and T-107.
+- **What it does now:** `go.mod` requires `github.com/ha1tch/zenui v0.4.0`, which is not tagged or published yet (zenui's release is waiting on its provenance gate, zenui T-09 to T-11 are closed in 0.4.0). The tree builds and passes its suites only through a local `go.work` (`use .`, `replace github.com/ha1tch/zenui v0.4.0 => ../zenui`), which the archive leaves out. `go.sum` has no entry for v0.4.0.
+- **What is missing:** zenui v0.4.0 released and pushed; `go mod tidy` for the `go.sum` lines; the `go.work` removed; the headless and GUI suites, `check_gofmt.sh` and `repoman gomod check` run again from the published module.
+- **Done when:** with no `go.work`, `go build`, `go vet` and both suites pass against the published v0.4.0, and `go.sum` is committed with it.
 
 
 ---

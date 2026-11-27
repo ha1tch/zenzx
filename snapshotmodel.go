@@ -17,7 +17,7 @@ import (
 
 // What machine a snapshot is of. A snapshot holds the state of a 48K, a 128K or a +3, and loaded into
 // a machine of another kind it is a picture of one machine in the memory of another: a 128K's pages
-// where a 48K has none, a +3's disc controller where a 128K has no port for it. So a snapshot is
+// where a 48K has none, a +3's disk controller where a 128K has no port for it. So a snapshot is
 // loaded into a machine of its own kind, and the machine is made when there is not one (the deck,
 // snapshotopen_gui.go): the kinds below are how that is told.
 
@@ -51,7 +51,7 @@ func (c machineClass) String() string {
 }
 
 // classOfModel is the kind of a model, as -model names it. The +2 is a 128K, and the +2A a +3 with
-// no disc drive.
+// no disk drive.
 func classOfModel(model string) machineClass {
 	switch model {
 	case "48k", "spanish48k":
@@ -91,7 +91,7 @@ type snapshotMachine struct {
 }
 
 // snapshotMachineOfHeader is the machine a .zxs is of, from its header: a Next by its flag, a +3 with
-// its disc controller or the +2A that is a +3 in all but that has none, a 128K, or a 48K.
+// its disk controller or the +2A that is a +3 in all but that has none, a 128K, or a 48K.
 func snapshotMachineOfHeader(h SnapshotHeader) snapshotMachine {
 	switch {
 	case h.Flags&FlagNext != 0 || h.Model == snapshotModelNext:

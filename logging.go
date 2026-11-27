@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// What the machine has to say while it works (a disc inserted, a snapshot
+// What the machine has to say while it works (a disk inserted, a snapshot
 // saved, a tape's state) goes to logOut. As a library it says nothing: the
 // writer discards until a host sets one. The two programs set standard
 // output, where these lines have always gone. The writer is the package's,

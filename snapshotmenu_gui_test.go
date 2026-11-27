@@ -23,7 +23,7 @@ func inSnapshotDir(t *testing.T) string {
 }
 
 // loadTimestamped is the Load Timestamped row of the Snapshot menu, and its place there.
-const loadTimestampedAt = 4
+const loadTimestampedAt = 9 // after the Load group (title, Load Snapshot, Recent, Manage), a separator, and the next title, Quick Save, Quick Load, Save Timestamped
 
 func loadTimestampedItems(b *appMenuBar) []zenui.Item {
 	items := b.widget.ItemsFor(barSnapshot)

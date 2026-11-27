@@ -5,6 +5,110 @@ text verbatim as at closure, stamped with the closing version and date.
 The changelog says what shipped; this record says what was wrong and
 how it was resolved. Append-only.
 
+## [Unreleased] T-110 — Normalise the order and spelling of the Load / Recent / Manage rows across the Tape, Floppy Disk, Snapshot and SD Card menus; add Recent Disks (vUnreleased, 2026-11-27)
+
+Theme: ux · closed Unreleased · 2026-11-27
+Trigger: a survey of the menus after T-109 found the Load / Recent / Manage rows in four orders (Manage Snapshots... between the multisnapshots and Load Binary..., Manage Disks... and Manage Cards... last), a Recent list in the Tape and Snapshot menus but none for disks, "Open DSK Image..." beside "Load ..." everywhere else, "Show Info" beside "Snapshot Info" and "Disk Info", and "disk" and "disc" mixed in the menus, windows, toasts and manual.
+
+Resolution: Load, Recent and Manage come first and in that order in the Tape, Floppy Disk, Snapshot and SD Card menus; the Floppy Disk menu gains Recent Disks (the disk images among the recent files, 15 as rows and a last row to Manage Disks...); Open DSK Image... is Load Disk...; Show Info is Tape Info; Autoload tape on the menu is Autoload Tape; and a floppy is a disk in the menu, the window title, the info windows, the toasts and the manual. DSK, `-disk`, "on disk" and the console lines keep their spelling.
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-109 — The Tape menu has no Load Tape, Recent Tapes, tapes folder or tape manager, and Autoload tape is only in Preferences (vUnreleased, 2026-11-27)
+
+Theme: ux · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, "Do we already have a Load Tape menu?": there was no Load Tape row; a tape loaded only through File > Open, a drop or `-tape`.
+- **What it does now:** the Tape menu has Playback, Mode and Information rows and nothing to put a tape in the deck. The Autoload tape setting is a row of Preferences only. There is no list of recent tapes (the recent files of T-104 are of every medium), no folder for tapes, and nothing that shows what is on a tape before it is loaded.
+- **What is missing:** Load Tape... at the top of the Tape menu (a browser of tapes that starts where the last tape was, or in a default `tapes/` folder), the Autoload tape checkbox on the same menu, Recent Tapes as Recent Snapshots does it, and a Manage Tapes window like Manage Screenshots that shows the first screen on each tape and lists the blocks of the tape that has the focus.
+- **Done when:** the Tape menu starts with Load Tape..., Recent Tapes, Manage Tapes... and the Autoload tape checkbox; a tape loaded by any route is among the recent ones, kept in the settings and left out when it is gone; the `tapes/` folder (`-tapes-dir`) is made when first needed and is where Load Tape starts with no tape loaded; Manage Tapes shows each tape's first standard screen and the blocks of the chosen one, scrolls them, and loads, renames and deletes (tapes_gui_test.go, tapeinfo_test.go, tapedir_test.go, recenttapes_test.go; guard G-35).
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-107 — zenui's Dialog cannot take a typed or pasted path, and edits a file name by bytes with no caret (vUnreleased, 2026-11-27)
+
+Theme: ux · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, the review of the Open dialog: T-104 cannot be done in zenzx alone, because the widget is zenui v0.3.5 `Dialog`.
+- **What it does now:** in Open mode the name field only echoes the selected row (draw.go) and typed characters are dropped (`Update` takes them in Save mode only). `Input` has no clipboard or paste, and no Delete, Left or Right key, so nothing in the dialog can be pasted or edited in place. In Save mode Backspace cuts one byte (`d.name[:len-1]`), which breaks a name with a multibyte character, and a typed absolute path is joined onto the current folder (`Join(dir, name)`) instead of being taken as it is. A folder is entered only by a second click on the selected row, with no time limit. There is no All files choice over the filter, no sizes or dates, and no way to show dotfiles.
+- **What is missing:** in zenui, an editable path field in Open mode (typed or pasted, `~` and absolute paths, Enter opens a file or enters a folder, a folder that does not exist shows the error), a paste in `Input` filled by zenuiraylib from the system clipboard, caret movement and Delete, rune-wise Backspace, an absolute name taken as it is in Save mode, and an All files choice beside the filter. In zenzx, bump zenui and pass the pasted text.
+- **Done when:** in a zenui test, a path typed or pasted into an Open dialog opens a file and enters a folder, an absolute name is saved where it says, and a name with a multibyte character is edited by letters; zenzx at the bumped version passes a GUI test that pastes a path to a tape in File > Open and gets the tape.
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-106 — File > Open and Floppy Disk > Open DSK start in the folder the program was run from, and forget the folder last used (vUnreleased, 2026-11-27)
+
+Theme: ux · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, the review of the Open dialog (follows T-104).
+- **What it does now:** `openFileDialog` (menubar_gui.go) and the Floppy Disk dialog start at `"."`, the folder the program was started in, every time. Opened from a launcher or a packaged app that folder is whatever the launcher sets, not where the person keeps tapes. Snapshots, binaries, SD cards and the Export form remember or choose their own folder; Open does not.
+- **What is missing:** a start folder for Open that is the folder of the file opened last (kept in the settings file with the Recent list of T-104, falling back to the home folder when it is gone), and the same for Open DSK Image.
+- **Done when:** after a file is opened from some folder, the next Open starts there, across a restart; with no folder kept or the folder gone it starts in the home folder, not the working directory; tests over the choice and the settings round trip.
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-104 — The Open dialog takes no typed or pasted path, and Recent exists only for snapshots (vUnreleased, 2026-11-27)
+
+Theme: ux · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, the comparative investigation of FUSE, ZesarUX and JNext (gap 2 of 3; gap 1 was the screenshot).
+- **What it does now:** the Open dialog takes only a chosen file: no typed or pasted path, and Recent exists only for snapshots.
+- **What is missing:** a path typed or pasted into the Open dialog (FUSE and JNext have it), and a Recent list for tapes, discs and the other media as for snapshots (ZesarUX has Recent, Drives and a filter).
+- **Done when:** a path can be typed or pasted in the Open dialog and opens, and Recent lists the last files of each medium; tests over the path field and the list.
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-105 — A tape has to be started by typing LOAD "": no autoload, as FUSE and ZesarUX have (vUnreleased, 2026-11-27)
+
+Theme: ux · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, the comparative investigation (gap 3 of 3): FUSE and ZesarUX autoloaded a tape in the runs (reset, then `LOAD ""` run for you); ZenZX only inserts it; JNext also only inserts.
+- **What it does now:** inserting a tape shows a "loaded and rewound" toast; the player types `LOAD ""` themselves, which on a 48K is five keystrokes including Symbol Shift.
+- **What is missing:** an autoload for a tape (reset, then `LOAD ""` entered for the machine, or the model's own loader), as a preference alongside "A loaded snapshot", and the toast saying what comes next when it is off.
+- **Done when:** with the preference on, inserting a tape on each model starts its loading with no keystroke, in a test that runs a tape to its program; with it off the toast says to type `LOAD ""`.
+- **Resolution (Unreleased):** done as FUSE does it (see the Tape autoload section of the manual): `phantomtypist.go` resets the machine and types what loads a tape on the model's own ROM, frame by frame, once the ROM has read all eight keyboard half-rows within a frame, then plays the tape after the last ENTER. It is wired to the Autoload tape preference (Preferences > Machines > Tape, `"tapeAutoload"`, on by default) for File > Open, a drop and `-tape`, and to `-autoload-tape` in the headless program (off by default, so existing scripts are unchanged). It loads a BASIC program and a CODE tape on each of the ten ROM sets (`TestTypistLoadsABasicProgramOnEachModel`, `TestTypistLoadsCodeOnEachModel`), in Accurate mode with the tape played only after the last ENTER, with run-ahead in the GUI, and gives up at a key of the person's. A Next, a custom ROM and a snapshot are not autoloaded (a limit, `KNOWN_ISSUES.md`). With the preference off the toast says what to type.
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-103 — Opening a .hires.scr or a .hicol.scr loads only its first half, as a standard screen (vUnreleased, 2026-11-27)
+
+Theme: graphics · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, Save as Hi-Res SCR and Save as Hi-Colour SCR write `.hires.scr` and `.hicol.scr`: File > Open and `-scr` take the names for a `.scr` and read one as such.
+- **What it does now:** `LoadSCR` (loadbin.go) keeps the first 6912 bytes of any `.scr` and writes them at 0x4000, so a 12288-byte Timex screen shows as a standard screen made of its first half: the bitmap of a hi-res picture, or the first 6144 bytes of a hi-colour one with the second half's attributes missing, so the picture is wrong and no word says why.
+- **What is missing:** a `.hires.scr` or `.hicol.scr` loaded into the mode its name says (and a plain `.scr` of that size, which does not say, T-102): the two halves in the machine's screen 0 and screen 1 and the mode set, or a refusal that says what the file is where the machine has no such mode.
+- **Done when:** opening a `.hires.scr` or `.hicol.scr` on a machine with the Timex modes shows the picture it holds, and on any other machine says that the file is a Timex screen; a 6912-byte `.scr` loads as it does now.
+- **Resolution (2026-11-27, 0.50.0 unreleased):** `LoadSCR` (loadbin.go) asks `timexScreenKind` and, for a Timex screen, `loadTimexScreen` writes the first half and the second into the machine's two screens (a Next: bank 5 at offsets 0 and 0x2000; a classic machine with the hi-colour renderer: 0x4000 and 0x6000) and sets the mode (a Next: port 0xFF, with the ink from the file's trailing byte for hi-res); a machine without the mode refuses and is left untouched. Tests: `TestLoadTimexScreensIntoANext`, `TestLoadTimexScreensIntoAClassicMachine`, `TestLoadTimexScreenOfTheWrongSize` (screenshot_timexext_test.go).
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-102 — A plain .scr of 12288 bytes does not say hi-res or hi-colour, so Manage Screenshots guesses (vUnreleased, 2026-11-27)
+
+Theme: graphics · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, Manage Screenshots: the preview of a Timex screen.
+- **What it does now:** Save as Hi-Res SCR and Save as Hi-Colour SCR write `.hires.scr` and `.hicol.scr`, and the window reads each as the mode its name says (shipped in the unreleased work, so the files ZenZX saves are no longer guessed). A plain `.scr` of 12288 bytes from another tool is two 6144-byte halves with nothing that says which mode; `decodeShotSCR` (screenshotdir.go) guesses with `timexIsHiRes`, calling it hi-res when its second half has more than 48 different byte values (a bitmap) and hi-colour when it has fewer (attributes). A hi-colour picture with very many colours, or a hi-res one that is nearly empty in its second half, is read the wrong way. The limit is in KNOWN_ISSUES.md.
+- **What is missing:** for such a file, a choice made in the preview (hi-res or hi-colour) when the guess is wrong.
+- **Done when:** a plain 12288-byte `.scr` can be previewed in either mode by a choice in the window; the item closes with the release that ships `.hires.scr` and `.hicol.scr`, since the files they name already say their mode.
+- **Resolution (2026-11-27, 0.50.0 unreleased):** completed with the size rule. `timexScreenKind` (screenshotdir.go) reads a plain `.scr` of 12289 bytes as hi-res (the convention of the World of Spectrum files: the port's byte after the 12288, whose bits 5-3 are the ink), a `.hires.scr` and a `.hicol.scr` as what the name says, and a bare 12288 as before, by `timexIsHiRes`; a bare 12288 carries nothing that says, which is inherent in the file and recorded as a limit in KNOWN_ISSUES.md. A choice in the preview was dropped as not worth a control.
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-101 — A classic TS2068 in the Timex hi-res mode is offered Save as SCR, not Save as Hi-Res SCR (vUnreleased, 2026-11-27)
+
+Theme: graphics · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, View > Screenshot: Save as Hi-Res SCR is offered for a Next in the Timex hi-res mode, and Save as Hi-Colour SCR for a Next in its hi-colour mode and for the classic machine's hi-colour renderer, and neither for anything else.
+- **What it does now:** `ShotApplicable` (screenshot.go) offers each Timex screen when `shotULA` is its mode. A classic TS2068 in the Timex hi-res mode (port 0xFF, mode 6) is taken for the standard screen by `shotULA`: Save as SCR is offered and saves the standard display file, not the hi-res picture, and Save as Hi-Res SCR is greyed.
+- **What is missing:** the hi-res screen of the classic Timex (the two 6144-byte halves and the colour that port 0xFF holds), in `shotULA` and `shotHiRes`, with a test over a machine in that mode.
+- **Done when:** a TS2068 in hi-res mode offers Save as Hi-Res SCR (and not Save as SCR) and the file it writes is what `zxn.DecodeHiRes` reads back to the picture on the machine.
+- **Resolution (2026-11-27, 0.50.0 unreleased):** not a screenshot problem and no defect: the classic TS2068 never draws the hi-res mode (it stores port 0xFF and nothing more; its only Timex picture is the opt-in hi-colour renderer), so the picture on the machine is the standard screen and Save as SCR saves exactly what is shown. Save as Hi-Res SCR is for a Next. Recorded in KNOWN_ISSUES.md; a classic hi-res renderer would be a feature of its own, not part of screenshots.
+
+Cross-ref: CHANGELOG Unreleased.
+
+## [Unreleased] T-100 — A screenshot of a classic machine's striped border is saved with one border colour (vUnreleased, 2026-11-27)
+
+Theme: graphics · closed Unreleased · 2026-11-27
+- **Trigger:** 2026-11-27, View > Screenshot: the PNG and the GIF composite a classic machine's border from one colour.
+- **What it does now:** `ShotImage` (screenshot.go) paints the border margins of a classic machine's picture with the colour the border port holds at the moment of the save. A border that changes down the frame (the stripes of a tape loader, a multicolour demo) is saved as one colour, the last; the Next's frame is already composed with its border and is not affected. SCR files do not hold the border at all.
+- **What is missing:** the colour of the border for each line of the frame, as the display already draws it, taken for the picture; the same for each frame of a GIF.
+- **Done when:** a screenshot of the tape loader's striped border is striped, in a test that decodes the PNG and reads the margin's rows.
+- **Resolution (2026-11-27, 0.50.0 unreleased):** not a defect but a limit, by the owner's decision: a screenshot saves the border as the one colour the port holds at the moment of the save. Recorded in KNOWN_ISSUES.md.
+
+Cross-ref: CHANGELOG Unreleased.
+
 ## [0.50.0] T-99 — Snapshots of a Next: a model code and a chunk in the .zxs that carry the machine's whole state, and a Next made to load it (v0.50.0, 2026-11-25)
 
 Theme: formats · closed 0.50.0 · 2026-11-25

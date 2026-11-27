@@ -1,4 +1,4 @@
-//go:build !headless
+//go:build !headless && !(freebsd && !cgo)
 
 package zenzx
 
@@ -17,8 +17,8 @@ type otoDevice struct {
 	player *oto.Player
 }
 
-// NewOtoAudioDevice returns a device that plays through the sound card.
-func NewOtoAudioDevice() AudioDevice {
+// NewSystemAudioDevice returns a device that plays through the sound card.
+func NewSystemAudioDevice() AudioDevice {
 	return &otoDevice{}
 }
 

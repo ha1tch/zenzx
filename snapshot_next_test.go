@@ -66,7 +66,7 @@ func TestANextSnapshotIsOfANext(t *testing.T) {
 	if h.Model != snapshotModelNext || h.Flags&FlagNext == 0 || h.Flags&(FlagPlus3|FlagFDC) != 0 {
 		t.Errorf("the header says model %d, flags %b: not a Next, or still a +3", h.Model, h.Flags)
 	}
-	// a snapshot saved by a build that had no Next's own ("a +3 with no disc controller") is no Next's
+	// a snapshot saved by a build that had no Next's own ("a +3 with no disk controller") is no Next's
 	if m := snapshotMachineOfHeader(SnapshotHeader{Model: 4, Flags: FlagPlus3 | Flag128K}); m.Class != classPlus3 || m.Model != "plus2a" {
 		t.Errorf("a +3 header with no controller is %+v", m)
 	}

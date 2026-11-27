@@ -22,7 +22,7 @@ func TestSnapshotSaveAsMenu(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barSnapshot)
-	const saveAs = 5 // after the title of the section, Quick Save, Quick Load, Save Timestamped and Load Timestamped
+	const saveAs = 10 // after the Load group, a separator, the next title, Quick Save, Quick Load, Save Timestamped and Load Timestamped
 	if items[saveAs].Label != "Save As" || len(items[saveAs].SubItems) != len(snapshotSaveFormats) {
 		t.Fatalf("items[%d] = %q with %d choices, want Save As with %d formats", saveAs, items[saveAs].Label, len(items[saveAs].SubItems), len(snapshotSaveFormats))
 	}

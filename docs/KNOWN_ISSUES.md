@@ -1,7 +1,7 @@
 # ZenZX — known limits and dormant guards
 
 Version: 0.50.0
-Last reviewed: 2026-11-25
+Last reviewed: 2026-11-27
 
 Intentional limits, invariant boundaries, and recorded decisions. Defects
 and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
@@ -19,6 +19,55 @@ and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
   bar covers the deck in the top band, and the machine dock the bottom one,
   while they are out.
 
+- **The Open browsers pick one file and keep little.** File > Open and Load Disk open one file
+  at a time (the browser has no multi-select; several files go in by dropping them). Recent holds
+  the last 20 files opened with File > Open or Load Disk, or dropped on the window, of the kinds
+  File > Open takes; a file loaded with `-tape`, `-snapshot` or a script verb is not noted. The
+  file type chosen is not kept, each browser starts on its first; the view (hidden files, details,
+  order) is kept, and shared by the two. Hidden files are those whose names begin with a dot, on
+  every system.
+
+- **Tape autoload types what a person would, and only where that is known.** It does nothing on a
+  Next (NextZXOS has its own loaders; the tape is inserted as before), with a custom ROM (its keys
+  may mean anything) or over a snapshot. The Timex 2068 is started through its keyword entry, as the
+  48K is. A +3 with a bootable disk in the drive is untried (the keys are those of the disk-less case), and on a +3 or +2A without a disk a "Drive not ready" report is left at
+  the bottom of the screen after the program, because the ROM tries the disk before the tape (the
+  wait of 600 frames is that attempt). The Spanish 128K of 1985 is started by waiting ten frames after
+  its screen settles, as it has no menu to wait for. Not tried on real hardware, nor on a tape whose
+  loader takes over the keyboard before the typing ends.
+
+- **A bare `.scr` of 12288 bytes is guessed.** ZenZX saves a Timex screen as `.hires.scr` or
+  `.hicol.scr`, which say the mode, and a hi-res one has the byte of port 0xFF after its 12288 bytes;
+  a plain `.scr` of 12289 bytes is read as hi-res (the convention of the World of Spectrum files).
+  A bare 12288-byte `.scr` from another tool has nothing in it that says whether it is hi-res or
+  hi-colour, so Manage Screenshots and File > Open guess: hi-res when the second half has more than
+  48 different byte values (a bitmap), otherwise hi-colour. A hi-colour picture with very many
+  colours, or a hi-res one that is nearly empty in its second half, is read the wrong way; renaming
+  the file `.hires.scr` or `.hicol.scr` settles it. File > Open, `-scr` and the script `scr` action
+  put a Timex screen into a Next, or a hi-colour one into a classic machine with the hi-colour
+  renderer, and refuse it on any other machine.
+
+- **Manage Tapes shows only a standard screen, and lists a TZX's data blocks.** The picture of a tape is
+  the first block of 6912 bytes that a header says is `CODE` at 16384 or has a screen's name (`scr` or
+  `screen` in it), or that has no header; a Timex hi-res or hi-colour screen (12288 bytes), a screen in
+  a block of another length, one that a loader decompresses, and one in a `.tzx` generalised-data block
+  are not found, and the tape says "No screen". The blocks listed are the standard-speed, turbo and
+  pure data blocks, and the tone, pulse, recording, generalised-data, pause and stop blocks of a
+  `.tzx`; the rest of one (loops, calls, text, archive information) is not listed, and nothing after
+  a block that cannot be read is either. Rename and Delete act on the files, with no undo, and a folder
+  of very many tapes is read a couple at a time as it is looked at. The `tapes/` folder is made when
+  Load Tape or Manage Tapes first needs it, in the folder ZenZX runs in unless `-tapes-dir` says
+  otherwise.
+
+- **A screenshot of a classic machine has one border colour.** The PNG and the GIF paint the border
+  with the colour the port holds at the moment of the save; a border that changes down the frame
+  (the stripes of a tape loader, a multicolour demo) is saved as that one colour. A Next's frame is
+  composed with its border already. An SCR does not hold a border at all (T-100, closed as a limit).
+
+- **A classic TS2068 does not draw the Timex hi-res mode.** It stores port 0xFF and draws the standard
+  screen (its Timex pictures are the opt-in hi-colour renderer), so Save as SCR saves what the machine
+  shows, and Save as Hi-Res SCR is offered for a Next in that mode (T-101, closed as no defect).
+
 - **A sandbox may have no GUI system libraries.** With Mesa (GLX), the
   X11, Wayland and ALSA development packages and Xvfb installed, the GUI
   links and runs there on a virtual display with software OpenGL
@@ -30,15 +79,22 @@ and gaps that are meant to be fixed belong in `TRACKING.md`, not here.
   every push: cgo-free for darwin/windows via raylib-go's purego backend
   (see "CI and cross-platform builds" below), natively with apt-installed
   dev libraries for linux/amd64 and linux/arm64.
-- **BSD has no purego path.** raylib-go's embedded-library backend
-  supports linux/darwin/windows only; FreeBSD/OpenBSD/NetBSD need a real
-  cgo build with system dev libraries and are not covered by CI or the
-  release workflow (GitHub Actions has no BSD runners). The Docker-based
-  `build_bsd.sh` was the only route and does not work (T-07); it is in
-  `scripts/retired` with the image it ran. FreeBSD has the headless program
-  only: its GUI cannot be cross-built from Linux (purego's FreeBSD layer and
-  oto need cgo there). There is no GUI for 32-bit Windows either (the `ffi`
-  package under raylib-go's layer has no 386 files); the headless program
+- **FreeBSD: the GUI builds without cgo, with a short list of run-time needs.** raylib-go's
+  cgo-free backend has a FreeBSD path (it opens the system's `libraylib.so` and `libffi.so` at run
+  time) and purego supports FreeBSD amd64 and arm64, so the GUI cross-builds from Linux
+  (`make cross`: `CGO_ENABLED=0`, with `-gcflags="github.com/ebitengine/purego/internal/fakecgo=-std"`).
+  Only oto's Unix backend needs cgo (ALSA), so on a cgo-free FreeBSD build the sound goes through
+  OSS, `/dev/dsp` (`audio_oss_freebsd.go`); 16-bit mono, as the engine is. It needs, on the machine,
+  `libffi` (`pkg install libffi`) and **raylib 6.0 exactly** (`pkg install raylib`, from the
+  quarterly package branch, which is the default: raylib-go v0.60.1 panics at start on any other
+  version, and the `latest` branch has moved on to 6.2). It has been run on FreeBSD 14.5 amd64 in an
+  emulated machine (window, menus, boot screen; the sound device accepted its settings and
+  one second of tone, not heard) and nowhere else: the arm64 program is only built, and the release
+  workflow does not publish it (`.github/workflows/freebsd.yml` builds and checks it; GitHub Actions has no
+  BSD runners to start it). OpenBSD and NetBSD have no GUI: raylib-go has no cgo-free path for
+  them, and a cgo build needs system dev libraries (the Docker-based `build_bsd.sh` does not work
+  (T-07); it is in `scripts/retired` with the image it ran). There is no GUI for 32-bit Windows
+  either (the `ffi` package under raylib-go's layer has no 386 files); the headless program
   builds for windows/386 (T-96).
 - **Nothing is signed.** The Windows programs and the `.msi`, and the macOS
   programs and the `.dmg`, carry no publisher's signature, so Windows
@@ -284,7 +340,7 @@ pointing the test at a real captured image locally.
 - **Gate:** as G-03: `ZENZX_GL_TESTS` set, the GUI build, a display (Xvfb with software OpenGL is enough). Skipped when unset. The pictures the demos' tests draw over are `docs/img/next-*.png`.
 - **Invariant:** a toast's face is white inside a black stroke on a darkened box with round corners that is darker towards its bottom edge, and it is never wider or taller than half the window, whatever the message and window (wrapped in lines at the usual size, one notch smaller only when those lines are too tall or a word is wider than a line); the FPS counter is hidden until asked for and is drawn with the interface's BDF font, at the bottom right; the Play button is the debugger's sprite enlarged by whole pixels (every sprite pixel a solid square), centred, on a face with round corners that is brighter hovered and darker pressed, the sprite a pixel down and right when pressed; the audio debug overlay's bar is the health's colour as far as the buffer's level and its figures are drawn in the face's glyphs, one notch smaller when a line would not fit the window; with the window held at a size other than the one the display asked for (as a system that will not resize it does), the picture is whole and in the middle, the same margin on both sides, at four sizes: the size asked for (nothing changes), a little larger (the zoom stays, centred), too small for the zoom (the zoom that fits, centred) and smaller than the picture at its least (scaled down, in proportion). The test is checked to fail with the fit taken out. The frame round that picture is a gradient from 80% grey (#333333) under the bar to 90% grey (#1A1A1A) at the bottom of the window, with the same grey in every channel, darkening all the way down, and the five beveled lines across it are a dark row with a light row under it, 28% of black and 18% of white, evenly spaced; the picture's shadow darkens it beside and above the picture and not away from it; the picture's own first pixel is not touched by it (`TestGLPictureFrame`; `ZENZX_FRAME_SHOTS=dir` keeps the picture it reads). With no machine in the window the same gradient and lines fill it, the same all the way across, with no shadow, the bar's band black and the waiting figure alone in the middle (`TestGLBlankBackground`). In a tiled window (several machines) what the tiles leave uncovered is that same background, the gradient and its five lines with no shadow, the bar's band black, and a tile is drawn over it whole (`TestGLTiledBackground`). The Export form is drawn in two themes, with and without the reason for a refused answer: its explanation in the text colour, and the reason in the accent colour (`TestGLExportForm`; `ZENZX_EXPORT_SHOTS=dir` keeps the pictures). The menu bar is drawn at ten window sizes in two themes: its text is X1 below 950 pixels wide, X2 from 950 and X3 from 1425 (in Spleen, the default face), but only where the window is high enough (256 for X2, 384 for X3), and the strip is 24, 32 and 48 pixels high with the text taking half of it or less (`TestGLBarScale`; `ZENZX_BAR_SHOTS=dir` keeps the pictures). The Preferences window is drawn on each of its three tabs in two themes and two window sizes: the chosen tab alone is filled in the selection colour and the controls of the tab that is open are on screen. The Preferences window's help box is drawn with the pointer at rest on a row and on a group's title: the window's text colour with the panel's text, on the screen, and absent with the pointer on nothing (`TestGLPreferencesTips`). It does not stand in for a Mac: the system's own window sizes and the retina factor are not in the sandbox (T-75).
 - **Invocation:** `Xvfb :99 -screen 0 1280x1024x24 &` then `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ZENZX_GL_TESTS=1 ZENZX_TOAST_SHOTS=shots ZENZX_PLAY_SHOTS=shots go test -run 'TestGLToast|TestGLFPSCounter|TestGLPlayButton|TestGLAudioDebugOverlay|TestGLPictureFit|TestGLPictureFrame|TestGLBlankBackground|TestGLTiledBackground|TestGLExportForm|TestGLBarScale|TestGLPreferencesTabs|TestGLPreferencesTips' -v .` (about 10 seconds; `ZENZX_PREFS_SHOTS=shots` keeps the Preferences pictures). The two folder variables are optional: the pictures the tests draw over the demos go there, to be looked at.
-- **Last exercised:** 2026-11-25 env:sandbox — at 0.50.0 (re-release): every `TestGL` test (25) passes under Xvfb with software OpenGL, among them the new `TestGLTiledBackground` (a tile in a bigger window over the grey gradient with the five grooves). Previous: 2026-11-25 env:sandbox: `TestGLToastOverTheDemos` passes under Xvfb with software OpenGL with the new rule (a 49-letter message wrapped to three lines at the usual size in a 960-wide window, and a word too wide for a line at the smaller size), and the other tests of this guard pass in the same run. Before that, 2026-11-23: all nine pass under Xvfb with software OpenGL (the Preferences window's help box is the window's text colour with the panel's text, in Dark and Spectrum at two sizes, and absent with the pointer on nothing; the frame: #333333 under the bar, #1A1A1A at the bottom, the shadow beside the picture); `TestGLPictureFitsAWindowOfAnotherSize` fails at three of its four sizes with the fit taken out
+- **Last exercised:** 2026-11-27 env:sandbox — TestGLPreferencesTabs and TestGLPreferencesTips pass under Xvfb with software OpenGL after the Machines tab gained the Autoload tape row: the row is drawn as a checkbox in the Tape group and the window still fits at 640 and 960 wide in both themes. The other tests of the guard were not re-run this day Previous: 2026-11-25 env:sandbox — at 0.50.0 (re-release): every `TestGL` test (25) passes under Xvfb with software OpenGL, among them the new `TestGLTiledBackground` (a tile in a bigger window over the grey gradient with the five grooves).
 
 ### G-15. A Next that is reset restarts its firmware and loses the program's state (`TestNextResetRestartsTheFirmware`, reset_next_hw_test.go)
 
@@ -417,3 +473,17 @@ pointing the test at a real captured image locally.
 - **Invariant:** a card image with no read permission is not found and is said not to be a card image when chosen; a folder that cannot be read does not stop the others being looked through.
 - **Invocation:** as an ordinary user: `go test -c -o /tmp/zz.test . && cd /tmp && setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp TMPDIR=/tmp /tmp/zz.test -test.run "TestACardThatCannotBeReadIsPassedOver|TestAFolderThatCannotBeReadDoesNotStopTheSearch" -test.v`
 - **Last exercised:** 2026-11-25 env:sandbox (as uid 65534, the test binary run apart) -- at 0.50.0 (re-release): both pass
+
+### G-34. The Screenshots window draws the pictures, in a window (`TestGLScreenshotsWindowDrawsThePictures`; screenshots_gl_test.go)
+
+- **Gate:** as G-14: `ZENZX_GL_TESTS` set, the GUI build, a display (Xvfb with software OpenGL is enough). Skipped when unset. Thumbnails and the preview are textures, so they cannot be made without the context; the window's logic (the list, Rename, Delete, the preview's keys and its GIF clock, the columns, the wrapping of text) runs by default with no textures (`screenshots_gui_test.go`), and so does reading each format back as a picture (`screenshotdir_test.go`).
+- **Invariant:** in the grid every thumbnail has the colours of its picture (a PNG, a GIF, a SCR, a Layer 2 `.nxi`) and an unreadable file is black with a mark; in rows the same, in small; the preview of a GIF and of a SCR has the picture in the middle and the GIF's second frame is shown after its delay; no ink lands to the right of the dialog or the preview's margin, with a folder name and a machine name that are far too long.
+- **Invocation:** `Xvfb :99 -screen 0 1280x1024x24 &` then `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ZENZX_GL_TESTS=1 ZENZX_SHOTS_OUT=shots go test -run TestGLScreenshotsWindow -v .` (a few seconds; `ZENZX_SHOTS_OUT` keeps the pictures of the grid, the rows and the previews)
+- **Last exercised:** 2026-11-27 env:Xvfb :99 with software OpenGL, Linux, in the sandbox — with a .hires.scr and a .hicol.scr in the list Previous: 2026-11-27 env:Xvfb :99 with software OpenGL, Linux, in the sandbox — with a .timex.scr in the list
+
+### G-35. The Tapes window draws the first screens and the blocks, in a window (`TestGLTapesWindowDrawsTheScreensAndTheBlocks`; tapes_gl_test.go)
+
+- **Gate:** as G-14: `ZENZX_GL_TESTS` set, the GUI build, a display (Xvfb with software OpenGL is enough). Skipped when unset. The thumbnails are textures, so they cannot be made without the context; the window's logic (the library's order, the blocks and the screen read from a tape, the keys, Load, Rename, Delete, the menu's rows and the settings) runs by default with no textures (`tapes_gui_test.go`, `tapeinfo_test.go`, `tapedir_test.go`).
+- **Invariant:** in the grid every tape that has a screen shows it in its thumbnail (many colours), and a tape with none, and a file that is no tape, are black with a mark; in rows the same, in small; the blocks of the chosen tape are written in the box under the list, scroll when `Tab` and Down are pressed (the box is not the same afterwards), and begin at the first block when another tape is chosen; no ink lands to the right of the dialog, with a folder name and a tape name that are far too long.
+- **Invocation:** `Xvfb :99 -screen 0 1280x1024x24 &` then `DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 ZENZX_GL_TESTS=1 ZENZX_TAPES_OUT=tapes go test -run TestGLTapesWindow -v .` (a couple of seconds; `ZENZX_TAPES_OUT` keeps the pictures of the grid, the rows and the scrolled blocks)
+- **Last exercised:** 2026-11-27 env:Xvfb :99 with software OpenGL, Linux, in the sandbox -- passes; looked at: the grid, the rows and the long tape's blocks scrolled to the third. The window as the program opens it from the menu (`openTapes`, `updateTapes`) and the Load that ends it are not under test in a window.

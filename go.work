@@ -1,0 +1,7 @@
+go 1.26.5
+
+use .
+
+// Local only (go.work is excluded from the archive): zenui 0.4.0 is built from the working
+// copy until it is tagged and published.
+replace github.com/ha1tch/zenui v0.4.0 => ../zenui

@@ -93,6 +93,24 @@ class CheckBinaries(unittest.TestCase):
                 self.assertEqual(rc, 0, text)
                 self.assertIn("0 failed", text)
 
+    def test_the_freebsd_gui_program_needs_only_the_c_library(self):
+        # The real program, built the way the release builds it: no cgo, so it needs libc and
+        # the threads stub and nothing else (raylib and libffi are opened at run time).
+        out = os.path.join(self.bin, "zenzx-freebsd-amd64-gui", "zenzx")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        # (the toolchain is not pinned to the local one here: the tree's go.work names its own)
+        env = dict(os.environ, CGO_ENABLED="0", GOOS="freebsd", GOARCH="amd64", GOFLAGS="")
+        r = subprocess.run(["go", "build", "-trimpath", "-ldflags", "-s -w",
+                            "-gcflags", "github.com/ebitengine/purego/internal/fakecgo=-std", "-o", out, "./cmd/zenzx"],
+                           cwd=os.path.join(HERE, ".."), env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rc, text = run(out)
+        self.assertEqual(rc, 0, text)
+        self.assertRegex(text, r"libs\s+needs (libpthread.so, libc.so.7|libc.so.7, libpthread.so)")
+        # and a library it is not meant to need is still refused
+        rc, text = run(out, "--allow-lib", "libc.so.7")
+        self.assertEqual(rc, 1, text)
+
     def test_the_darwin_arm64_program_is_signed_and_names_its_minimum(self):
         rc, text = run(self.need("darwin", "arm64", "p-darwin-arm64"))
         self.assertEqual(rc, 0, text)

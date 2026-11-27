@@ -189,14 +189,40 @@ func TestMachineMenuHeadSaysWhatItWillDoAndHasItsIcon(t *testing.T) {
 		return l
 	}
 	b.refreshMachineItems(zx)
-	if got := labels(); got[0] != "Machine" || got[1] != "Reset" || got[2] != "Pause" || got[3] != "Stop" {
-		t.Fatalf("a running machine: %v", got)
+	if got := labels(); got[0] != "Machine" || got[1] != "Reset" || got[2] != "Play" || got[3] != "Pause" || got[4] != "Stop" {
+		t.Fatalf("the rows are %v, want Reset, Play, Pause and Stop whatever the machine is doing", got)
+	}
+	// Each row is enabled only when it can act, as the Tape menu's are: Reset, Pause and Stop while
+	// the machine runs; Play while it is paused or stopped.
+	enabled := func() string {
+		var s string
+		for _, it := range b.widget.ItemsFor(barMachine)[1:machineHeadRows] {
+			if it.Disabled {
+				s += "-"
+			} else {
+				s += "+"
+			}
+		}
+		return s
+	}
+	if got := enabled(); got != "+-++" {
+		t.Errorf("a running machine has Reset, Play, Pause, Stop enabled as %s, want +-++", got)
 	}
 	zx.paused = true
 	b.refreshMachineItems(zx)
 	head := b.widget.ItemsFor(barMachine)[:machineHeadRows]
-	if !head[0].Title || head[2].Label != "Play" || head[2].Icon == nil || head[3].Icon == nil || head[1].Icon != nil {
-		t.Errorf("a paused machine: %v, icons: pause/play %v stop %v reset %v", labels(), head[2].Icon != nil, head[3].Icon != nil, head[1].Icon != nil)
+	if got := enabled(); got != "++-+" {
+		t.Errorf("a paused machine has them enabled as %s, want ++-+", got)
+	}
+	for i := 1; i < machineHeadRows; i++ {
+		if !head[0].Title || head[i].Icon == nil {
+			t.Errorf("row %d (%s) has no icon", i, head[i].Label)
+		}
+	}
+	zx.paused, zx.stopped = false, true
+	b.refreshMachineItems(zx)
+	if got := enabled(); got != "-+--" {
+		t.Errorf("a stopped machine has them enabled as %s, want -+--", got)
 	}
 	// The rows still lead to the same things: the model rows keep their places after them.
 	items := b.widget.ItemsFor(barMachine)
@@ -210,14 +236,14 @@ func TestMachineMenuHeadSaysWhatItWillDoAndHasItsIcon(t *testing.T) {
 		transportIcon(name)(r, zenui.Rect{X: 10, Y: 10, W: 16, H: 16}, zenui.Colour{R: 1, G: 2, B: 3, A: 255})
 		return r.fills
 	}
-	play, pause, stop := draw("play"), draw("pause"), draw("stop")
-	if len(play) == 0 || len(pause) == 0 || len(stop) == 0 {
-		t.Fatalf("an icon drew nothing: play %d, pause %d, stop %d", len(play), len(pause), len(stop))
+	play, pause, stop, recycle := draw("play"), draw("pause"), draw("stop"), draw("recycle")
+	if len(play) == 0 || len(pause) == 0 || len(stop) == 0 || len(recycle) == 0 {
+		t.Fatalf("an icon drew nothing: play %d, pause %d, stop %d, recycle %d", len(play), len(pause), len(stop), len(recycle))
 	}
 	if len(play) == len(pause) && play[0] == pause[0] {
 		t.Error("the Play and Pause icons draw the same thing")
 	}
-	for _, f := range append(append(play, pause...), stop...) {
+	for _, f := range append(append(append(play, pause...), stop...), recycle...) {
 		if f.rect.X < 10 || f.rect.Y < 10 || f.rect.X+f.rect.W > 26 || f.rect.Y+f.rect.H > 26 || f.colour.R != 1 {
 			t.Fatalf("an icon pixel %+v is outside its cell or in the wrong colour", f)
 		}
@@ -228,15 +254,16 @@ func TestStopRowAsksTheDeckAndMachineRowsAreDisabledWhenNoneRuns(t *testing.T) {
 	b, zx := newTestBar(t, nil, "")
 	stopped := 0
 	b.stopMachine = func() { stopped++ }
-	b.actions[barMachine][3](zx) // Stop: after the title and Reset and Pause
+	b.actions[barMachine][4](zx) // Stop: after the title and Reset, Play and Pause
 	if stopped != 1 {
 		t.Errorf("Stop asked the deck %d times, want once", stopped)
 	}
 	zx.stopped = true
 	b.refreshMachineItems(zx)
 	for i, it := range b.widget.ItemsFor(barMachine)[1:machineHeadRows] { // the title is not a row to disable
-		if !it.Disabled {
-			t.Errorf("row %d (%s) is enabled with no machine running", i, it.Label)
+		// Play is the one row that does something with none running: it starts a machine
+		if want := i+1 != machinePlayRow; it.Disabled != want {
+			t.Errorf("row %d (%s) has Disabled %v with no machine running, want %v", i+1, it.Label, it.Disabled, want)
 		}
 	}
 	// the rows of the Snapshot menu that act on a machine: Quick Save, Save Timestamped, Save As,
@@ -249,13 +276,13 @@ func TestStopRowAsksTheDeckAndMachineRowsAreDisabledWhenNoneRuns(t *testing.T) {
 			t.Errorf("Snapshot > %q needs a machine: %v, want %v", e.label, got, snapNeeds[e.label])
 		}
 	}
-	for _, sel := range []zenui.MenuBarSelection{{BarIndex: barFile, ItemIndex: 1}, {BarIndex: barTape}, {BarIndex: barFloppyDisk}, {BarIndex: barCustomROM}} {
+	for _, sel := range []zenui.MenuBarSelection{{BarIndex: barFile, ItemIndex: 1}, {BarIndex: barTape, ItemIndex: 1}, {BarIndex: barFloppyDisk}, {BarIndex: barCustomROM}} {
 		if !b.needsMachine(sel) {
 			t.Errorf("%+v is allowed with no machine", sel)
 		}
 	}
 	// File > Open is allowed with none: a snapshot opened makes its machine
-	for _, sel := range []zenui.MenuBarSelection{{BarIndex: barFile, ItemIndex: 0}, {BarIndex: barFile, ItemIndex: 2}, {BarIndex: barFile, ItemIndex: 4}, {BarIndex: barMachine, ItemIndex: machineHeadRows}, {BarIndex: barView}, {BarIndex: barTheme}} {
+	for _, sel := range []zenui.MenuBarSelection{{BarIndex: barFile, ItemIndex: 0}, {BarIndex: barFile, ItemIndex: 2}, {BarIndex: barFile, ItemIndex: 4}, {BarIndex: barMachine, ItemIndex: machineHeadRows}, {BarIndex: barTape, ItemIndex: 3}, {BarIndex: barTape, ItemIndex: 4}, {BarIndex: barView}, {BarIndex: barTheme}} {
 		if b.needsMachine(sel) {
 			t.Errorf("%+v is refused with no machine: it does not need one", sel)
 		}
@@ -408,5 +435,39 @@ func TestStoppingWithTheAnimationOffIsAtOnce(t *testing.T) {
 	d.stop(0)
 	if !d.Stopping() {
 		t.Error("the animation does not play when it is on")
+	}
+}
+
+// The Play row of the Machine menu starts a machine when none runs, of the model the menu has ticked,
+// and lets a paused one go on.
+func TestPlayRowStartsTheModelThatWasStoppedAndResumesAPausedMachine(t *testing.T) {
+	b, zx := newTestBar(t, nil, "")
+	var started []string
+	b.startMachine = func(model string) *ZenZX { started = append(started, model); return NewZenZX(AudioBackendOto) }
+	b.setCurrentModel("128k")
+	zx.paused = true
+	b.actions[barMachine][machinePlayRow](zx)
+	if zx.paused || len(started) != 0 {
+		t.Errorf("Play on a paused machine: paused %v, started %v; want it going on and nothing started", zx.paused, started)
+	}
+	b.actions[barMachine][machinePlayRow](zx) // running: nothing to do
+	if zx.paused || len(started) != 0 {
+		t.Errorf("Play on a running machine changed something: paused %v, started %v", zx.paused, started)
+	}
+	b.actions[barMachine][3](zx) // Pause
+	if !zx.paused {
+		t.Error("Pause did not pause")
+	}
+	b.actions[barMachine][3](zx) // Pause on a paused machine stays paused
+	if !zx.paused {
+		t.Error("Pause on a paused machine let it go")
+	}
+	zx.paused, zx.stopped = false, true
+	b.actions[barMachine][machinePlayRow](zx)
+	if len(started) != 1 || started[0] != "128k" {
+		t.Errorf("Play on a stopped machine started %v, want the 128k that was ticked", started)
+	}
+	if b.needsMachine(zenui.MenuBarSelection{BarIndex: barMachine, ItemIndex: machinePlayRow}) {
+		t.Error("Play is refused with no machine running")
 	}
 }

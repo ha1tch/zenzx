@@ -49,6 +49,7 @@ func (zx *ZenZX) HandleInput() {
 
 	// Process keyboard input
 	zx.handleKeyboard()
+	zx.cancelTypistOnKey()
 
 	// Handle function keys
 	zx.handleFunctionKeys()
@@ -267,7 +268,7 @@ func (zx *ZenZX) RewindTape() {
 // loaded. Extracted from handleAltCombinations (Alt+I); see
 // ToggleTapeMode.
 func (zx *ZenZX) ShowTapeInfo() {
-	if zx.OnInfo != nil { // the window, as Tape > Show Info: the deck says so when there is no tape
+	if zx.OnInfo != nil { // the window, as Tape > Tape Info: the deck says so when there is no tape
 		zx.OnInfo("TAPE INFO", tapeInfoText(zx))
 		return
 	}
@@ -619,6 +620,11 @@ func (zx *ZenZX) handleSaveDiskAs() {
 // loaded snapshot waits, everywhere else.
 var snapshotStartsPlaying func() bool
 
+// tapeAutoloadWanted says whether a tape that has just been loaded starts by itself (the
+// Preferences setting). The GUI sets it; it is nil, and a tape only waits in the deck, everywhere
+// else.
+var tapeAutoloadWanted func() bool
+
 // snapshotStartWord is the settings file's word for the choice.
 func snapshotStartWord(plays bool) string {
 	if plays {
@@ -659,12 +665,12 @@ func (zx *ZenZX) openSnapshot(file, format string, wait bool) error {
 }
 
 // loadDroppedFile loads one dropped file by its extension into the machine
-// directly -- a snapshot replaces state, a tape/disc is inserted, a .scr paints
+// directly -- a snapshot replaces state, a tape/disk is inserted, a .scr paints
 // the screen. This is the "load into the machine" path; the mount drawer's
 // "put the file into a slot's filesystem" path is separate.
 //
 // It returns a human-readable sentence ("The tape foo.tap is loaded and
-// rewound ...", "bar.dsk could not be loaded as a disc") so the caller can
+// rewound ...", "bar.dsk could not be loaded as a disk") so the caller can
 // surface it as an on-screen toast; the terse stdout prints are kept for the
 // headless/CLI path. An empty string means the extension was not recognised
 // and nothing was attempted.
@@ -728,13 +734,13 @@ func (zx *ZenZX) loadDroppedFile(file string) string {
 		if zx.io.hasFDC && zx.io.fdc != nil {
 			if err := zx.io.LoadDisk(file); err != nil {
 				fmt.Printf("Error loading disk %s: %v\n", file, err)
-				return base + " could not be loaded as a disc"
+				return base + " could not be loaded as a disk"
 			}
 			fmt.Printf("Loaded disk: %s\n", file)
-			return "The disc " + base + " has been inserted into drive A"
+			return "The disk " + base + " has been inserted into drive A"
 		}
 		fmt.Println("Disk loading requires +3 mode with FDC enabled")
-		return "Discs need a +3 with its drive enabled"
+		return "Disks need a +3 with its drive enabled"
 
 	case ".tap", ".tzx":
 		if zx.tape == nil {
@@ -747,12 +753,10 @@ func (zx *ZenZX) loadDroppedFile(file string) string {
 		}
 		fmt.Printf("Loaded tape: %s (%d blocks)\n", file, len(zx.tape.st.Blocks))
 		zx.tape.Rewind()
-		n := len(zx.tape.st.Blocks)
-		block := "blocks"
-		if n == 1 {
-			block = "block"
+		if tapeInsertedHook != nil {
+			tapeInsertedHook(file) // the Recent Tapes keep it (tapedir.go)
 		}
-		return fmt.Sprintf("The tape %s is loaded and rewound (%d %s)", base, n, block)
+		return zx.TapeInsertedNote(base, len(zx.tape.st.Blocks), tapeAutoloadWanted != nil && tapeAutoloadWanted())
 
 	case ".nex":
 		// A NEX is a Next executable, so on a classic model there is nothing to

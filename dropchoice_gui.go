@@ -36,8 +36,8 @@ var dropChoiceExts = map[string]bool{
 
 // dropCopyOnlyExts are types a Next at an idle prompt can only copy to the SD
 // card, because ZenZX has no "run" path for them on the Next: a .dsk (real NextZXOS
-// mounts disc images as its own drives, but ZenZX does not emulate that for the Next
-// yet -- T-72 -- so a dropped disc can only be copied to the card as a file for now).
+// mounts disk images as its own drives, but ZenZX does not emulate that for the Next
+// yet -- T-72 -- so a dropped disk can only be copied to the card as a file for now).
 // There is no second outcome to choose between, so a drop of only these is copied
 // straight to the card with no dialog -- it reaches the card instead of being a dead end.
 var dropCopyOnlyExts = map[string]bool{

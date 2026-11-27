@@ -81,15 +81,15 @@ func (b *appMenuBar) floppySection(zx *ZenZX) menuSpec {
 	if zx.io.hasFDC && zx.io.fdc != nil {
 		return menuSpec{
 			menuTitle("Floppy Disk"),
-			menuRow("Open DSK Image...", func(zx *ZenZX) { b.openDiskDialog(zx) }),
-			menuRow("Insert Blank Disk", func(zx *ZenZX) { zx.handleInsertBlankDisk() }),
+			menuRow("Load Disk...", func(zx *ZenZX) { b.openDiskDialog(zx) }),
+			{label: "Recent Disks", sub: b.recentDisksSpec()}, // discmenu_recent_gui.go
+			menuRow("Manage Disks...", func(zx *ZenZX) { b.openDisks(zx) }),
 			menuSep(),
+			menuRow("Insert Blank Disk", func(zx *ZenZX) { zx.handleInsertBlankDisk() }),
 			menuRow("Save Disk", func(zx *ZenZX) { zx.handleSaveDisk() }),
 			menuRow("Save Disk As...", func(zx *ZenZX) { zx.handleSaveDiskAs() }),
-			menuSep(),
 			menuRow("Eject Disk", func(zx *ZenZX) { zx.handleEjectDisk() }),
 			menuRow("Disk Info", func(zx *ZenZX) { b.showInfo("DISK INFO", diskInfoText(zx)) }),
-			menuRow("Manage Disks...", func(zx *ZenZX) { b.openDisks(zx) }),
 		}
 	}
 	if usesSDCards(zx) {
@@ -125,17 +125,15 @@ func (b *appMenuBar) sdSection(zx *ZenZX) menuSpec {
 		menuTitle("SD Card"),
 		{label: "Slot 1: " + filepath.Base(zx.next.files.Card), disabled: true},
 		{label: slot2, disabled: true},
-		menuSep(),
 		menuRow("Insert Card in Slot 2...", func(zx *ZenZX) { b.openCardDialog(zx) }),
+		menuRow("Manage Cards...", func(zx *ZenZX) { b.openCards(zx) }),
 		menuRow("Insert ZenZX's Card (Examples)", func(zx *ZenZX) { b.insertOwnCard(zx) }),
 		{label: "Remove Card from Slot 2", disabled: second == "", run: func(zx *ZenZX) {
 			zx.RemoveSecondCard()
 			zx.notice("Slot 2 is empty. %s", remountHint)
 		}},
 		{label: "New Empty Card", sub: b.newCardSizeSpec()},
-		menuSep(),
 		menuRow("Card Info", func(zx *ZenZX) { b.showInfo("CARD INFO", cardInfoText(zx)) }), // info_gui.go
-		menuRow("Manage Cards...", func(zx *ZenZX) { b.openCards(zx) }),
 	}
 }
 

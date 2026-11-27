@@ -1,0 +1,62 @@
+name: FreeBSD
+
+# The GUI program for FreeBSD (amd64 and arm64), built on a Linux runner with no cgo and checked.
+# It is separate from CI and from the Release workflow on purpose: a failure here stops neither,
+# and nothing is published from it. Started by hand (Actions > FreeBSD > Run workflow) and on every
+# push to the main branch; the programs are kept as the run's artifacts for 14 days.
+#
+# What it does: builds with CGO_ENABLED=0 (raylib-go opens libraylib and libffi from the system at
+# run time; oto's ALSA backend is replaced by the OSS device in audio_oss_freebsd.go), then runs
+# tools/check_binaries.py on the result: an ELF for FreeBSD of the right processor that needs only
+# libc and the threads stub. What it cannot do is start the program: GitHub has no FreeBSD runner.
+# What the machine needs to run it (libffi, and raylib 6.0 exactly) is in docs/KNOWN_ISSUES.md.
+# The -gcflags value is what purego's FreeBSD layer needs when there is no cgo.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  gui:
+    name: GUI, freebsd/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [ amd64, arm64 ]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Build
+        env:
+          CGO_ENABLED: '0'
+          GOOS: freebsd
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          out="dist/zenzx-freebsd-${GOARCH}"
+          mkdir -p "$out"
+          go build -trimpath -ldflags "-s -w" \
+              -gcflags="github.com/ebitengine/purego/internal/fakecgo=-std" \
+              -o "${out}/zenzx" ./cmd/zenzx
+
+      - name: Check the binary
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/lief"
+          "$RUNNER_TEMP/lief/bin/pip" install --quiet lief
+          "$RUNNER_TEMP/lief/bin/python" tools/check_binaries.py dist
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: zenzx-freebsd-${{ matrix.goarch }}
+          path: dist/zenzx-freebsd-${{ matrix.goarch }}/zenzx
+          retention-days: 14
+          if-no-files-found: error

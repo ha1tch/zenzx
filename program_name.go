@@ -13,14 +13,14 @@ import (
 //
 // A host that shows several machines names each after the first BASIC
 // program it loads, from whichever of its media that comes: tape, the +3's
-// disc, a Next's SD card. Each medium notices in its own way and
+// disk, a Next's SD card. Each medium notices in its own way and
 // FirstProgram puts them together.
 //
 //   - Tape: the first Program header on the tape, once the tape has moved.
 //     It is taken from the tape and not from the loading, because the
 //     machine can load in three ways (the ROM's routine trapped, pulses, the
 //     turbo path) and all three start from that header.
-//   - Disc: a sector that begins a +3DOS file whose header says Program; the
+//   - Disk: a sector that begins a +3DOS file whose header says Program; the
 //     name is the directory entry whose first block that sector is.
 //   - SD card: a block that begins such a file; the name is the file of the
 //     FAT volume that starts there. NextZXOS runs autoexec.1st and
@@ -36,7 +36,7 @@ func plus3DOSProgram(b []byte) bool {
 }
 
 // programName is a file's name as a machine's: its base name without the
-// .bas a disc or a card gives it, and without the spaces a tape pads it
+// .bas a disk or a card gives it, and without the spaces a tape pads it
 // with. Names that are nothing but that come back empty.
 func programName(file string) string {
 	name := strings.TrimSpace(filepath.Base(strings.ReplaceAll(file, "\\", "/")))

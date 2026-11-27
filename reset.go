@@ -9,11 +9,11 @@ package zenzx
 //	cleared     the memory paging latches (0x7FFD, 0x1FFD, their lock and the +3 special
 //	            paging), the TS2068's ports 0xF4 and 0xFF, the AY (its registers and its
 //	            counters; the 128K, +2, +2A, +3, TS2068 and Next all wire its /RESET to the
-//	            machine's), the +3's disc controller (the drive's motor, the command in
-//	            progress; the disc stays in the drive), and on a Next a hard reset
+//	            machine's), the +3's disk controller (the drive's motor, the command in
+//	            progress; the disk stays in the drive), and on a Next a hard reset
 //	            (nextconfig.go), which restarts the firmware
 //	kept        RAM and its contents, the ULA's border, speaker and MIC latch (the ULA has no
-//	            reset line; the ROM writes them again), a disc in the drive, a tape in the
+//	            reset line; the ROM writes them again), a disk in the drive, a tape in the
 //	            deck, the host's devices (joysticks, mice, the card in a DivMMC)
 //
 // Before this file a reset restarted the CPU and nothing else, so a 128K that had a program
@@ -83,7 +83,7 @@ func (ay *AYChip) Reset() {
 
 // resetController is what the 765's reset input does: the command being taken, the
 // result being read, the transfer in progress and the drive's motor are cleared and the
-// status registers start again, as NewFDC765 has them. The disc in the drive, the file it
+// status registers start again, as NewFDC765 has them. The disk in the drive, the file it
 // came from and what has not been written back to it stay.
 func (fdc *FDC765) resetController() {
 	fdc.mainStatus, fdc.dataReg = 0x80, 0

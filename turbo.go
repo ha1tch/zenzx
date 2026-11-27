@@ -204,6 +204,10 @@ func (zx *ZenZX) RunTurboAwareFrame(blockedOnRealMemory bool) {
 			zx.turboNextBoundary = 0
 		}
 		zx.RunFrame()
+		// While the phantom typist works the machine runs ahead of the clock, as FUSE does (silent: typistBegan).
+		for n := zx.typistRunAheadFrames(); n > 0 && zx.TypistActive(); n-- {
+			zx.RunFrame()
+		}
 		return
 	}
 

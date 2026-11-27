@@ -18,7 +18,7 @@ there are in [`gui.md`](gui.md), [`headless.md`](headless.md) and
 7. [Keyboard](#keyboard)
 8. [Joystick and mouse](#joystick-and-mouse)
 9. [Media formats](#media-formats)
-10. [The menu bar (GUI)](#the-menu-bar-gui), [the Info windows](#the-info-windows-gui), [the +3's discs](#the-3s-discs-gui), [standalone programs](#standalone-programs-gui) and [several machines](#several-machines-gui)
+10. [The menu bar (GUI)](#the-menu-bar-gui), [the Info windows](#the-info-windows-gui), [the +3's disks](#the-3s-disks-gui), [standalone programs](#standalone-programs-gui) and [several machines](#several-machines-gui)
 11. [Configuration files](#configuration-files)
 12. [Scripting with zenscript](#scripting-with-zenscript)
 13. [Headless debugging workflow](#headless-debugging-workflow)
@@ -31,7 +31,7 @@ there are in [`gui.md`](gui.md), [`headless.md`](headless.md) and
 
 ## Overview
 
-ZenZX emulates the 48K, 128K, +2, +2A, +3 (including the +3 floppy disc
+ZenZX emulates the 48K, 128K, +2, +2A, +3 (including the +3 floppy disk
 controller), the Spanish-market variants of each of those, and the Timex
 Sinclair 2068, with tape and snapshot support. It builds in two variants
 from the same emulation core:
@@ -203,6 +203,8 @@ and [`docs/TS2068_TRACKING.md`](TS2068_TRACKING.md) for stage-by-stage detail.
 | `-custom-roms-menu` | `false` | Interactively pick a ROM from `-custom-roms-dir` and a bank to apply it to |
 | `-custom-roms-dir` | `custom-roms` | Directory scanned by `-custom-roms-menu` |
 | `-snapshots-dir` | `snapshots` | Folder for the snapshots that Quick Save (`F9`), Save Timestamped (`Shift+F11`) and Save As make, that Quick Load (`F10`) and Snapshot > Load Timestamped read, and that Snapshot > Manage Snapshots lists. Made when the first is saved. Snapshots that earlier versions left in the folder ZenZX runs in (`quicksave.*`, `snapshot_<date>_<time>.*`) are moved into it at start, and none is written over |
+| `-screenshots-dir` | `screenshots` | Folder for the screenshots that View > Screenshot saves and View > Screenshot > Manage Screenshots lists. Made when the first is saved; none is written over |
+| `-tapes-dir` | `tapes` | Folder that Tape > Load Tape... starts in when no tape has been loaded, and that Tape > Manage Tapes lists with the tapes loaded from elsewhere. Made when Load Tape or Manage Tapes first needs it; nothing is written in it |
 | `-rom-bin` | *(none)* | Make a ROM on the fly from this binary file, of any size, and use it as a ROM bank -- see [Making a ROM from a binary file](#making-a-rom-from-a-binary-file) |
 | `-rom-at` | `0x0000` | Where in the ROM the `-rom-bin` file goes: `0x1234`, `$1234` or decimal. On a Next it counts from the start of `-rom-bank`, and the file may run on into the banks after it, up to the 256 KiB |
 | `-rom-fill` | `zero` | What is around the `-rom-bin` file: `zero`, or `rom` (the ROM the bank has, so the file is an overlay on it) |
@@ -220,6 +222,7 @@ and [`docs/TS2068_TRACKING.md`](TS2068_TRACKING.md) for stage-by-stage detail.
 | `-snapshot` | *(none)* | Load a snapshot on startup. With no `-model` (and no `-multi`) the machine started is the one the snapshot is of: a 128K snapshot starts a 128K, a +3 one a +3. With a `-model` of another kind (a 48K for a 128K snapshot) it is refused and says so; `-model=ts2068` takes any, as before, and a `-model=next` takes only a Next's snapshot |
 | `-format` | `auto` | Snapshot format: `auto`, `zxs`, `sna`, `z80` |
 | `-tape` | *(none)* | Load a tape file (`.tap` or `.tzx`) |
+| `-autoload-tape` | `false` | Headless only, with `-tape`: the machine types what loads the tape, as a person would, instead of the tape being set playing; see "Tape autoload". The GUI has the Autoload tape preference |
 | `-tapemode` | `fast` | Tape mode: `fast`, `accurate`, or `turbo` (same correctness as `accurate`, rendering/audio bookkeeping skipped while loading -- see [Media formats](#media-formats)) |
 | `-noaudio` | `false` | Disable audio |
 | `-audiobackend` | `oto` | Audio backend: `raylib` or `oto` |
@@ -227,7 +230,7 @@ and [`docs/TS2068_TRACKING.md`](TS2068_TRACKING.md) for stage-by-stage detail.
 | `-binaddr` | `0x8000` | Load address for `-bin` (hex `0x..` or decimal) |
 | `-binpage` | *(none)* | RAM page to put `-bin` in, instead of the memory as the CPU sees it: a bank `0`-`7` on a 128K, +2, +2A or +3, an 8K page `0`-`223` on a Next (bank N is pages 2N and 2N+1); `-binaddr` is then the address in the page, and `-binstart` defaults to none. A 48K and a TS2068 have no pages and refuse it -- see [Load Binary](#snapshots-in-the-gui) |
 | `-binstart` | *(load address)* | PC start address after `-bin`; empty = use load address (none with `-binpage`), `-1` = leave PC unchanged |
-| `-scr` | *(none)* | Load a raw `.scr` screen dump onto the display (still image) |
+| `-scr` | *(none)* | Load a `.scr` screen dump onto the display (still image): 6912 bytes, or a Timex `.hires.scr` / `.hicol.scr` where the machine has the mode |
 | `-script` | *(none)* | Path to a `.zen` action script to drive the emulator -- see [Scripting with zenscript](#scripting-with-zenscript) |
 | `-non-standard` | `off` | Master switch for non-standard features: `on` or `off`. Gates all `-ns-*` flags |
 | `-ns-graphics` | *(none)* | Non-standard graphics mode (requires `-non-standard on`) -- see [Non-standard features](#non-standard-features) |
@@ -329,7 +332,7 @@ guest:
 | Key | Action |
 |-----|--------|
 | `Esc` | Closes the open menu or window. It does not quit, unless that is chosen: Preferences > Keyboard > Escape, or `-escape` for one run (it may also close the debugger HUD, ask before quitting, or quit at once) |
-| `F1` | Reset the machine, as its reset line does: the CPU, the memory paging and ROM choice, the sound chip, the Timex ports and the +3's disc controller start again, and a Next starts its firmware again from the boot ROM with every register as at power on. RAM, a disc in the drive, a tape and the border are kept |
+| `F1` | Reset the machine, as its reset line does: the CPU, the memory paging and ROM choice, the sound chip, the Timex ports and the +3's disk controller start again, and a Next starts its firmware again from the boot ROM with every register as at power on. RAM, a disk in the drive, a tape and the border are kept |
 | `F2` | Pause / resume (a paused machine shows a Play button in the middle of its picture; clicking it resumes) |
 | `F3` | Open the diagnostics report in a window (Snapshot > Run Diagnostics) |
 | `F4` | Save the current disk image (+3, if modified) |
@@ -414,7 +417,7 @@ quick saves and timestamped snapshots found there are moved into `snapshots/`, a
 taken in it is left where it is, never written over.
 
 - **A snapshot is loaded into the machine it is of.** A snapshot is the state of a 48K, a 128K or a
-  +3 (a +2 is a 128K, a +2A a +3 with no disc drive), and in a machine of another kind it is
+  +3 (a +2 is a 128K, a +2A a +3 with no disk drive), and in a machine of another kind it is
   nothing that runs. So opening one (a Snapshot menu row, Manage Snapshots, Quick Load and `F10`,
   File > Open, a file dropped on the window) makes a machine of the kind it says, with the
   Sinclair ROMs (a snapshot does not say which ROM it had), brings it to the front and loads the
@@ -560,13 +563,36 @@ images (`.dsk`) load via `-disk` (requires +3 mode with the FDC enabled;
 via `-scr` in either build -- a still image only, since it paints the
 framebuffer without touching CPU state or memory.
 
+### Tape autoload
+
+A tape that is put in the machine can start by itself. The machine is reset, and a phantom
+typist then presses the keys that load a tape on that model's own ROM, a frame at a time, as a
+person at the keyboard would; when it has pressed the last ENTER the tape plays. What it types is
+`LOAD ""` on a 48K or a Timex 2068 (as one key each: J, then Symbol Shift with P twice, then ENTER),
+ENTER on the Tape Loader of a 128K or a +2, the same with a wait on a +2A and a +3 (which try the
+disk first), and the letters one at a time on the Spanish 128K of 1985, which has no menu. A tape
+that begins with a CODE header is loaded with `LOAD ""CODE`, which `LOAD ""` does not do, by the
+same route on each model (on a +3 as two commands, the first `LOAD "t:"`). It waits for the ROM to
+be ready the way a ROM shows it is, by its having read all eight half-rows of the keyboard within
+one frame, so it needs no pause tuned to a model, and it makes no use of the tape's speed: it works
+in Fast, Accurate and Turbo modes alike.
+
+In the GUI the **Autoload tape** preference (Preferences > Machines > Tape, on by default;
+`"tapeAutoload"` in `settings.json`) makes File > Open, a drop and `-tape` do this. While the typist
+types the window runs the machine ahead of the clock and silences it, as FUSE does, and the first
+key a person presses gives the typing up. With the preference off the toast says what to do by hand:
+type `LOAD ""` and press Play, or on a 128K choose Tape Loader. The headless program does it only when
+asked, with `-autoload-tape`, so that scripts and tests that load a tape as they always did are
+unchanged. A Next (NextZXOS has its own loaders), a machine with a ROM of its own, a snapshot, and
+`-autorun` (which has its own way of starting) are not autoloaded; the tape is then inserted as before.
+
 In the GUI build, dropping a file onto the window loads it by extension:
 
 | Extension | Loads as |
 |-----------|----------|
 | `.scr` | A raw 6912-byte screen dump (6144 bytes bitmap + 768 bytes attributes), painted directly onto the framebuffer |
 | `.zxs` | A ZenZX snapshot |
-| `.tap` / `.tzx` | A tape image, then driven with the `Alt+P/R/T/I` controls |
+| `.tap` / `.tzx` | A tape image, started by itself when Autoload tape is on (see "Tape autoload"), and driven with the `Alt+P/R/T/I` controls |
 | `.dsk` | A +3 disk image (requires +3 mode with the FDC enabled) |
 | `.sna` / `.z80` | Standard snapshots (48K and 128K), via the shared `zentools` library |
 | `.szx` | ZX-State snapshots, load only, via the shared `zentools` library |
@@ -575,8 +601,8 @@ In the GUI build, dropping a file onto the window loads it by extension:
 
 Dropping a file onto a storage slot instead copies it into that slot's media:
 onto a Next's SD card (slot 2) it is copied to the card and the Browser is
-refreshed to show it without a keypress; onto the +3's disc it is written into
-the disc's +3DOS filesystem. A slot drawer slides down from the top edge while a
+refreshed to show it without a keypress; onto the +3's disk it is written into
+the disk's +3DOS filesystem. A slot drawer slides down from the top edge while a
 file is dragged over the window; with several machines the drop goes to the
 focused one. See "Drag and drop" in [`gui.md`](gui.md) for the details.
 
@@ -614,14 +640,14 @@ needs, **Stop**, which ends the machine, and every supported model grouped by ma
 live without restarting), **Custom ROM** (the ROMs of the custom-roms folder, its subfolders as submenus, and **Download more ROMs**,
 which opens the pages listed in `custom-roms/rom-archives.json`: Rodolfo Guerra's ROM mods and the Speccy4ever ROM archive, as shipped), **Tape**, **Storage** (the +3's
 floppy drive and a Next's SD cards, the same two sections on every model, greyed where the machine has none),
-**Snapshot**, **View** (FPS counter, border display, full screen, display scale, layouts),
+**Snapshot**, **View** (FPS counter, border, full screen, display scale, layouts, screenshots),
 and **Theme** (Dark/Light/Spectrum, plus a font submenu with six bundled
-BDF faces). A logo/rainbow element at the right of the bar opens the Help
+BDF faces). A small circle with three lines (the burger) at the right of the bar opens the Help
 menu, in titled sections: **Help** (the in-app reference
 covering every menu, shortcut and flag, **ZenZX Manual**, which opens this manual as a PDF
 (`zenzx-<version>-manual.pdf`) from beside the program, or from the release page when it is
 not there, **About...**, **Acknowledgements...** and **ZenZX website**),
-and **Tools** (**Developer** > **Debugger**). The border display is the
+and **Tools** (**Developer** > **Debugger**). The button at the left of the bar, four small slanted bars (////), drawn like the teeth of the Spectrum logo, swaps the menus for a toolbar of what is used most: Reset, Play, Pause and Stop, then Tapes, Disks, SD Cards, Snapshots and Screenshots, which open those windows. Each is a small picture; rest the pointer on one for half a second and its name appears. Disks and SD Cards are left out where the machine has none, and in a narrow window the buttons that do not fit are behind a button of three dots that opens them as a menu. The menus slide up out of the bar, the toolbar slides up in and the bars turn, and are dimmer while the toolbar is in; the same button brings the menus back. Which of the two you left is kept for the next run. The logo at the right of the bar is only a picture. The border display is the
 user's to choose except where the picture decides it (a tiled layout, a Layer 2
 mode that fills the frame); see `docs/gui.md`.
 
@@ -632,9 +658,81 @@ full prose detail (including the exact palette and rendering choices for
 each theme) in [`gui.md`](gui.md#top-menu-bar); this
 manual gives the practical summary above rather than repeating it.
 
+### Tapes (GUI)
+
+The top of the Tape menu is about getting a tape into the deck. **Load Tape...** opens a file browser
+that offers tapes (`.tap` and `.tzx`), starting in the folder of the tape loaded last, or in the
+`tapes/` folder (`-tapes-dir`) when none has been or its folder has gone; the folder is made when it
+is first needed. **Recent Tapes** lists the last tapes loaded, newest first, from whichever way they
+came (this menu, File > Open, Manage Tapes, a drop on the window or `-tape`); the first 15 are rows,
+and when there are more a last row, "N more: Manage Tapes...", opens the window. Sixty are kept, in
+`settings.json` (`recentTapes`), and a tape that has gone is left out. **Autoload Tape** is a checkbox:
+it is the same setting as Preferences > Machines > Autoload tape, and says whether a tape that is
+loaded starts by itself (see [Tape autoload](#tape-autoload)). A tape from any of these is loaded as a
+tape dropped on the window is, so the machine, the deck and the toast are the same; Load Tape and
+Recent Tapes need a machine running, and Manage Tapes does not.
+
+**Manage Tapes...** opens a window of the tapes in the tapes folder and the tapes that were loaded from
+elsewhere, those loaded lately first and the rest by name, each with a picture: **the first screen on
+the tape**, as a grid of three across or, with the **Rows** button, as rows of name, format, size and
+date in columns. A screen is a block of 6912 bytes that comes after a header saying
+`CODE`, 6912 bytes, loaded at 16384 or with `scr` or `screen` in its name, or one that has no header
+at all (as loaders read a loading screen); the first on the tape is the one shown. A tape with none says "No screen". Under the list, the **blocks
+of the tape that has the focus** are listed: their number, kind (Program, Number array, Character
+array, Bytes, Data, and in a `.tzx` also Tone, Pulses, Recording, Special, Pause and Stop), name, and what each holds,
+with the block the picture comes from marked. `Tab` gives the blocks the keys, and the arrows,
+`PageUp`, `PageDown`, `Home`, `End` and the mouse wheel scroll them; another tape that gets the focus
+shows its blocks from the first. **Load** (or `Enter`, or two clicks) puts the chosen tape in the deck
+and closes the window; **Rename** and **Delete** ask as Manage Screenshots does (the new name, then
+whether to go on; the word `DELETE`), and a tape keeps its format when renamed, and its place among the
+recent tapes. They act on the files. A file that cannot be read says why under the list.
+
+### Screenshots (GUI)
+
+View > Screenshot saves the picture on the machine in the `screenshots/` folder (`-screenshots-dir`
+moves it; it is made when the first is saved), under a name of the form
+`screenshot_<machine>_<date>_<time>.<ext>`, such as `screenshot_Manic-Miner_20261127_093005.png`.
+`<machine>` is the name of the first BASIC program the machine loaded, or the model's name when it has
+loaded none, with every run of spaces and other characters that a file name dislikes made one hyphen
+(the underscore is what separates the fields of the name, so it is never inside one). A second taken
+in the same second is saved a second later, and none is written over. A toast names each file saved.
+
+| Row | Saves | Offered when |
+|-----|-------|--------------|
+| Save as PNG | the picture as it is shown, with the border when Border is on | always |
+| Save as SCR | the display memory, 6912 bytes: the bitmap and its attributes | the standard screen (a Next's ULA, or Timex screen 1) |
+| Save as Hi-Res SCR (.hires.scr) | the Timex hi-res screen: 12288 bytes, and after them the byte of the Timex port that holds its ink | the Timex hi-res mode (a Next) |
+| Save as Hi-Colour SCR (.hicol.scr) | the Timex hi-colour screen: 12288 bytes, the bitmap and an attribute for each of its bytes | the Timex hi-colour mode |
+| Save as Layer 2 (.nxi) | the palette, then the pixels as the layer holds them | Layer 2 is on (a Next) |
+| Save as LoRes (.nxi) | the palette, then the pixels | LoRes is on (a Next) |
+| Save as GIF (2 seconds) | an animated GIF of the next two seconds: 50 frames, one of every two the machine draws (25 a second), 4/100 of a second each, repeating | always |
+
+A row that does not apply to what the machine is showing is greyed, and all are with no machine
+running. The GIF is recorded as the machine runs (a paused machine records when it plays again) and
+written when it is complete, with a toast. Only one is recorded at a time. A picture of more than 256
+colours is reduced to 256 for the GIF; one of 256 or fewer is kept exactly. A Next's picture is its
+whole frame, border included.
+
+**Manage Screenshots...** opens a window of every screenshot in the folder (`.png`, `.scr`, `.hires.scr`,
+`.hicol.scr`, `.nxi` and `.gif`), the newest first, with a thumbnail of each, as a grid of three across or, with the
+**Rows** button, as rows of date, name, format and size in columns. **Preview** (or `Enter`, or two
+clicks) shows the chosen one as large as the window allows, in whole-number zooms when it fits so that
+its pixels stay sharp; a GIF plays. In the preview Left and Right show the screenshots beside it, and
+`Escape` or a click closes it. **Rename** and **Delete** ask as the SD Cards window does (the new
+name, then whether to go on; the word `DELETE`), and a screenshot keeps its format when renamed.
+A file that cannot be read as a picture shows a `?`, and says why under the list. A Timex screen is saved
+as `.hires.scr` or `.hicol.scr`, which say what its 12288 bytes are, so that a `.scr` is always the
+standard 6912 bytes; renaming one keeps its extension whole. A plain `.scr` of 12289 bytes is read as
+hi-res (the byte of port 0xFF after the 12288 holds its ink); one of 12288 bytes from another tool does
+not say whether it is hi-res or hi-colour, so its thumbnail and preview guess from the file, and
+renaming it `.hires.scr` or `.hicol.scr` settles it. File > Open, `-scr` and the script `scr` action
+load a `.hires.scr` or `.hicol.scr` into both screens and set the mode: on a Next, either; on a classic
+machine, a hi-colour one with the hi-colour renderer; elsewhere they say that the machine has no such
+mode and change nothing.
+
 ### The Info windows (GUI)
 
-**Show Info** in the Tape menu, **Disk Info** in the Storage menu,
+**Tape Info** in the Tape menu, **Disk Info** in the Storage menu,
 **Card Info** in the Storage menu and **Snapshot Info** and **Run Diagnostics** in the Snapshot
 menu each open a window with what they have to say, in the reader
 Help and About use: Escape, its close box or a click outside closes it,
@@ -644,54 +742,60 @@ to the terminal, for a session that is being logged.
 | Window | Says |
 |---|---|
 | Tape | the file, the mode (fast, accurate or turbo), whether it is playing and at which block, the first program's name, and every block with its type, name and length |
-| Disk | the file (or that the disc is a blank one not saved yet), its tracks and sides, whether it has changes that are only in memory, the file's size, and whether the file has changed on disk since it was loaded |
+| Disk | the file (or that the disk is a blank one not saved yet), its tracks and sides, whether it has changes that are only in memory, the file's size, and whether the file has changed on disk since it was loaded |
 | Card | for each of the two slots: the file, its size, whether it can be written to, how many files it holds and how much they come to, and whether a Next boots from it, with the reason when it does not |
 | Snapshot | the snapshot files there are in the snapshots folder (the quick save in each format, the timestamped saves and the newest, with size and date), then how a snapshot is loaded and what Quick Save, Save Timestamped and Save As write |
 | Diagnostics | the model and whether it runs or is paused, the registers, flags and interrupts, where PC is and the nearest ROM routine, the memory layout and banking (on a Next, which ROM the CPU reads and the registers that decide it, and three sections on the Next's hardware: the CPU speed, timing, the eight MMU slots and the interrupts; the layer order, screen modes, Layer 2, tilemap and sprites; the DMA, copper and DivMMC), the top of the stack, the tape, the floppy drive and the card slots, and checks (byte order of snapshot files, the stack pointer, the memory map) that name what is wrong; reading it changes nothing in the machine |
 
 ![The Card Info window](img/info-card.png)
 
-### The +3's discs (GUI)
+### The +3's disks (GUI)
 
-A disc is read whole into memory when it goes in the drive, and the +3
+A disk is read whole into memory when it goes in the drive, and the +3
 works on that copy. The file gets the changes later: 30 seconds after the
 last write, on Eject, on Save (`F4`) and when the program ends. So there
-can be two versions of a disc, the one in memory and the one in the file,
+can be two versions of a disk, the one in memory and the one in the file,
 and either can be ahead: the memory when the +3 has written, the file when
-another program has rewritten it since (a build that makes the disc again,
+another program has rewritten it since (a build that makes the disk again,
 say).
 
-**Manage Disks...** in the Storage menu opens the Floppy Disks window.
-Its second line says how the drive's disc stands against its file: the
+The **Floppy Disk** section of the Storage menu starts with **Load Disk...**, a file browser for
+`.dsk` files that starts in the folder of the disk loaded last, **Recent Disks** and **Manage Disks...**.
+**Recent Disks** lists the disks loaded lately, newest first, from whichever way they came (this
+menu, File > Open or a drop on the window); it is the list that File > Open keeps, seen through the
+disks, so a disk that has gone is left out, and many tapes and snapshots opened since can push an
+older disk out of it. The first 15 are rows, and when there are more a last row, "N more: Manage
+Disks...", opens the window. **Manage Disks...** opens the Floppy Disks window.
+Its second line says how the drive's disk stands against its file: the
 same, changes here not yet in the file, the file changed on disk since it
-was read, or both. Below it are the disc images of the folder the disc
+was read, or both. Below it are the disk images of the folder the disk
 came from (the current folder when the drive is empty), each with its size,
-its kind (`DSK`, `EDSK`, a raw 180K sector dump, or not a disc and why) and
+its kind (`DSK`, `EDSK`, a raw 180K sector dump, or not a disk and why) and
 who has it.
 
 | Button | Does |
 |---|---|
-| **Put in drive** | Puts a free disc in the drive, writing the one that was there to its file first |
-| **Eject** | Writes the disc to its file and empties the drive |
+| **Put in drive** | Puts a free disk in the drive, writing the one that was there to its file first |
+| **Eject** | Writes the disk to its file and empties the drive |
 | **Write to file now** | The memory to the file, without waiting for the 30 seconds |
-| **Read file again** | The file to the memory: what a build that has remade the disc needs |
-| **Save as new file** | Writes the disc in memory to a new file (`work-2.dsk`) and makes that the drive's: both versions are kept |
-| **Copy** | Copies the chosen disc to a new file. A machine that has it writes its changes to the file first, so the copy has them |
-| **New blank disc** | Makes a blank 180K image; +3DOS formats it |
-| **Other file...** | Adds a disc image from another folder to the list |
+| **Read file again** | The file to the memory: what a build that has remade the disk needs |
+| **Save as new file** | Writes the disk in memory to a new file (`work-2.dsk`) and makes that the drive's: both versions are kept |
+| **Copy** | Copies the chosen disk to a new file. A machine that has it writes its changes to the file first, so the copy has them |
+| **New blank disk** | Makes a blank 180K image; +3DOS formats it |
+| **Other file...** | Adds a disk image from another folder to the list |
 
 A button that would lose one of the two versions asks first: its label gains
 "sure?" and the line under the list says what would be lost; press it again
 to go ahead. That is Read file again over unwritten changes, Write and Eject
-over a file that changed on disk, and Eject of a blank disc that was written
+over a file that changed on disk, and Eject of a blank disk that was written
 to and has no file. The 30-second write does not ask and so does not
 happen when the file has changed on disk: it says so once on the terminal
 and leaves both as they are.
 
-A disc file is in the drive of one machine at a time, as a card is, and the
-window does not offer a disc another machine has.
+A disk file is in the drive of one machine at a time, as a card is, and the
+window does not offer a disk another machine has.
 
-![The Floppy Disks window: the drive against its file, and the folder's disc images](img/floppy-disks-window.png)
+![The Floppy Disks window: the drive against its file, and the folder's disk images](img/floppy-disks-window.png)
 
 ### Standalone programs (GUI)
 
@@ -761,7 +865,7 @@ reset, keeps the memory.)
 **Names.** A machine is called by its model until it loads a BASIC program:
 then it takes the name of the first one it loads, from tape (the tape's
 first Program header, once the tape has delivered something), from a +3
-disc (the directory's name for the file) or from a Next's SD card (the
+disk (the directory's name for the file) or from a Next's SD card (the
 file's name, without `.bas`). NextZXOS's own `autoexec.1st` and
 `autoexec.bas`, which it runs by itself when it starts, do not count. Only
 the first program names the machine. A name you give it with `F2` is yours:
@@ -815,7 +919,7 @@ power-on; change it from the Machine menu once it is in front. Beside a
 Next the new machine is a 48K: to make it a second Next choose that from
 the Machine menu, and the SD Cards window asks for a card of its own for
 it, since two machines cannot share one (see "The SD Cards window" under
-[ZX Spectrum Next](#zx-spectrum-next)). A machine's unsaved disc changes are committed when it is closed, as
+[ZX Spectrum Next](#zx-spectrum-next)). A machine's unsaved disk changes are committed when it is closed, as
 they are when the program ends.
 
 The machines can also be started from the command line, `-multi

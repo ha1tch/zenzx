@@ -7,14 +7,20 @@ package zenzx
 
 import "github.com/ha1tch/zenui"
 
-// The head of the Machine menu: a title, Reset, then Pause or Play, then Stop, and after them the model
-// rows (machines.json). The second row says what it will do, not what it is: Pause while the
-// machine runs, Play while it is paused, each with the transport sprite the debugger and the
-// paused machine's button use. Stop ends the machine (the deck's stompStop, machinedeck_gui.go);
-// with no machine to act on, all three are disabled.
+// The head of the Machine menu: a title, then Reset, Play, Pause and Stop, and after them the model
+// rows (machines.json). The rows are the same ones whatever the machine is doing, as the Tape
+// menu's Play, Stop and Rewind are, and each is enabled only when it can act: Play while the machine
+// is paused or stopped (a stopped machine starts again, as the model it was), Pause while it runs,
+// Stop and Reset while there is a machine. Reset has the recycle sprite, the others the transport
+// sprites the debugger and the paused machine's button use. Stop ends the machine (the deck's
+// stompStop, machinedeck_gui.go).
 
-// machineHeadRows is how many rows come before the model rows.
-const machineHeadRows = 4
+// machineHeadRows is how many rows come before the model rows, and machinePlayRow is the Play
+// row among them: the one that acts on a stopped machine.
+const (
+	machineHeadRows = 5
+	machinePlayRow  = 2
+)
 
 // transportIcons are the transport sprites, parsed once.
 var transportIcons = parseTransportSprites()
@@ -23,6 +29,9 @@ var transportIcons = parseTransportSprites()
 // cell a menu row gives it: whole pixels, as large as fit, centred, in the row's own colour.
 func transportIcon(name string) func(r zenui.Renderer, cell zenui.Rect, col zenui.Colour) {
 	icon, ok := transportIcons[name]
+	if !ok {
+		icon, ok = toolbarIcons[name]
+	}
 	return func(r zenui.Renderer, cell zenui.Rect, col zenui.Colour) {
 		if !ok {
 			return
@@ -45,15 +54,12 @@ func transportIcon(name string) func(r zenui.Renderer, cell zenui.Rect, col zenu
 
 // machineHead is the first rows of the Machine menu as zx is now.
 func (b *appMenuBar) machineHead(zx *ZenZX) []zenui.Item {
-	label, sprite := "Pause", "pause"
-	if zx.paused {
-		label, sprite = "Play", "play"
-	}
 	off := zx.stopped || zx.stopping
 	return []zenui.Item{
 		{Label: "Machine", Title: true},
-		{Label: "Reset", Disabled: off},
-		{Label: label, Icon: transportIcon(sprite), Disabled: off},
+		{Label: "Reset", Icon: transportIcon("recycle"), Disabled: off},
+		{Label: "Play", Icon: transportIcon("play"), Disabled: zx.stopping || !(zx.paused || zx.stopped)},
+		{Label: "Pause", Icon: transportIcon("pause"), Disabled: off || zx.paused},
 		{Label: "Stop", Icon: transportIcon("stop"), Disabled: off},
 	}
 }
@@ -68,7 +74,7 @@ func (b *appMenuBar) refreshMachineItems(zx *ZenZX) {
 
 // needsMachine says the menu row chosen acts on the machine, so that with none running it has
 // nothing to act on: the File menu's Export, and every row of the menus that are about
-// the machine's tape, discs and ROMs, and the rows of the Snapshot menu that save or look into one. The Machine menu's own head rows are disabled
+// the machine's tape, disks and ROMs, and the rows of the Snapshot menu that save or look into one. The Machine menu's own head rows are disabled
 // then, and its model rows start a machine.
 func (b *appMenuBar) needsMachine(sel zenui.MenuBarSelection) bool {
 	switch sel.BarIndex {
@@ -77,7 +83,8 @@ func (b *appMenuBar) needsMachine(sel zenui.MenuBarSelection) bool {
 		// it is of (the other files say there is none: loadDroppedFile)
 		return sel.ItemIndex == 1
 	case barMachine:
-		return sel.ItemIndex < machineHeadRows
+		// Play acts on a stopped machine too: it starts one
+		return sel.ItemIndex < machineHeadRows && sel.ItemIndex != machinePlayRow
 	case barCustomROM:
 		return !b.isRomSites(sel) // the row of links to ROM pages opens a page, whatever is running
 	case barSnapshot:
@@ -86,10 +93,41 @@ func (b *appMenuBar) needsMachine(sel zenui.MenuBarSelection) bool {
 			return b.snapSpec[i].needsMachine
 		}
 		return true
-	case barTape, barFloppyDisk:
+	case barTape:
+		// the rows that act on the tape in a machine's deck need one: Load Tape, Recent Tapes and the
+		// transport and mode rows; Manage Tapes and Autoload Tape do not
+		if i := sel.ItemIndex; i >= 0 && i < len(b.tapeMenu) {
+			return b.tapeMenu[i].needsMachine
+		}
+		return true
+	case barFloppyDisk:
 		return true
 	}
 	return false
+}
+
+// playMachine is the Machine menu's Play row: a paused machine goes on, and with none running
+// one is started, of the model the menu has ticked (the one that was stopped), the 48K when none is.
+func (b *appMenuBar) playMachine(zx *ZenZX) {
+	if !zx.stopped {
+		if zx.paused {
+			zx.TogglePause()
+		}
+		return
+	}
+	flag := b.currentModel()
+	if flag == "" {
+		flag = "48k"
+	}
+	if flag == "next" && b.needsOwnCard(zx) {
+		return // the SD Cards window is open: the machine becomes a Next when a card is chosen
+	}
+	if b.startMachine == nil {
+		return
+	}
+	if nz := b.startMachine(flag); nz != nil && flag == "next" {
+		b.startNext(nz)
+	}
 }
 
 // pickMachineModel carries out a choice among the Machine menu's model rows: the running

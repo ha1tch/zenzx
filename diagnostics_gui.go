@@ -15,7 +15,7 @@ import (
 // It used to print a developer's dump (a hex dump of a test buffer, and ten instructions run
 // on the live CPU to watch R) to the terminal. It now opens a window with a report on the
 // machine as it is: what it is, what its CPU and memory are doing, what is in the tape deck,
-// the disc drive and the card slots, and a few checks that say plainly whether something is
+// the disk drive and the card slots, and a few checks that say plainly whether something is
 // wrong. Nothing in it changes the machine. The text is in the reader's own markup, as the
 // info windows' are (info_gui.go): lines under 70 columns, "## " headings, and a line that
 // begins with two spaces drawn dimmer.
@@ -197,7 +197,7 @@ func diagnosticsText(zx *ZenZX, model string) string {
 		case !fdc.diskPresent:
 			lines = append(lines, "  Drive A: is empty.")
 		default:
-			file := "a blank disc, not saved yet"
+			file := "a blank disk, not saved yet"
 			if fdc.diskFilename != "" {
 				file = infoPath(fdc.diskFilename)
 			}

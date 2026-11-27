@@ -70,7 +70,7 @@ func TestFirstProgramFromTape(t *testing.T) {
 	}
 }
 
-// discWithProgram is a +3 disc as a flat image with one file in its
+// discWithProgram is a +3 disk as a flat image with one file in its
 // directory, name.ext, whose first block is block and whose content begins
 // as a +3DOS file of the given BASIC type.
 func discWithProgram(name, ext string, block int, kind byte) []byte {
@@ -89,7 +89,7 @@ func discWithProgram(name, ext string, block int, kind byte) []byte {
 }
 
 func TestFirstProgramFromDisc(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "disc.dsk")
+	path := filepath.Join(t.TempDir(), "disk.dsk")
 	if err := os.WriteFile(path, discWithProgram("GAME", "BAS", 5, 0), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -111,10 +111,10 @@ func TestFirstProgramFromDisc(t *testing.T) {
 	if got := zx.FirstProgram(); got != "GAME" {
 		t.Fatalf("FirstProgram = %q, want GAME", got)
 	}
-	// The name outlives the disc.
+	// The name outlives the disk.
 	fdc.EjectDisk()
 	if got := zx.FirstProgram(); got != "GAME" {
-		t.Errorf("FirstProgram = %q after the disc was ejected", got)
+		t.Errorf("FirstProgram = %q after the disk was ejected", got)
 	}
 
 	// A file that is not a program names nothing.

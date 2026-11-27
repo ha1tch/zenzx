@@ -66,132 +66,7 @@ func (r testDrawRecorder) LineHeight(scale int) int          { return 8 * scale 
 func (r testDrawRecorder) Clip(zenui.Rect)                   {}
 func (r testDrawRecorder) ClipEnd()                          {}
 
-func TestLogoHotZoneCoversRightOfLabels(t *testing.T) {
-	zx := testZX()
-	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
-	if err != nil {
-		t.Fatalf("newAppMenuBar: %v", err)
-	}
-	defer b.text.Unload()
-
-	// Too narrow for the logo to fit: the whole of the bar right of the labels opens the menu.
-	b.widget.Draw(testNoopRenderer{}, 400, 600, 0, menuStripHeight, b.theme)
-	zone := b.logoHotZone(400)
-	if zone.X != b.widget.LabelsEndX() || zone.X+zone.W != 400 || zone.H != menuStripHeight {
-		t.Errorf("no-logo zone = %+v, want from LabelsEndX %d to 400, %d high", zone, b.widget.LabelsEndX(), menuStripHeight)
-	}
-
-	// Wide enough: the zone is the logo button, run out to the window's edge.
-	b.widget.Draw(testNoopRenderer{}, 800, 600, 0, menuStripHeight, b.theme)
-	zone = b.logoHotZone(800)
-	if want := b.widget.DecorationX() - logoButtonPad; zone.X != want {
-		t.Errorf("zone.X = %d, want %d (the logo less its padding)", zone.X, want)
-	}
-	if zone.X+zone.W != 800 || zone.H != menuStripHeight {
-		t.Errorf("zone = %+v, want to reach x=800 and be %d high", zone, menuStripHeight)
-	}
-	if zone.X <= b.widget.LabelsEndX() {
-		t.Errorf("zone.X = %d does not leave the labels (end %d) to the labels", zone.X, b.widget.LabelsEndX())
-	}
-	if zone.Contains(b.widget.LabelsEndX()+2, 5) {
-		t.Errorf("empty bar beside the labels opens the Help menu; only the logo should")
-	}
-}
-
-// The button is raised under the pointer, pressed in while its menu is open, and plain at rest.
-func TestLogoButtonStates(t *testing.T) {
-	zx := testZX()
-	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
-	if err != nil {
-		t.Fatalf("newAppMenuBar: %v", err)
-	}
-	defer b.text.Unload()
-	b.state = barShown
-	b.widget.Draw(testNoopRenderer{}, 800, 600, 0, menuStripHeight, b.theme)
-	rc, ok := b.logoButton(800)
-	if !ok {
-		t.Fatal("no logo button at 800 wide")
-	}
-	if rc.X < b.widget.LabelsEndX() || rc.X+rc.W > 800 || rc.H <= 0 || rc.H >= menuStripHeight {
-		t.Errorf("button %+v is not inside the bar right of the labels", rc)
-	}
-	cx, cy := rc.X+rc.W/2, rc.Y+rc.H/2
-	if got := b.logoButtonState(800, cx, cy); got != logoHover {
-		t.Errorf("pointer on the logo: state %v, want hover", got)
-	}
-	if got := b.logoButtonState(800, 5, cy); got != logoIdle {
-		t.Errorf("pointer on the labels: state %v, want idle", got)
-	}
-	b.openLogoMenu(800)
-	if got := b.logoButtonState(800, 5, cy); got != logoPressed {
-		t.Errorf("menu open: state %v, want pressed even with the pointer away", got)
-	}
-}
-
-// The pointer is a hand over the button and nowhere else: not on the labels, not below the
-// bar, not while the bar is hidden, and not while a window covers it.
-func TestLogoCursorOnlyOverTheButton(t *testing.T) {
-	zx := testZX()
-	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
-	if err != nil {
-		t.Fatalf("newAppMenuBar: %v", err)
-	}
-	defer b.text.Unload()
-	b.state = barShown
-	b.widget.Draw(testNoopRenderer{}, 800, 600, 0, menuStripHeight, b.theme)
-	rc, ok := b.logoButton(800)
-	if !ok {
-		t.Fatal("no logo button at 800 wide")
-	}
-	cx, cy := rc.X+rc.W/2, rc.Y+rc.H/2
-	if !b.logoCursorWanted(800, cx, cy) {
-		t.Error("pointer on the button: want a hand")
-	}
-	if !b.logoCursorWanted(800, rc.X, rc.Y) || b.logoCursorWanted(800, rc.X-1, cy) || b.logoCursorWanted(800, rc.X+rc.W, cy) {
-		t.Error("the hand does not follow the button's edges")
-	}
-	if b.logoCursorWanted(800, 5, cy) {
-		t.Error("pointer on the labels: want the arrow")
-	}
-	if b.logoCursorWanted(800, cx, menuStripHeight+20) {
-		t.Error("pointer below the bar: want the arrow")
-	}
-	b.state = barHidden
-	if b.logoCursorWanted(800, cx, cy) {
-		t.Error("bar hidden: want the arrow")
-	}
-	b.state = barShown
-	b.prefs = &prefsWindow{}
-	if b.logoCursorWanted(800, cx, cy) {
-		t.Error("a window over the bar: want the arrow")
-	}
-}
-
-func TestDrawLogoButtonBevels(t *testing.T) {
-	rc := zenui.Rect{X: 100, Y: 1, W: 52, H: 22}
-	count := func(state logoButtonState) (calls []testDrawCall) {
-		r := newTestDrawRecorder()
-		drawLogoButton(r, rc, 0, state)
-		return *r.calls
-	}
-	if n := len(count(logoIdle)); n != 0 {
-		t.Errorf("idle button drew %d things, want none", n)
-	}
-	raised, pressed := count(logoHover), count(logoPressed)
-	if len(raised) == 0 || len(pressed) <= len(raised) {
-		t.Fatalf("raised drew %d, pressed %d; pressed also darkens the face so should draw more", len(raised), len(pressed))
-	}
-	// The first edge drawn is the outer top: light when raised, dark when pressed.
-	if raised[0].col.R != 255 || pressed[len(pressed)-len(raised)].col.R != 0 {
-		t.Errorf("raised top edge %v, pressed top edge %v: want light, then dark", raised[0].col, pressed[len(pressed)-len(raised)].col)
-	}
-	// The bar slides: the bevel follows it.
-	r := newTestDrawRecorder()
-	drawLogoButton(r, rc, -24, logoHover)
-	if (*r.calls)[0].rect.Y != rc.Y-24 {
-		t.Errorf("bevel did not follow the bar: y=%d", (*r.calls)[0].rect.Y)
-	}
-}
+// The buttons at the ends of the bar, and the toolbar, are tested in barbuttons_gui_test.go.
 
 // helpRow is the index of the row labelled label in the Help menu that is open, found by
 // the label so that the tests do not depend on where the section titles put it.
@@ -482,7 +357,7 @@ func TestApplyFixedStateReservesTopHeight(t *testing.T) {
 	}
 }
 
-func TestLogoMenuAlwaysRightAlignedToWindowBorder(t *testing.T) {
+func TestHelpMenuAlwaysRightAlignedWithTheHelpButton(t *testing.T) {
 	zx := testZX()
 	b, err := newAppMenuBar(zx, "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
@@ -490,7 +365,8 @@ func TestLogoMenuAlwaysRightAlignedToWindowBorder(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	const rightMargin = 8
+	// The menu hangs from the Help button, whose right edge is a pad in from the window's.
+	rightMargin := logoButtonPadFor(b.stripH())
 	for _, screenW := range []int{500, 800, 1600, 3000} {
 		b.openLogoMenu(screenW)
 		b.logoMenu.Draw(testNoopRenderer{}, screenW, 600, b.theme)

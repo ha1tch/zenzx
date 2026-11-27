@@ -103,10 +103,15 @@ type SpectrumIO struct {
 	link *Link
 
 	// Joystick support (joystick.go)
-	joystickMode   JoystickMode
-	joyPressed     [8]uint8 // keys a Sinclair or Cursor joystick holds down, a bit set for each: joyports.go
-	kempstonState  uint8    // Current Kempston port 0x1F byte, updated by SetJoystickState
-	kempston2State uint8    // Current second Kempston port 0x37 byte (neo-Spectrum platforms only, joystick.go)
+	joystickMode JoystickMode
+	joyPressed   [8]uint8 // keys a Sinclair or Cursor joystick holds down, a bit set for each: joyports.go
+
+	// typistKeys are the keys the phantom typist holds down, a bit set for each, over the keyboard
+	// and the joystick; typist is told of each read of the ULA port: phantomtypist.go.
+	typistKeys     [8]uint8
+	typist         *phantomTypist
+	kempstonState  uint8 // Current Kempston port 0x1F byte, updated by SetJoystickState
+	kempston2State uint8 // Current second Kempston port 0x37 byte (neo-Spectrum platforms only, joystick.go)
 
 	// Mouse support (mouse.go)
 	mouseMode            MouseMode
@@ -351,11 +356,14 @@ func (io *SpectrumIO) ReadPort(port uint16) uint8 {
 	// ULA port (0xFE) - keyboard and tape
 	if port&0x01 == 0 {
 		result := uint8(0x1F)
+		if io.typist != nil {
+			io.typist.ulaRead(port) // the phantom typist sees the ROM look at the keyboard
+		}
 
 		// Check keyboard rows
 		for row := 0; row < 8; row++ {
 			if port&(1<<uint(row+8)) == 0 {
-				result &= io.keyboard[row] &^ io.joyPressed[row]
+				result &= io.keyboard[row] &^ io.joyPressed[row] &^ io.typistKeys[row]
 			}
 		}
 
@@ -846,7 +854,7 @@ func (io *SpectrumIO) SaveDisk() error {
 // SaveDiskAs saves the current disk image with a new filename
 func (io *SpectrumIO) SaveDiskAs(filename string) error {
 	if io.fdc != nil && io.hasFDC && io.fdc.HasDisk() {
-		// A disc read from a DSK file lives in the parsed structure, not in
+		// A disk read from a DSK file lives in the parsed structure, not in
 		// the flat image: write whichever the drive is reading from.
 		data := io.fdc.diskImage
 		if io.fdc.disk != nil {

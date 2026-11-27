@@ -147,6 +147,9 @@ func (b *appMenuBar) browseExport() {
 		StartDir:   q.dir,
 		DefaultExt: ext,
 		FS:         zenui.OSFS{},
+
+		// The form asks about a file that is there (once, as it always did); the browser does not ask first.
+		NoOverwriteConfirm: true,
 	})
 	b.dialogKind = dialogExportBrowse
 }

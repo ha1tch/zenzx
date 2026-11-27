@@ -89,8 +89,18 @@ func TestStorageMenuFollowsTheMachine(t *testing.T) {
 		t.Fatalf("the SD Card menu has no %q row", label)
 		return -1
 	}
+	// The Load group of the section: Insert Card in Slot 2... and Manage Cards... together, and the
+	// section has no separator in it: its title is the break.
+	if ins, man := row("Insert Card in Slot 2..."), row("Manage Cards..."); man != ins+1 {
+		t.Errorf("Insert Card in Slot 2... is row %d and Manage Cards... row %d, want them together", ins, man)
+	}
+	for i := row("SD Card"); i < len(items); i++ {
+		if items[i].Separator {
+			t.Errorf("items[%d] is a separator inside the SD Card section", i)
+		}
+	}
 	// The same two sections as on any model: the card one live, the floppy one a disabled
-	// signpost for the NextZXOS disc images (T-72).
+	// signpost for the NextZXOS disk images (T-72).
 	if !hasSection(items, "SD Card") || len(liveRows(items, "SD Card")) == 0 {
 		t.Error("a Next's SD Card section is not live")
 	}

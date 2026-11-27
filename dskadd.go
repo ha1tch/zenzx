@@ -23,7 +23,7 @@ import (
 func addFilesToDisk(dskPath string, files []string) ([]string, error) {
 	di, err := diskimg.LoadFromFile(dskPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading the disc image: %w", err)
+		return nil, fmt.Errorf("reading the disk image: %w", err)
 	}
 	written := make([]string, 0, len(files))
 	for _, host := range files {
@@ -34,7 +34,7 @@ func addFilesToDisk(dskPath string, files []string) ([]string, error) {
 		written = append(written, name)
 	}
 	if err := di.SaveToFile(dskPath); err != nil {
-		return nil, fmt.Errorf("saving the disc image: %w", err)
+		return nil, fmt.Errorf("saving the disk image: %w", err)
 	}
 	return written, nil
 }

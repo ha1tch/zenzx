@@ -62,10 +62,10 @@ func TestDiskInfoText(t *testing.T) {
 
 	plus3.io.fdc.CreateBlankDisk()
 	text = diskInfoText(plus3)
-	fitsThePanel(t, "a blank disc", text)
-	for _, want := range []string{"a blank disc, not saved yet", "40 tracks, one side"} {
+	fitsThePanel(t, "a blank disk", text)
+	for _, want := range []string{"a blank disk, not saved yet", "40 tracks, one side"} {
 		if !strings.Contains(text, want) {
-			t.Errorf("a blank disc's text lacks %q:\n%s", want, text)
+			t.Errorf("a blank disk's text lacks %q:\n%s", want, text)
 		}
 	}
 
@@ -80,10 +80,10 @@ func TestDiskInfoText(t *testing.T) {
 	}
 	plus3.io.fdc.diskModified = true
 	text = diskInfoText(plus3)
-	fitsThePanel(t, "a disc with a long path", text)
+	fitsThePanel(t, "a disk with a long path", text)
 	for _, want := range []string{"work.dsk", "...", "unsaved: in memory", "File size"} {
 		if !strings.Contains(text, want) {
-			t.Errorf("a saved, changed disc's text lacks %q:\n%s", want, text)
+			t.Errorf("a saved, changed disk's text lacks %q:\n%s", want, text)
 		}
 	}
 }
@@ -143,8 +143,8 @@ func TestInfoItemsOpenAWindow(t *testing.T) {
 		says       string
 		tall       bool // a text too long for a panel of its own height: it scrolls
 	}{
-		{barTape, 10, "TAPE INFO", "No tape is loaded", false},
-		{barFloppyDisk, 8, "DISK INFO", "Drive A: is empty", false}, // index 8: the Floppy Disk title comes first
+		{barTape, 16, "TAPE INFO", "No tape is loaded", false},
+		{barFloppyDisk, 9, "DISK INFO", "Drive A: is empty", false}, // index 9: the title, Load, Recent, Manage, a separator, Insert Blank, Save, Save As, Eject, Info
 		{barSnapshot, snapRow(t, b, "Snapshot Info"), "SNAPSHOT INFO", "Quick Save", true},
 		{barSnapshot, snapRow(t, b, "Run Diagnostics"), "DIAGNOSTICS", "## CPU", true},
 	}

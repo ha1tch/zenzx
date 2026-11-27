@@ -28,6 +28,12 @@ var transportSprites = map[string][16]string{
 		"3e7c/3e7c", "7efc/7efc", "7efc/7efc", "3e7c/3e7c", "1e3c/1e3c", "0e1c/0e1c",
 		"060c/060c", "0204/0204", "0000/0000", "0000/0000",
 	},
+	// recycle is two arrows chasing each other round a ring, for the Machine menu's Reset row.
+	"recycle": {
+		"0000/0000", "0000/0000", "07f8/07f8", "1c3c/1c3c", "183c/183c", "3030/3030",
+		"2000/2000", "0000/0000", "0000/0000", "0004/0004", "0c0c/0c0c", "3c18/3c18",
+		"3c38/3c38", "1fe0/1fe0", "0000/0000", "0000/0000",
+	},
 	"pause": {
 		"0000/0000", "0000/0000", "0e38/0e38", "0e38/0e38", "0e38/0e38", "0e38/0e38",
 		"0e38/0e38", "0e38/0e38", "0e38/0e38", "0e38/0e38", "0e38/0e38", "0e38/0e38",

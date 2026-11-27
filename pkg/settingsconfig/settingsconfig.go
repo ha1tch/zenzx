@@ -36,6 +36,9 @@ type Settings struct {
 	// FixedMenuBar mirrors appMenuBar.fixed -- whether the bar is
 	// pinned permanently shown.
 	FixedMenuBar bool `json:"fixedMenuBar"`
+	// Toolbar is whether the bar shows the toolbar and not the menu's labels. Optional: a file
+	// from before it existed has the labels, as it always did.
+	Toolbar bool `json:"toolbar,omitempty"`
 	// Dock is whether the machine dock (the tiles that slide up from the bottom edge)
 	// may be shown, and Multi whether it may add machines. Both are optional in the file
 	// -- a settings.json from before they existed is still valid -- and both default to
@@ -45,6 +48,9 @@ type Settings struct {
 	// StopAnimation is whether stopping a machine plays the animation (a boot stamps a small
 	// Spectrum flat) or the machine just goes. Optional like Dock, and on by default.
 	StopAnimation *bool `json:"stopAnimation,omitempty"`
+	// TapeAutoload is whether a tape that is loaded is started by typing what loads it (the
+	// phantom typist). Optional like Dock, and on by default.
+	TapeAutoload *bool `json:"tapeAutoload,omitempty"`
 	// Drop and DropShift are what a tape, a .scr or a snapshot given to a Next at its menu
 	// is done with -- "ask", "copy" (to the SD card) or "run" -- by a plain drop and by a
 	// drop with Shift held. Optional like Dock, and "ask" and "run" by default.
@@ -79,6 +85,72 @@ type Settings struct {
 	// with Load Snapshot), newest first, for the Recent Snapshots menu. The ones Save Timestamped
 	// and Quick Save make are not in it: they have menus of their own. Optional like Escape.
 	RecentSnapshots []string `json:"recentSnapshots,omitempty"`
+	// RecentFiles are the files opened with File > Open and Load Disk, newest first, for
+	// the Recent place of those dialogs. Optional like RecentSnapshots.
+	RecentFiles []string `json:"recentFiles,omitempty"`
+	// RecentTapes are the tapes loaded into a deck, newest first, for the Recent Tapes menu and the
+	// Manage Tapes window. Optional like RecentFiles.
+	RecentTapes []string `json:"recentTapes,omitempty"`
+	// OpenFolder and DiskFolder are the folders File > Open and Load Disk start in: the
+	// folder of the file opened last with each. Optional: with none, or one that is gone, a
+	// dialog starts in the home folder.
+	OpenFolder string `json:"openFolder,omitempty"`
+	DiskFolder string `json:"diskFolder,omitempty"`
+	// FileDialog is how the person last looked at the folders of those dialogs. Optional.
+	FileDialog *FileDialogView `json:"fileDialog,omitempty"`
+}
+
+// FileDialogView is the choices a person makes in the Open dialogs about how a folder looks: the
+// hidden files shown, the details view, and what the list is ordered by (one of FileSortWords) and
+// whether it is reversed. It is zenui.View without the file type, which each dialog has its own.
+type FileDialogView struct {
+	Hidden     bool   `json:"hidden,omitempty"`
+	Details    bool   `json:"details,omitempty"`
+	Sort       string `json:"sort,omitempty"`
+	Descending bool   `json:"descending,omitempty"`
+}
+
+// FileSortWords are the words Sort can be, in zenui.SortKey order; "name" is the default.
+var FileSortWords = []string{"name", "size", "date", "type"}
+
+// RecentFilePaths is RecentFiles, a copy that can be kept.
+func (s *Settings) RecentFilePaths() []string {
+	if s == nil {
+		return nil
+	}
+	return append([]string(nil), s.RecentFiles...)
+}
+
+// RecentTapePaths is RecentTapes, a copy that can be kept.
+func (s *Settings) RecentTapePaths() []string {
+	if s == nil {
+		return nil
+	}
+	return append([]string(nil), s.RecentTapes...)
+}
+
+// OpenFolderPath is OpenFolder, and DiskFolderPath is DiskFolder: "" when there is none.
+func (s *Settings) OpenFolderPath() string {
+	if s == nil {
+		return ""
+	}
+	return s.OpenFolder
+}
+
+func (s *Settings) DiskFolderPath() string {
+	if s == nil {
+		return ""
+	}
+	return s.DiskFolder
+}
+
+// FileDialogChoice is FileDialog as a copy that can be kept: nil when none was saved.
+func (s *Settings) FileDialogChoice() *FileDialogView {
+	if s == nil || s.FileDialog == nil {
+		return nil
+	}
+	v := *s.FileDialog
+	return &v
 }
 
 // RecentSnapshotPaths is RecentSnapshots, a copy that can be kept.
@@ -165,6 +237,11 @@ func (s *Settings) DockOn() bool { return s == nil || s.Dock == nil || *s.Dock }
 // StopAnimationOn is StopAnimation with its default: on unless the file says off.
 func (s *Settings) StopAnimationOn() bool {
 	return s == nil || s.StopAnimation == nil || *s.StopAnimation
+}
+
+// TapeAutoloadOn is TapeAutoload with its default: on unless the file says off.
+func (s *Settings) TapeAutoloadOn() bool {
+	return s == nil || s.TapeAutoload == nil || *s.TapeAutoload
 }
 
 // MultiOn is Multi with its default: on unless the file says off.

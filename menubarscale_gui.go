@@ -34,7 +34,7 @@ func logoBevelThickness(h int) int { return max(1, (h+menuStripHeight/2)/menuStr
 
 // barScaleWidth is the width the bar's labels take at scale k: each label and one blank space.
 func (b *appMenuBar) barScaleWidth(k int) int {
-	w := 0
+	w, _ := barInsetsFor(b.stripFor(k)) // the room the toolbar button takes before the labels
 	space := b.renderer.TextWidth(" ", k)
 	for i := 0; ; i++ {
 		label := b.widget.LabelFor(i)
@@ -97,6 +97,11 @@ func (b *appMenuBar) drawBar(screenW, screenH int) int {
 	// The rainbow of the Spectrum theme is as tall as the strip and keeps its shape; the logo of
 	// the other themes is made from the strip's height by zenui itself.
 	zenui.RainbowScanlines, zenui.RainbowBandWidth = b.stripH(), rainbowBandFor(b.stripH())
+	// Room at the two ends for the toolbar button and the Help button, and the labels out of the
+	// strip as far as the slide to the toolbar has gone (barbuttons_gui.go).
+	left, right := barInsetsFor(b.stripH())
+	b.widget.SetInsets(left, right)
+	b.widget.SetLabelsOffset(-b.slideOffset())
 	b.widget.Draw(r, screenW, screenH, barY, b.stripH(), b.theme)
 	return barY
 }

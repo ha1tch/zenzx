@@ -148,11 +148,11 @@ func TestViewMenuBorderRowTellsTheTruth(t *testing.T) {
 
 	border := func() zenui.Item {
 		for _, it := range b.viewSpec(zx).items() {
-			if it.Label == "Border Display" {
+			if it.Label == "Border" {
 				return it
 			}
 		}
-		t.Fatal("no Border Display row")
+		t.Fatal("no Border row")
 		return zenui.Item{}
 	}
 	dm := zx.window()

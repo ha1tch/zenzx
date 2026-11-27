@@ -5,6 +5,7 @@ package zenzx
 import (
 	"fmt"
 	"image"
+	"os"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -327,13 +328,13 @@ func (dm *DisplayManager) hasBorder() bool {
 }
 
 // borderView is how the border stands for the window as it is now: the one place that
-// says whether it is on the screen and whether the Border Display choice has any say in
+// says whether it is on the screen and whether the Border choice has any say in
 // that. The window's size, the drawing, the tiles, the View menu's checkbox and Alt+B all
 // ask it, so they cannot disagree; a new reason for the border to be fixed one way or the
 // other is added here and nowhere else.
 type borderView struct {
 	Shown     bool   // the border is on the screen
-	Choosable bool   // the Border Display choice (showBorder) decides Shown
+	Choosable bool   // the Border choice (showBorder) decides Shown
 	Why       string // when not Choosable, why, in a line
 }
 
@@ -868,6 +869,12 @@ func InitDisplay(scale int, showBorder bool, renderer VideoRenderer) (int, int) 
 	// steps, re-asserting its size on the next frame.
 	rl.SetConfigFlags(rl.FlagWindowResizable)
 	rl.InitWindow(int32(windowWidth), int32(windowHeight), "ZenZX")
+	if !rl.IsWindowReady() {
+		// Raylib is silent here (trace log none): without this the program ran on
+		// without a window and died with a segmentation fault when it closed one.
+		fmt.Fprintln(os.Stderr, "Error: cannot open a window; no display is available (is DISPLAY or WAYLAND_DISPLAY set, and is a display server running?)")
+		os.Exit(1)
+	}
 
 	if monW, monH := int(rl.GetMonitorWidth(rl.GetCurrentMonitor())), int(rl.GetMonitorHeight(rl.GetCurrentMonitor())); monW > 0 && monH > 0 {
 		fitted := initialScale

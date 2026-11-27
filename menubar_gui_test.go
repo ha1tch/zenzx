@@ -95,10 +95,10 @@ func TestNewAppMenuBarActionCounts(t *testing.T) {
 	}
 	defer b.text.Unload()
 
-	// Machine: the title, Reset, Pause or Play, Stop only -- model switching now happens
+	// Machine: the title, Reset, Play, Pause, Stop only -- model switching now happens
 	// via the Standard/Spanish/Timex submenus (dispatched separately,
 	// not through b.actions), not one flat action per model.
-	wantMachine := 4
+	wantMachine := 5
 	if got := len(b.actions[barMachine]); got != wantMachine {
 		t.Errorf("len(actions[barMachine]) = %d, want %d", got, wantMachine)
 	}
@@ -339,16 +339,16 @@ func TestParseThemeFlagOldSpectrum128FormNoLongerRecognised(t *testing.T) {
 	}
 }
 
-func TestFloppyDiskMenuHasOpenDSKImage(t *testing.T) {
+func TestFloppyDiskMenuHasLoadDisk(t *testing.T) {
 	b, err := newAppMenuBar(testZXWithDrive(), "./custom-roms", zenui.ThemeDark, "48k", nil, "")
 	if err != nil {
 		t.Fatalf("newAppMenuBar: %v", err)
 	}
 	defer b.text.Unload()
 
-	// A "Floppy Disk" title, then 7 real actions (Open, Insert Blank, Save, Save As,
-	// Eject, Info, Manage Disks) plus 2 separator placeholders, grouped as [mount] |
-	// [save] | [current-disk operations] -- 10 entries; then a separator and the SD Card
+	// A "Floppy Disk" title, then Load, Recent and Manage, Insert Blank, Save, Save As, Eject and Info
+	// (the Recent Disks submenu is one entry), grouped as [load, recent, manage] | [insert blank,
+	// save, save as, eject, info] -- 10 entries with the one separator among them; then a separator and the SD Card
 	// section, which on a machine without card slots is its title and one disabled note.
 	if got := len(b.actions[barFloppyDisk]); got != 13 {
 		t.Errorf("len(actions[barFloppyDisk]) = %d, want 13 (10 floppy entries, a separator, the SD Card title and its note)", got)
@@ -357,8 +357,8 @@ func TestFloppyDiskMenuHasOpenDSKImage(t *testing.T) {
 	if items[0].Label != "Floppy Disk" || !items[0].Title {
 		t.Errorf("items[0] = %q (title %v), want the \"Floppy Disk\" title", items[0].Label, items[0].Title)
 	}
-	if items[1].Label != "Open DSK Image..." {
-		t.Errorf("items[1].Label = %q, want \"Open DSK Image...\"", items[1].Label)
+	if items[1].Label != "Load Disk..." {
+		t.Errorf("items[1].Label = %q, want \"Load Disk...\"", items[1].Label)
 	}
 }
 
@@ -512,18 +512,19 @@ func TestTapeMenuHasSeparatorBetweenPlaybackAndSettings(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barTape)
-	wantLabels := []string{"Playback", "Play", "Stop", "Rewind", "", "Mode", "Accurate", "Fast", "", "Information", "Show Info"}
+	wantLabels := []string{"Load", "Load Tape...", "Recent Tapes", "Manage Tapes...", "Autoload Tape", "", "Playback", "Play", "Stop", "Rewind", "", "Mode", "Accurate", "Fast", "", "Information", "Tape Info"}
 	if len(items) != len(wantLabels) {
 		t.Fatalf("len(items) = %d, want %d", len(items), len(wantLabels))
 	}
-	if !items[4].Separator {
-		t.Error("items[4] should be the separator between playback and settings/info")
+	for _, at := range []int{5, 10, 14} {
+		if !items[at].Separator {
+			t.Errorf("items[%d] should be a separator between two sections", at)
+		}
 	}
-	if !items[8].Separator {
-		t.Error("items[8] should be the separator between the mode and the information")
-	}
-	if !items[0].Title || !items[5].Title || !items[9].Title {
-		t.Error("items[0], items[5] and items[9] should be the titles of the three sections")
+	for _, at := range []int{0, 6, 11, 15} {
+		if !items[at].Title {
+			t.Errorf("items[%d] should be the title of a section", at)
+		}
 	}
 	for i, want := range wantLabels {
 		if want == "" {
@@ -545,9 +546,9 @@ func TestFloppyDiskMenuGrouping(t *testing.T) {
 	items := b.widget.ItemsFor(barFloppyDisk)
 	wantLabels := []string{
 		"Floppy Disk",
-		"Open DSK Image...", "Insert Blank Disk", "",
-		"Save Disk", "Save Disk As...", "",
-		"Eject Disk", "Disk Info", "Manage Disks...",
+		"Load Disk...", "Recent Disks", "Manage Disks...", "",
+		"Insert Blank Disk", "Save Disk", "Save Disk As...", "Eject Disk",
+		"Disk Info",
 		"",
 		"SD Card", "    N/A",
 	}
@@ -583,10 +584,10 @@ func TestFloppyDiskActionsMatchReorderedItems(t *testing.T) {
 	}
 	zx.io.EnableFDC() // properly initializes zx.io.fdc (not just hasFDC), needed since this test actually dereferences it via HasDisk()
 
-	// index 2 = "Insert Blank Disk" (index 0 is the Floppy Disk title, 1 is Open DSK).
-	b.actions[barFloppyDisk][2](zx)
+	// index 5 = "Insert Blank Disk" (0 is the Floppy Disk title, then Load, Recent, Manage and a separator).
+	b.actions[barFloppyDisk][5](zx)
 	if !zx.io.fdc.HasDisk() {
-		t.Error("actions[barFloppyDisk][2] should insert a blank disk, but none is loaded")
+		t.Error("actions[barFloppyDisk][5] should insert a blank disk, but none is loaded")
 	}
 }
 
@@ -598,15 +599,15 @@ func TestSnapshotMenuGrouping(t *testing.T) {
 	defer b.text.Unload()
 
 	items := b.widget.ItemsFor(barSnapshot)
-	wantLabels := []string{"Save and Load", "Quick Save", "Quick Load", "Save Timestamped", "Load Timestamped", "Save As", "Load Snapshot...", "Recent Snapshots", "Save Multisnapshot...", "Load Multisnapshot...", "Manage Snapshots...", "Load Binary...", "", "Information", "Snapshot Info", "Run Diagnostics"}
+	wantLabels := []string{"Load", "Load Snapshot...", "Recent Snapshots", "Manage Snapshots...", "", "Save and Load", "Quick Save", "Quick Load", "Save Timestamped", "Load Timestamped", "Save As", "Save Multisnapshot...", "Load Multisnapshot...", "Load Binary...", "", "Information", "Snapshot Info", "Run Diagnostics"}
 	if len(items) != len(wantLabels) {
 		t.Fatalf("len(items) = %d, want %d", len(items), len(wantLabels))
 	}
-	if !items[12].Separator {
-		t.Error("items[12] should be the separator between the save operations and info/diagnostics")
+	if !items[4].Separator || !items[14].Separator {
+		t.Error("items[4] and items[14] should be the separators after the Load group and before info/diagnostics")
 	}
-	if !items[0].Title || !items[13].Title {
-		t.Error("items[0] and items[13] should be the titles of the two sections")
+	if !items[0].Title || !items[5].Title || !items[15].Title {
+		t.Error("items[0], items[5] and items[15] should be the titles of the three sections")
 	}
 	for i, want := range wantLabels {
 		if want == "" {

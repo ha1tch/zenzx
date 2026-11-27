@@ -62,6 +62,10 @@ LINUX_GUI_LIBS = {
     "libasound.so.2", "libX11.so.6",
     "ld-linux-aarch64.so.1", "ld-linux-x86-64.so.2",
 }
+# What the FreeBSD GUI program is allowed to link against: it is built without cgo (the sound card
+# is OSS, raylib and libffi are opened at run time), so the C library is all it needs. libpthread.so
+# is the name the Go linker gives the threads library on FreeBSD; it is a stub there.
+FREEBSD_GUI_LIBS = {"libc.so.7", "libpthread.so"}
 # Where a Mach-O program may find its libraries: the system's own.
 MACOS_LIB_PREFIXES = ("/usr/lib/", "/System/Library/")
 # The strings a program must not carry: the path of the machine it was built on, which
@@ -263,7 +267,8 @@ def check_file(path, opts, skip):
         if kind == "headless":
             allowed_libs = set(opts.allow_lib or [])
         else:
-            allowed_libs = set(opts.allow_lib) if opts.allow_lib else LINUX_GUI_LIBS
+            allowed_libs = set(opts.allow_lib) if opts.allow_lib else \
+                FREEBSD_GUI_LIBS if got_os == "freebsd" else LINUX_GUI_LIBS
         bad = [n for n in needed if n not in allowed_libs]
         if got_os == "freebsd" and not needed:
             bad = []

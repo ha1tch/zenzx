@@ -1,10 +1,13 @@
 package zenzx
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/ha1tch/zentools/pkg/zxn"
 )
 
 // ParseAddr parses an unsigned 16-bit address in hex (0x.. or $..) or decimal.
@@ -73,11 +76,50 @@ func (zx *ZenZX) LoadSCR(filename string) error {
 	if len(data) == 0 {
 		return fmt.Errorf("%s is empty", filename)
 	}
+	if hiRes, ok, err := timexScreenKind(filename, data); err != nil {
+		return fmt.Errorf("%s: %w", filename, err)
+	} else if ok {
+		return zx.loadTimexScreen(hiRes, data)
+	}
 	const scrSize = 6912
 	if len(data) > scrSize {
 		data = data[:scrSize]
 	}
 	zx.memory.Load(0x4000, data)
+	return nil
+}
+
+// loadTimexScreen puts a Timex screen, 12288 bytes (and after them, for hi-res, the byte of port
+// 0xFF), into the two screens the mode reads, the first half at 0x4000 and the second at 0x6000,
+// and sets the mode, as the file is a .hires.scr or a .hicol.scr. A Next has both modes; a classic
+// machine has hi-colour when it has been given that renderer (-ns-graphics), and no hi-res.
+// Nothing is written on a machine that cannot show the screen.
+func (zx *ZenZX) loadTimexScreen(hiRes bool, data []byte) error {
+	first, second := data[:zxn.TimexBitmapLen], data[zxn.TimexBitmapLen:zxn.TimexFileLen]
+	port := uint8(0x02) // hi-colour
+	if hiRes {
+		port = 0x06 // hi-res, ink 0 when the file has no byte of port 0xFF
+		if len(data) > zxn.TimexFileLen {
+			port |= data[zxn.TimexFileLen] & 0x38
+		}
+	}
+	switch {
+	case zx.memory != nil && zx.memory.isNext && zx.io != nil:
+		for i, b := range first {
+			zx.memory.nextPageWrite(10, uint16(i), b)
+		}
+		for i, b := range second {
+			zx.memory.nextPageWrite(11, uint16(i), b)
+		}
+		zx.io.nextTimexPortWrite(port)
+	case !hiRes && zx.videoRenderer != nil && zx.videoRenderer.Name() == NSGraphicsTimex001HiColour:
+		zx.memory.Load(0x4000, first)
+		zx.memory.Load(0x6000, second)
+	case hiRes:
+		return errors.New("this machine has no Timex hi-res mode, which this screen is in")
+	default:
+		return errors.New("this machine has no Timex hi-colour mode, which this screen is in")
+	}
 	return nil
 }
 

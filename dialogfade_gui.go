@@ -149,6 +149,12 @@ func (b *appMenuBar) modalDrawer(w, h int) func(r zenui.Renderer) {
 	case b.snaps != nil:
 		s := b.snaps
 		return func(r zenui.Renderer) { s.Draw(r, w, h, th) }
+	case b.shots != nil:
+		s := b.shots
+		return func(r zenui.Renderer) { s.Draw(r, w, h, th) }
+	case b.tapes != nil:
+		s := b.tapes
+		return func(r zenui.Renderer) { s.Draw(r, w, h, th) }
 	case b.bin != nil:
 		x := b.bin
 		return func(r zenui.Renderer) { x.Draw(r, w, h, th) }

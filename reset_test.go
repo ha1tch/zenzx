@@ -295,7 +295,7 @@ func TestResetPutsBackTheTimexPorts(t *testing.T) {
 	}
 }
 
-// The +3's disc controller starts again, with the disc still in the drive.
+// The +3's disk controller starts again, with the disk still in the drive.
 func TestResetStartsTheDiscControllerAgain(t *testing.T) {
 	zx, err := newMachine("plus3", "./rom")
 	if err != nil {
@@ -303,7 +303,7 @@ func TestResetStartsTheDiscControllerAgain(t *testing.T) {
 	}
 	fdc := zx.io.fdc
 	if fdc == nil {
-		t.Fatal("a +3 with no disc controller")
+		t.Fatal("a +3 with no disk controller")
 	}
 	fdc.diskPresent, fdc.diskFilename, fdc.diskModified = true, "x.dsk", true
 	fdc.motorOn, fdc.commandPhase, fdc.commandLen, fdc.mainStatus = true, 2, 9, 0xD0
@@ -315,7 +315,7 @@ func TestResetStartsTheDiscControllerAgain(t *testing.T) {
 			fdc.motorOn, fdc.commandPhase, fdc.commandLen, fdc.mainStatus)
 	}
 	if !fdc.diskPresent || fdc.diskFilename != "x.dsk" || !fdc.diskModified {
-		t.Error("Reset took the disc out of the drive, or forgot what was not yet written to it")
+		t.Error("Reset took the disk out of the drive, or forgot what was not yet written to it")
 	}
 }
 

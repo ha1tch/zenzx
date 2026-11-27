@@ -22,7 +22,7 @@ its own.
 | Part | What it is | Where it lives | State |
 |---|---|---|---|
 | CPU | The Z80 and Z80N core | zen80 `z80` | Used as it is by both |
-| Machine | The Spectrums, the TS2068 and the Next: memory, video, sound, tape, disc, SD card | ZenZX's root package | Importable since 0.28.0 as `github.com/ha1tch/zenzx`, built with `-tags headless,purego`; two machines run side by side in its tests. What an embedder can reach is still small: the facade over models, snapshots and input is the rest of ZenZX T-39. zenplay carries a frozen copy from the 0.9 line, `internal/zxspike`, which that ends |
+| Machine | The Spectrums, the TS2068 and the Next: memory, video, sound, tape, disk, SD card | ZenZX's root package | Importable since 0.28.0 as `github.com/ha1tch/zenzx`, built with `-tags headless,purego`; two machines run side by side in its tests. What an embedder can reach is still small: the facade over models, snapshots and input is the rest of ZenZX T-39. zenplay carries a frozen copy from the 0.9 line, `internal/zxspike`, which that ends |
 | Formats | Tapes, snapshots, NEX files, screens, the Next's graphics, ZX0, symbol files, BDF fonts | zentools `pkg/*` | Shared |
 | Assembler | Source to bytes in memory; build tags; symbol files; packaging as a tape, a snapshot or a NEX file | zenas `assembler`, `pkg/artifact` | Shared since zenas 0.16.0 |
 | Disassembler | Bytes to source, with names and data kinds; NEX input | zendis `pkg/api`, `pkg/disasm`, `pkg/render`, `pkg/load` | Shared since zendis 0.8.0. ZenZX does not use it yet; the workbench will |
@@ -121,7 +121,7 @@ some of these (`helpmodal.go`, `osd.go` beside `zenuiraylib.OSD`,
 | The catalogue of machines | `pkg/machineconfig`, `machines.json` | zenplay's top bar chooses a target machine from the same list |
 | Fonts and user settings | `pkg/fonts`, `pkg/settingsconfig` | Already imported by zenplay from the emulator |
 | The Next's SD card as a file system: building a FAT32 card, adding files | `pkg/nextcard` (`fat32.go`, `fat32build.go`, `add.go`, about 780 lines for the file system alone), `pkg/nextdisk` | Format code, of zentools' kind. An exporter that puts a game on a Next's card, and the workbench saving to one, need it without the emulator |
-| The +3's disc images | `dsk.go` | Format code likewise. The plus3 project has disc images of its own; the two were not compared |
+| The +3's disk images | `dsk.go` | Format code likewise. The plus3 project has disk images of its own; the two were not compared |
 | ZenZX's own snapshot format | `snapshot.go`, `snapshot_chunks.go`, `snapshot_formats.go` (about 1,800 lines) | A format, and so zentools', if any other program is to read a `.zxs`; otherwise the emulator's |
 | A menu bar that slides away when it is not used | `menubar_gui.go` (the easing and the timings) | A behaviour of `zenui.MenuBar` any host could switch on; zenplay's bar is fixed |
 
@@ -185,7 +185,7 @@ number is given:
 | 8 | ZenZX's two palette tables and `symtab.go` replaced by `zenui/zxpalette` and `symfile.Table`; one address parser in zentools | Nothing |
 | 9 | ZenScript, the input mapping, the display and audio sinks and the state adapter extracted with the machine | Part of step 1 |
 | 10 | Appearance (theme, face, zoom and their menus), fonts and settings in one place beside the widgets | The open question of that place |
-| 11 | The FAT32 card code and the disc image code as zentools packages | Nothing |
+| 11 | The FAT32 card code and the disk image code as zentools packages | Nothing |
 | 12 | The frame, the pixel operations and the character set model out of zenplay | The open question of their home |
 
 ## Open questions

@@ -44,6 +44,7 @@ func RunHeadless(args []string) {
 	snapshot := fs.String("snapshot", "", "Load snapshot on startup")
 	snapshotFormat := fs.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only), rzx (a recording to play, load only)")
 	tapeFile := fs.String("tape", "", "Load tape file (.tap or .tzx)")
+	autoloadTape := fs.Bool("autoload-tape", false, "With -tape: have the machine type what loads the tape (as a person would, on its own ROM) instead of starting the tape playing; not for a Next or a custom ROM")
 	tapeMode := fs.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
 	binFile := fs.String("bin", "", "Load a raw binary blob directly into memory")
 	binAddr := fs.String("binaddr", "0x8000", "Load address for -bin (hex 0x.. or decimal)")
@@ -480,8 +481,16 @@ func RunHeadless(args []string) {
 			}
 			// LoadFile leaves the tape stopped; start playback so the Tick loop
 			// actually advances it (in fast mode this triggers block injection).
-			zx.tape.Play()
-			logf(*quiet, "Loaded tape: %s (%s mode)", *tapeFile, *tapeMode)
+			if *autoloadTape && *snapshot == "" && zx.AutoloadTape() {
+				// The typist plays the tape when it has pressed the last key.
+				logf(*quiet, "Loaded tape: %s (%s mode), autoloading", *tapeFile, *tapeMode)
+			} else {
+				if *autoloadTape {
+					fmt.Fprintln(os.Stderr, "Note: -autoload-tape does not apply here (a Next, a custom ROM or a snapshot): the tape plays as without it")
+				}
+				zx.tape.Play()
+				logf(*quiet, "Loaded tape: %s (%s mode)", *tapeFile, *tapeMode)
+			}
 		}
 	}
 

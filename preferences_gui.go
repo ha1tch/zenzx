@@ -443,6 +443,9 @@ func (b *appMenuBar) prefSections(zx *ZenZX) []prefSection {
 				hint: "What a snapshot does once it is loaded: wait for Play, or run."},
 		}},
 		{"Machines", "Tape", []prefRow{
+			{label: "Autoload tape", get: func() int { return onOff(b.tapeAutoload) },
+				set:  func(v int) { b.tapeAutoload = v == 1 },
+				hint: "A tape that is loaded starts by itself: the machine types what loads it, as a person would, on its own ROM. Off, it only waits in the deck and you type LOAD \"\" (or choose Tape Loader on a 128K)."},
 			{label: "Tape deck", options: []string{"Off", "Top", "Bottom"},
 				get:  func() int { return int(b.tapeDeck) },
 				set:  func(i int) { b.tapeDeck = tapeDeckPlace(i) },

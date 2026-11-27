@@ -44,7 +44,7 @@ const listenHelp = "Give each machine a link: a TCP port on which bytes sent rea
 
 const listenHostHelp = "Address the -listen ports are opened on. The default accepts connections from this computer only"
 
-const autorunHelp = "Load and run a BASIC program from a text file (line numbers, one line each) when the machine has started: no tape or disc to prepare. " +
+const autorunHelp = "Load and run a BASIC program from a text file (line numbers, one line each) when the machine has started: no tape or disk to prepare. " +
 	"With several machines, one file for all of them or one each, separated by commas; an empty place leaves that machine alone. Not on a Next or a TS2068"
 
 const layoutHelp = "With several machines, how the window tiles them at the start, the same choices the View menu has: " +

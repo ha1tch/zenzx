@@ -27,12 +27,12 @@ so do the thresholds), and the strip that holds the text
 takes no more than an eighth of the window's height (X2 from 256 high, X3 from 384). It is
 worked out afresh every frame, so it follows the window as it is resized. The text has room
 above and below it, half its own height and never under 4 pixels, so the strip is 24 pixels
-high at X1, 32 at X2 and 48 at X3; the Spectrum logo (the rainbow, in the Spectrum theme), its Help button and the room
+high at X1, 32 at X2 and 48 at X3; the Spectrum logo (the rainbow, in the Spectrum theme), its two buttons and the room
 reserved at the top of a window with a fixed bar all follow the strip's height. The
 dropdowns are not part of this: they stay at **Font zoom**.
 
 A dropdown that is in groups opens each group with a small heading, as Help and Storage do:
-**Machine** (Reset, Pause or Play, Stop, ahead of the makers' groups), **Playback**, **Mode** and **Information** (Tape),
+**Machine** (Reset, Play, Pause, Stop, ahead of the makers' groups), **Playback**, **Mode** and **Information** (Tape),
 **Save and Load** and **Information**, **Display**, **Scale** and **Layout**, **Theme** and **Text**,
 and in Theme's Font submenu **Font** and **Zoom**. **File** is one group with Quit set apart, and
 **Custom ROM** lists the ROMs there are, so neither has headings.
@@ -47,11 +47,25 @@ live one.
   Linux desktops) has no other place to quit from.
   - **Open...** -- a file browser for anything the program loads: tapes
     (`.tap`, `.tzx`), snapshots (`.sna`, `.z80`, `.szx`, `.zxs`, and `.zms` multisnapshots), screens
-    (`.scr`), discs (`.dsk`) and `.nex` files (which a Next runs, see "Running a
+    (`.scr`), disks (`.dsk`) and `.nex` files (which a Next runs, see "Running a
     .nex", below). What is chosen goes exactly
     where the same file dropped on the window would go (see "What a drop
     does", below), through the same code, so the two cannot differ; a file
-    chosen here is a plain drop, with no Shift.
+    chosen here is a plain drop, with no Shift. The browser starts in the folder
+    of the file opened last with it (the home folder when there is none, or when that folder has
+    gone; never the folder ZenZX was run from), and **Load Disk...** of the Floppy Disk menu,
+    the same browser for `.dsk` only, keeps a folder of its own. The name field is always being
+    edited: type or paste a path (absolute, `~`, relative to the folder shown, with `..`, in quotes,
+    or a `file://` address), and Enter opens the file or goes into the folder; **Tab** completes the
+    name, and a pattern such as `*.tap` limits the list. The **file type** beside the field chooses
+    all the Spectrum files, one medium's (tapes, snapshots, disks, recordings, screens, Next
+    programs) or all files, and `Ctrl+Tab` goes to the next. **Recent**, first in the sidebar, lists
+    the files opened last, of every medium (those opened here, and those dropped on the window), under
+    the file type chosen; what has gone is left out. `Ctrl+H` shows the hidden files and `Ctrl+D`
+    the details (size and date, with heads that sort). The recent files, the two folders and how a
+    folder was looked at are kept in `settings.json` (`recentFiles`, `openFolder`, `diskFolder`,
+    `fileDialog`); the tapes loaded last are kept apart from them (`recentTapes`, 60), for Tape > Recent Tapes. Every edit box takes `Ctrl+C`, `Ctrl+X` and `Ctrl+V` (`Cmd` on a Mac), and
+    Save browsers ask before replacing a file.
   - **Export...** -- pauses the machine and opens a form that says what it does and asks for a name, with the folder shown and **Browse...** to change it; the
     file written is a program of one file, a copy of this ZenZX with the machine as it is now
     inside it, that opens a window and goes on from there on its own, with nothing else to carry
@@ -91,7 +105,7 @@ live one.
   ```json
   {"type": "separator"}
   {"type": "title", "label": "Sinclair Research Ltd"}
-  {"type": "model", "id": "48k", "label": "ZX Spectrum 48k", "indent": 1}
+  {"type": "model", "id": "48k", "label": "ZX Spectrum 48k"}
   {"type": "submenu", "label": "More", "items": [ ... ]}
   ```
 
@@ -113,13 +127,13 @@ live one.
   submenu that opens, in the browser, the pages where ROMs are published: those listed in
   `custom-roms/rom-archives.json` (Rodolfo Guerra's ROM mods and the Speccy4ever ROM archive, as shipped),
   or those two when the file is not there. It works with no machine running.
-- **Tape** -- under the heading **Playback**, **Play**, **Stop** and **Rewind**, each with its
+- **Tape** -- under the heading **Load**, **Load Tape...** (a file browser for tapes, which starts in the folder of the last tape loaded, or in `tapes/`), **Recent Tapes** (the last tapes loaded, newest first; with more than 15 a last row opens the window), **Manage Tapes...** (a window of the tapes in the `tapes/` folder and those loaded from elsewhere, each with the first screen on the tape; the blocks of the one that has the focus are listed under it; Load, Rename and Delete) and the **Autoload Tape** checkbox (the setting of Preferences > Machines > Autoload tape); under the heading **Playback**, **Play**, **Stop** and **Rewind**, each with its
   button (the sprites the Machine menu and the tape deck have); under **Mode**, **Accurate** and **Fast** as radio
   buttons (a ring, with a dot in the one that is chosen; Turbo, chosen with `-tapemode turbo`, shows as Accurate,
-  and both are greyed with no tape); and under **Information**, **Show
+  and both are greyed with no tape); and under **Information**, **Tape
   Info**, which opens a window with the tape's file, mode, state and
   blocks. Play is greyed with no tape loaded or while it plays, Stop while it does not, and Rewind with no tape loaded -- Play, Stop and Rewind are the same
-  actions as the `Alt+P/R/T` shortcuts, `Alt+P` playing and stopping with one key (`Alt+I` opens the tape's window, as Show Info does). The
+  actions as the `Alt+P/R/T` shortcuts, `Alt+P` playing and stopping with one key (`Alt+I` opens the tape's window, as Tape Info does). The
   **tape deck** (Preferences > Machines > Tape) shows the tape playing, with the same
   controls as buttons, while a tape loads in Accurate mode:
 
@@ -144,38 +158,37 @@ live one.
   section is live where the machine has that hardware; where it has not,
   it stays, greyed, with one line, N/A (no drive on a 48K, 128K,
   +2 or +2A, no card slots outside a Next, a +3 started with `-nofdc`).
-  The result of a choice -- a disc loaded, a card inserted, "there is no
+  The result of a choice -- a disk loaded, a card inserted, "there is no
   disk in the drive" -- shows as a toast at the corner of the window as
   well as in the terminal, for those who never look at the terminal.
-  - **Floppy Disk** (+3 and Spanish +3) -- **Open DSK Image...** (a live
-    file browser), Insert Blank Disk, Save Disk, Save Disk As..., Eject
-    Disk, and **Disk Info**, which opens a window with the disc's file, its
-    format, whether it has unsaved changes and whether the file has changed
+  - **Floppy Disk** (+3 and Spanish +3) -- **Load Disk...** (a live
+    file browser), **Recent Disks** (the disks loaded lately, newest first; with more than 15 a
+    last row opens the window) and **Manage Disks...** (the Floppy Disks window: the disk
+    in memory against its file, and the folder's disk images), then Insert Blank Disk, Save Disk,
+    Save Disk As... and Eject Disk, and **Disk Info**, which opens a window with the disk's file,
+    its format, whether it has unsaved changes and whether the file has changed
     on disk since it was loaded. The rest are the same actions as
-    `F4`-`F8`. **Manage Disks...** opens the Floppy Disks window: the disc
-    in memory against its file, and the folder's disc images. See "The
-    +3's discs" in the manual. On a Next the section is greyed signposts
+    `F4`-`F8`. See "The +3's disks" in the manual. On a Next the section is greyed signposts
     for the NextZXOS drives A: and B:, which ZenZX does not emulate yet
     (T-72).
   - **SD Card** (a Next that boots NextZXOS) -- the cards in the Next's two
-    slots, and the second one changed: **Insert Card in Slot 2...**,
-    **Insert ZenZX's Card (Examples)**, **Remove Card from Slot 2**,
-    **New Empty Card** (280 MB or 1 GB), **Card Info** (a window with each
-    slot's file, size, whether it is write-protected, how much it holds and
-    whether it boots a Next), and **Manage Cards...**, the SD Cards window:
-    every card image, who has it, booting from another, copying, renaming and
-    deleting (each asks first). See "The
+    slots, and the second one changed: **Insert Card in Slot 2...** and
+    **Manage Cards...**, the SD Cards window: every card image, who has it, booting from another,
+    copying, renaming and deleting (each asks first); then **Insert ZenZX's Card (Examples)**,
+    **Remove Card from Slot 2**, **New Empty Card** (280 MB or 1 GB) and **Card Info** (a window
+    with each slot's file, size, whether it is write-protected, how much it holds and
+    whether it boots a Next). See "The
     second card" in the manual.
-- **Snapshot** -- Quick Save/Load, Save Timestamped, **Load Timestamped** (the ten newest
+- **Snapshot** -- under the heading **Load**, **Load Snapshot...** (a file browser for any snapshot), **Recent Snapshots**
+  (the named ones saved or loaded, newest first, fifteen at most) and **Manage Snapshots...** (a window that loads, duplicates, renames and deletes
+  the snapshots, multisnapshots too, in the folder, `snapshots/`, that every snapshot is saved into); under **Save and Load**, Quick Save/Load, Save Timestamped, **Load Timestamped** (the ten newest
   timestamped snapshots, and **More...** for the rest, grouped by day, week and month when there are
-  many), **Save As**, **Load Snapshot...** (a file browser for any snapshot), **Recent Snapshots**
-  (the named ones saved or loaded, newest first, fifteen at most), **Save Multisnapshot...** (for two machines
+  many), **Save As**, **Save Multisnapshot...** (for two machines
   or more: a snapshot of each, with the layout of the window, in one `.zms` zip) and **Load Multisnapshot...**
   (which closes the machines running and replaces them, after the window asks for the word `YES`; a Next's
   snapshot or one holding Nexts looks for the cards they were made over, and names the ones it cannot
   find so that you can choose them),
-  **Manage Snapshots...** (a window that loads, duplicates, renames and deletes
-  the snapshots, multisnapshots too, in the folder, `snapshots/`, that every snapshot is saved into), **Load Binary...** (a
+  **Load Binary...** (a
   window of three tabs: load a file into memory at an address, in the memory as the CPU sees it or in
   a RAM page of a 128K or a Next, in boxes that take only what can be used; peek and poke; and **Hot Memory**, a hex editor, typed in as hex or as ASCII, over the running
   machine with a list of the CPU's 64K and of the machine's RAM pages), **Snapshot Info** (a
@@ -187,21 +200,22 @@ live one.
   format and takes the name (the format's extension is added when the name has none). The
   result of every item of this menu, saved or refused, shows as a toast. `.szx` and `.rzx`
   are read and not written, so they are not on the list.
-- **View** -- **FPS Counter** and **Border Display** are checkboxes,
+- **View** -- **FPS Counter**, **Border** and **Full Screen** are checkboxes,
   showing current on/off state directly (wired to the display
   manager's own fields, so it's always correct whether last changed
-  from here or via `Alt+F`/`Alt+B`), and clicking one keeps the menu
-  open for toggling the other without reopening it. The border is the
+  from here or via `Alt+F`/`Alt+B`/`Alt+Enter`). Clicking the FPS counter keeps the menu
+  open; Border and Full Screen change the size of the window the menu hangs from, so
+  choosing one closes the menu. The border is the
   user's to choose only where nothing else decides it: in a tiled layout
   every machine is shown with its border, in a Layer 2 mode that fills the
   whole 320x256 frame (the 320x256 and 640x256 modes) the border is part of
   the picture, and in a mode with no border there is nothing to show. There
-  **Border Display** is greyed and shows what is on the screen, `Alt+B`
+  **Border** is greyed and shows what is on the screen, `Alt+B`
   says why it does nothing, and the choice already made is kept for when
   the machine is back where it applies. The window's size follows the
   border however it came to change. **Full Screen** (`Alt+Enter`) puts
   the window, without its border, over the whole of the monitor it is on, at the mode the
-  monitor already has, so the desktop does not change its resolution; ticked while it
+  monitor already has, so the desktop does not change its resolution; checked while it
   is so. Windows has no full screen for a program that does not make one, and this is it; on
   macOS and Linux it is the same, beside the window manager's own. The picture is fitted
   to the screen at the largest whole zoom that fits (up to X 5) and put in the middle of the
@@ -223,7 +237,10 @@ live one.
   prints what the window reports, one line for each change, for finding out why one is not
   framed.) **Rotate
   Machines** moves each machine to the next place. See "Several
-  machines" in the manual.
+  machines" in the manual. Below one more separator, **Screenshot**: **Save as PNG**, **Save as SCR**
+  and the other formats the picture on the machine can be saved in (greyed where they do not apply), **Save as GIF (2 seconds)**,
+  and **Manage Screenshots...**, a window that lists the files of the `screenshots/` folder with a thumbnail
+  of each and previews, renames and deletes them; see "Screenshots (GUI)" in the manual.
 - **Theme** -- switch the bar's (and every dropdown's) colour scheme
   live, with a checkmark on the current selection: **Dark** (the
   default) and **Light** (a macOS Aqua-inspired scheme) both show the
@@ -263,13 +280,10 @@ live one.
   never the bar strip, which always draws at X1 regardless). X2 is
   the default, matching the size dropdowns have always drawn at.
 
-The rainbow (Spectrum theme) or logo (Dark/Light themes) on the
-right of the bar is the Help menu's button, and behaves as one, after the
-Start button of the systems the menu's users come from: it is raised under the
-pointer and pressed in while the menu is open, and only the logo (and the corner
-of the bar beyond it) opens the menu, not the empty bar beside the labels. The
-pointer is a hand over the logo. Click
-it directly, no hover needed; the menu is right-aligned to the window's own right edge (moved a little
+The Help menu is opened by the button at the right end of the bar, a thin circle with three thin lines in it
+(the "burger"). Like the toolbar button at the left end, it is drawn in the theme's text colour: a light
+edge at rest, a faint face under the pointer and a darker one while the menu is open, and the pointer is
+a hand over it. Click it directly, no hover needed; the menu is right-aligned to the button's right edge (moved a little
 left where its submenu needs the room). It is in titled sections:
 
 - **Help**
@@ -318,6 +332,7 @@ in the group. The box goes when the pointer moves off, and after a click until i
 | Window | **Fixed menu bar** | Pins the bar permanently shown, bypassing the idle-at-edge auto-hide until unchecked -- the window grows taller to make room (animated, as toggling the border animates a resize) rather than overlapping the display, and shrinks back when unfixed. The space is reserved exactly while the bar is fixed, checked every frame, so a bar saved as fixed has its space from the first frame |
 | Machines | **Machine dock** | Whether the dock may slide up from the bottom edge (and with `Alt+M`). Off, it stays away, and one that is open closes. On by default |
 | Machines | **Stop animation** | Whether stopping a machine (Machine > Stop) plays the animation of a boot coming down and stamping a small Spectrum flat. Off, the machine goes at once. On by default; `"stopAnimation"` in `settings.json` |
+| Machines | **Autoload tape** | (Also a checkbox on the Tape menu.) Whether a tape that File > Open, Tape > Load Tape, a drop or `-tape` has put in the deck starts by itself: the machine is reset and types what loads it on its own ROM (`LOAD ""`, or the Tape Loader of a 128K), then the tape plays. Off, the tape waits and the toast says what to type. Not on a Next or with a custom ROM. On by default; `"tapeAutoload"` in `settings.json` |
 | Machines | **A loaded snapshot** | What a `.zxs`, `.sna`, `.z80` or `.szx` (and the machines of a `.zms`) does once it is loaded by File > Open or a drop: **Waits paused**, for Play or `F2`, or **Plays at once**. Quick Load (which always waits paused) and `-snapshot` are not affected. The machine is the one the snapshot is of: see the manual, Snapshots in the GUI. Waits paused by default |
 | Machines | **Tape deck** | A cassette, a progress bar, a counter and the buttons **Play, Rewind, Stop, Pause** while a tape loads in Accurate (or Turbo) mode: **Off**, **Top** or **Bottom**, in that part of the border, or over the picture near its top or bottom when there is no border or it is thin (X1). The first program's name is written on the cassette's label, and every new tape is a cassette of another colour of twelve. Top by default; not shown in Fast mode or while the machines are tiled (T-88) |
 | Machines | **Cassette** | The size of the tape deck's cassette: **Small**, beside the buttons; **Big**, under the buttons and the bar, over the picture, with the first program's name written large on its label; or **Hidden**, leaving the buttons, the bar and the counter. Big by default |
@@ -327,7 +342,7 @@ in the group. The box goes when the pointer moves off, and after a click until i
 | Files dropped on a Next at its menu | **With Shift held** | The same, when Shift is down as the file is let go. Load and run by default |
 | Keyboard | **Escape** | What Escape does when no menu or window is open for it to close: **Disabled** (it never quits, and leaves the debugger open), **Closes windows only** (it also closes the debugger), **Asks before quitting** (a second press within a moment quits) or **Quits at once**. Disabled by default, including for a settings file from before the choice existed. `-escape` sets it for one run and is not saved; choosing a row ends its say |
 
-Border display and the FPS counter are deliberately not here: they are session
+Border and the FPS counter are deliberately not here: they are session
 diagnostics, kept in the View menu, and (as the settings file's own rule says) not
 saved. Sound is a command-line choice (`-no-audio`) and is not in the window.
 
@@ -366,7 +381,7 @@ rather than treated as fatal). The file is a flat list of nodes:
 ```json
 {"type": "separator"}
 {"type": "title", "label": "Sinclair Research Ltd"}
-{"type": "model", "id": "48k", "label": "ZX Spectrum 48k", "indent": 1}
+{"type": "model", "id": "48k", "label": "ZX Spectrum 48k"}
 {"type": "submenu", "label": "Amstrad plc", "items": [ ... ]}
 ```
 
@@ -391,8 +406,8 @@ default configuration and the clearest example. Validated against a
 before use.
 
 Theme, font, font zoom, display scale, whether the menu bar is
-pinned shown, whether the machine dock and adding machines are allowed
-(`"dock"`, `"multi"`, `"stopAnimation"`: booleans, on when absent), and what a plain drop and a
+pinned shown, whether it shows the toolbar and not the menus (`"toolbar"`: a boolean, off when absent), whether the machine dock and adding machines are allowed
+(`"dock"`, `"multi"`, `"stopAnimation"`, `"tapeAutoload"`: booleans, on when absent), and what a plain drop and a
 Shift drop do on a Next at its menu (`"drop"`, `"dropShift"`: `"ask"`,
 `"copy"` or `"run"`; absent they are `"ask"` and `"run"`), and where the tape deck goes
 (`"tapeDeck"`: `"off"`, `"top"` or `"bottom"`; absent it is `"top"`) and its cassette's size (`"tapeCassette"`:
@@ -464,7 +479,7 @@ its extension:
 | `.scr` | A raw 6912-byte screen dump, written straight onto the framebuffer (6144 bytes of bitmap + 768 bytes of attributes). This only paints the screen — it does not change CPU state or memory, so it is a still image, not a running program. |
 | `.zxs` | A ZenZX snapshot (the proprietary chunk format). |
 | `.tap` / `.tzx` | A tape image (loaded, then driven with the `Alt+P/R/T/I` controls). |
-| `.dsk` | A +3 disk image. On a +3 it is mounted in Drive A (requires the FDC). On a Next, real NextZXOS can mount disc images as its own drives, but ZenZX does not emulate that yet (T-72), so a dropped `.dsk` is copied to the SD card instead (see the per-machine matrix below). |
+| `.dsk` | A +3 disk image. On a +3 it is mounted in Drive A (requires the FDC). On a Next, real NextZXOS can mount disk images as its own drives, but ZenZX does not emulate that yet (T-72), so a dropped `.dsk` is copied to the SD card instead (see the per-machine matrix below). |
 | `.sna` / `.z80` | Standard snapshots (48K and 128K), via the shared `zentools` library. |
 | `.szx` | ZX-State snapshots, load only, via the shared `zentools` library. |
 | `.zms` | A multisnapshot: the snapshots of several machines and the layout of the window. Loading one closes the machines running and replaces them, after the window asks for `YES`. |
@@ -483,9 +498,9 @@ default — dropping on the machine's screen — behaves as follows:
 | `.tap` / `.tzx` | load tape | load tape | load tape | **ask**: copy to SD card, or load and run |
 | `.scr` | paint screen | paint screen | paint screen | **ask**: copy to SD card, or load and run |
 | `.sna` / `.z80` / `.szx` / `.zxs` | restore snapshot | restore snapshot | restore snapshot | **ask**: copy to SD card, or load and run |
-| `.dsk` | needs a +3 (toast) | mount & boot (RUN) | needs a +3 (toast) | **copy to SD card** (no prompt — ZenZX does not mount Next disc images yet, T-72) |
+| `.dsk` | needs a +3 (toast) | mount & boot (RUN) | needs a +3 (toast) | **copy to SD card** (no prompt — ZenZX does not mount Next disk images yet, T-72) |
 | `.nex` | not applicable (toast) | not applicable (toast) | **run** — after a question: the Next is busy, reset it and run it? | **ask**: copy to SD card, or run it |
-| anything else | copied to a card/disc if one is present (see below), else ignored | as 48K | as 48K | as 48K |
+| anything else | copied to a card/disk if one is present (see below), else ignored | as 48K | as 48K | as 48K |
 
 The **ask** cases open a small dialog over the running machine with two buttons,
 *Copy to SD Card* and *Load and Run*. Holding **Shift** at the drop is, by default,
@@ -499,8 +514,8 @@ tapes, screens, snapshots and `.nex` files, the files that have both outcomes; a
 has only one on a Next, so it is copied whatever is chosen. The dialog's *Copy to SD Card*
 goes to the slot the files were dropped on, not to whichever is under the button.
 All of it is decided in one place, `planDrop`, for a drop on the window and for
-File > Open alike. For a disc, "run" means mount and boot it: on a +3
-that is Drive A, and real NextZXOS mounts disc images as its own drives, but ZenZX
+File > Open alike. For a disk, "run" means mount and boot it: on a +3
+that is Drive A, and real NextZXOS mounts disk images as its own drives, but ZenZX
 does not emulate that for the Next yet (T-72) — so for now a `.dsk` dropped on a
 Next has no run outcome and is copied to the card with no dialog, Shift or not. A
 drop that mixes one with a tape copies it and asks about the tape.
@@ -543,7 +558,7 @@ the file there:
 | Slot | A dropped file is |
 |------|-------------------|
 | SD slot 2 (a Next's second card) | copied onto the card's FAT filesystem, and the Browser is refreshed so it shows at once, with no keypress |
-| +3 Drive A (a disc in the drive) | written into the disc's +3DOS filesystem; it is seen on the next directory access (a `CAT` or a loader) |
+| +3 Drive A (a disk in the drive) | written into the disk's +3DOS filesystem; it is seen on the next directory access (a `CAT` or a loader) |
 
 With several machines the drop goes to the focused one's slot. A slot that cannot
 take a file (read-only, or an empty drive) is shown dimmed with the reason, and a

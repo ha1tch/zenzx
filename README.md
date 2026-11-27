@@ -4,7 +4,7 @@ A ZX Spectrum emulator in Go, built on the [zen80](https://github.com/ha1tch/zen
 
 | Machines | |
 |---|---|
-| ZX Spectrum 48K, 128K, +2, +2A, +3 | Tape, snapshots, `.rzx` recordings (played), AY sound, the +3's disc drive |
+| ZX Spectrum 48K, 128K, +2, +2A, +3 | Tape, snapshots, `.rzx` recordings (played), AY sound, the +3's disk drive |
 | Timex Sinclair 2068 | Its own timing, screen modes, sound and joystick ports |
 | ZX Spectrum Next | Boots NextZXOS from the distribution's SD card: Layer 2, tilemap, sprites, the copper, the DMA with DMA+, 4 MB, 28 MHz |
 
@@ -112,7 +112,7 @@ differently per machine and, for a Next, by whether it is sitting at its NextZXO
 | `.scr` | paint screen | paint screen | paint screen | **ask**: copy to SD, or load & run |
 | `.sna` / `.z80` / `.szx` / `.zxs` | restore snapshot | restore snapshot | restore snapshot | **ask**: copy to SD, or load & run |
 | `.rzx` | play the recording (start the model it was made on first) | play the recording | not supported | not supported |
-| `.dsk` | needs a +3 | mount & boot | needs a +3 | **copy to SD** (ZenZX doesn't mount Next disc images yet — T-72) |
+| `.dsk` | needs a +3 | mount & boot | needs a +3 | **copy to SD** (ZenZX doesn't mount Next disk images yet — T-72) |
 | `.nex` | not applicable | not applicable | **run**, after asking to reset the busy Next | **ask**: copy to SD, or run it |
 | **Shift held** | — | — | — | by default skip the prompt and **run** (same as *Load & Run*); a preference |
 
@@ -124,8 +124,8 @@ neither works. On a Next the **ask**
 cases open a copy-or-run dialog; holding **Shift** at the drop is, by default, the same as pressing
 *Load & Run* and skips it. What a plain drop does there (ask, copy to the card, or run) and what a
 Shift drop does are both choices in **File > Preferences...**. *File > Open...* takes the same files
-through the same routing, as a plain drop. "Run" for a disc means mount and boot it: on a +3 that is Drive A, and real NextZXOS
-mounts disc images as its own drives, but ZenZX does not emulate that yet (T-72) — so for now a
+through the same routing, as a plain drop. "Run" for a disk means mount and boot it: on a +3 that is Drive A, and real NextZXOS
+mounts disk images as its own drives, but ZenZX does not emulate that yet (T-72) — so for now a
 `.dsk` dropped on a Next is copied to the card regardless of Shift. Dropping onto a
 storage slot always copies the file there, whatever its type. [`docs/gui.md`](docs/gui.md) has the
 full account.

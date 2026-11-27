@@ -6,7 +6,7 @@ import "testing"
 
 // TestAnyDropChoiceExts checks which dropped-file types the Next drop routing
 // applies to: tapes, screen dumps and snapshots can be copied or run; a .nex can
-// only be copied (run-on-the-fly is unimplemented); a +3 disc or a plain file is
+// only be copied (run-on-the-fly is unimplemented); a +3 disk or a plain file is
 // routed elsewhere entirely.
 func TestAnyDropChoiceExts(t *testing.T) {
 	for _, f := range []string{"/x/g.tap", "/x/g.tzx", "/x/p.scr", "/x/s.sna", "/x/s.z80", "/x/s.szx", "/x/p.nex", "/x/d.dsk"} {
@@ -30,7 +30,7 @@ func TestAnyDropChoiceExts(t *testing.T) {
 // a Next (no run path there); anything else is dropped from both lists.
 func TestSplitDropChoice(t *testing.T) {
 	runnable, copyOnly := splitDropChoice([]string{
-		"/x/game.tap", "/x/pic.scr", "/x/demo.nex", "/x/notes.txt", "/x/disc.dsk",
+		"/x/game.tap", "/x/pic.scr", "/x/demo.nex", "/x/notes.txt", "/x/disk.dsk",
 	})
 	if len(runnable) != 3 {
 		t.Errorf("runnable = %v, want the tape, the .scr and the .nex", runnable)

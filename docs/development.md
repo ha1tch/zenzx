@@ -28,7 +28,12 @@ headless core, the GUI cross-compiled for darwin/windows (amd64 and
 arm64, cgo-free via raylib-go's `purego` backend), and the GUI natively
 for linux/amd64 and linux/arm64 (cgo, via apt-installed ALSA/X11/Wayland/
 GL dev libraries). See `docs/KNOWN_ISSUES.md` ("CI and cross-platform
-builds") for why the split falls where it does, and why BSD isn't in it.
+builds") for why the split falls where it does. FreeBSD is not in it: the GUI for
+FreeBSD (amd64 and arm64, cgo-free) is built and checked by its own workflow,
+`.github/workflows/freebsd.yml`, run by hand and on every push to the main
+branch, so that a failure there stops neither CI nor a release, and nothing is
+published from it. Nothing starts the program on FreeBSD (GitHub has no runner
+for it).
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds and
 publishes prebuilt archives (headless and GUI, all platforms above, plus

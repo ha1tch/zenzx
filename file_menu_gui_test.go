@@ -103,7 +103,7 @@ func TestFloppyDialogStillLoadsADiskNotARoutedFile(t *testing.T) {
 	zx.io.hasFDC = false
 	b.openDiskDialog(zx) // no controller: no dialog
 	if b.diskDialog != nil {
-		t.Fatal("Open DSK Image opened on a machine with no drive")
+		t.Fatal("Load Disk opened on a machine with no drive")
 	}
 	b.dialogKind = dialogDisk
 	b.acceptDialog(zx, "/nonexistent/x.dsk")

@@ -24,14 +24,14 @@ type FDC765 struct {
 	diskFilename string
 	diskPresent  bool
 	diskModified bool
-	// The disc is read whole into memory when it is put in the drive and
+	// The disk is read whole into memory when it is put in the drive and
 	// written back later, so the file can change behind it. diskStamp is the
 	// file as it was when last read or written here; conflictSaid, that the
 	// auto-commit has already said it will not write over a changed file.
 	diskStamp    fileStamp
 	conflictSaid bool
-	// firstProgram is the name of the first BASIC program read from a disc
-	// in this drive (program_name.go); it outlives the disc.
+	// firstProgram is the name of the first BASIC program read from a disk
+	// in this drive (program_name.go); it outlives the disk.
 	firstProgram string
 
 	// FDC registers
@@ -106,7 +106,7 @@ func stampOf(path string) fileStamp {
 	return fileStamp{size: st.Size(), mod: st.ModTime()}
 }
 
-// FileChanged reports that the disc's file is no longer the one that was
+// FileChanged reports that the disk's file is no longer the one that was
 // read into memory or last written from it: something else has changed,
 // replaced or removed it since.
 func (fdc *FDC765) FileChanged() bool {
@@ -114,11 +114,11 @@ func (fdc *FDC765) FileChanged() bool {
 }
 
 // Busy reports that the controller is in the middle of a command, when the
-// disc in memory may be half-written.
+// disk in memory may be half-written.
 func (fdc *FDC765) Busy() bool { return fdc.commandPhase != 0 }
 
-// DiskFile is the file the disc in the drive came from, "" for no disc and
-// for a blank disc that has no file yet.
+// DiskFile is the file the disk in the drive came from, "" for no disk and
+// for a blank disk that has no file yet.
 func (fdc *FDC765) DiskFile() string {
 	if !fdc.diskPresent {
 		return ""
@@ -127,7 +127,7 @@ func (fdc *FDC765) DiskFile() string {
 }
 
 // sectorBytes is the data of the sector with ID r on a track, nil when the
-// disc has none: from the parsed DSK when the disc came from one, else from
+// disk has none: from the parsed DSK when the disk came from one, else from
 // the flat image.
 func (fdc *FDC765) sectorBytes(cylinder, head, r uint8) []byte {
 	if fdc.disk != nil {
@@ -152,8 +152,8 @@ func (fdc *FDC765) sectorBytes(cylinder, head, r uint8) []byte {
 
 // fileStartingAt is the name, as NAME.EXT, of the file whose first block
 // begins at the sector with ID r of a track, "" when the directory has no
-// such file. The disc's layout is read from its first sector where that
-// holds a +3 disc specification and is otherwise the +3's own: one side,
+// such file. The disk's layout is read from its first sector where that
+// holds a +3 disk specification and is otherwise the +3's own: one side,
 // one reserved track, 1K blocks, two blocks of directory.
 func (fdc *FDC765) fileStartingAt(cylinder, head, r uint8) string {
 	sides, reserved, blockShift, dirBlocks := 1, 1, 3, 2
@@ -209,8 +209,8 @@ func (fdc *FDC765) fileStartingAt(cylinder, head, r uint8) string {
 
 // CreateBlankDisk creates a blank formatted +3 disk
 func (fdc *FDC765) CreateBlankDisk() {
-	// A disc read from a DSK file before this one must not go on answering
-	// for it: reads prefer the parsed disc to the flat image.
+	// A disk read from a DSK file before this one must not go on answering
+	// for it: reads prefer the parsed disk to the flat image.
 	fdc.disk = nil
 	fdc.diskStamp, fdc.conflictSaid = fileStamp{}, false
 	// Initialize with 0xE5 (standard formatting byte for CP/M and +3DOS)
@@ -292,7 +292,7 @@ func (fdc *FDC765) AutoCommit(debounceFrames int) bool {
 	}
 	if fdc.FileChanged() {
 		// Something else has written the file since it was read. Writing
-		// the disc in memory over it would lose that; Save still does it,
+		// the disk in memory over it would lose that; Save still does it,
 		// on the person's say.
 		if !fdc.conflictSaid {
 			fdc.conflictSaid = true

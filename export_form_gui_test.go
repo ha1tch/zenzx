@@ -159,6 +159,25 @@ func TestCancellingTheFormLetsTheMachineGo(t *testing.T) {
 	}
 }
 
+// The browser of the Export form is a Save dialog, and zenui's Save dialog asks before replacing a
+// file; this one must not, as the form asks about it itself and the person would be asked twice.
+func TestExportBrowserLeavesTheQuestionAboutAFileThatIsThereToTheForm(t *testing.T) {
+	b, zx := exportBar(t)
+	pickExport(b, zx)
+	defer b.cancelExport(zx)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "there"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b.exportAsk.dir = dir
+	b.browseExport()
+	d := b.diskDialog
+	d.Update(zenui.Input{Chars: []rune("there")})
+	if st := d.Update(zenui.Input{Keys: []zenui.Key{zenui.KeyEnter}}); st != zenui.Accepted {
+		t.Errorf("Enter on the name of a file that is there gave %v: the browser asked before the form did", st)
+	}
+}
+
 func TestBrowsingFillsInTheFolderAndTheName(t *testing.T) {
 	b, zx := exportBar(t)
 	pickExport(b, zx)

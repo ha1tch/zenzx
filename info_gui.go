@@ -83,21 +83,21 @@ func tapeInfoText(zx *ZenZX) string {
 	return strings.Join(lines, "\n")
 }
 
-// diskInfoText describes the floppy drive and the disc in it.
+// diskInfoText describes the floppy drive and the disk in it.
 func diskInfoText(zx *ZenZX) string {
 	if !zx.io.hasFDC || zx.io.fdc == nil {
 		return "## Floppy disk\n\nThis model has no floppy drive.\n\nThe +3 and the Spanish +3 have one."
 	}
 	fdc := zx.io.fdc
 	if !fdc.diskPresent {
-		return "## Floppy disk\n\nDrive A: is empty.\n\nOpen DSK Image... or Insert Blank Disk puts a disc in it."
+		return "## Floppy disk\n\nDrive A: is empty.\n\nLoad Disk... or Insert Blank Disk puts a disk in it."
 	}
-	file := "none: a blank disc, not saved yet"
+	file := "none: a blank disk, not saved yet"
 	if fdc.diskFilename != "" {
 		file = infoPath(fdc.diskFilename)
 	}
-	// A disc read from a file has the file's own geometry; a blank one is
-	// the +3's standard disc.
+	// A disk read from a file has the file's own geometry; a blank one is
+	// the +3's standard disk.
 	format := "40 tracks, one side (the +3's standard format)"
 	if fdc.disk != nil {
 		sides := "one side"
@@ -128,7 +128,7 @@ func diskInfoText(zx *ZenZX) string {
 	if name := zx.FirstProgram(); name != "" {
 		lines = append(lines, infoLine("First program", name))
 	}
-	lines = append(lines, "", "The disc is held in memory while the machine uses it;",
+	lines = append(lines, "", "The disk is held in memory while the machine uses it;",
 		"Save Disk writes it to the file, and Manage Disks... has the rest.")
 	return strings.Join(lines, "\n")
 }

@@ -99,7 +99,7 @@ func (d *machineDeck) destroy(m *deckMachine) {
 	}
 }
 
-// makeIdle ends the only machine there is: its disc is committed, its sound stops, and it stays
+// makeIdle ends the only machine there is: its disk is committed, its sound stops, and it stays
 // as the window's front machine, stopped.
 func (d *machineDeck) makeIdle() {
 	m := d.machines[0]

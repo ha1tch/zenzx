@@ -144,12 +144,17 @@ func TestHelpButtonAndLogoGrowWithTheStrip(t *testing.T) {
 
 	const screenW = 1000
 	usual := b.stripH()
+	left, right := barInsetsFor(usual)
+	b.widget.SetInsets(left, right)
 	b.widget.Draw(testNoopRenderer{}, screenW, 600, 0, usual, b.theme)
 	logoX := b.widget.DecorationX()
-	zone := b.logoHotZone(screenW)
-	button, ok := b.logoButton(screenW)
-	if !ok || button.H != usual-2 || zone.H != usual {
-		t.Fatalf("the usual strip, %d high: the button is %v (%v) and the hot zone %d high", usual, button, ok, zone.H)
+	zone := b.helpHotZone(screenW)
+	button := b.helpButton(screenW)
+	if button.H != usual-2 || zone.H != usual {
+		t.Fatalf("the usual strip, %d high: the button is %v and the hot zone %d high", usual, button, zone.H)
+	}
+	if logoX+0 >= button.X {
+		t.Errorf("the logo starts at %d, not left of the Help button at %d", logoX, button.X)
 	}
 
 	b.barK = 3 // the largest text: the strip grows to hold it
@@ -157,17 +162,22 @@ func TestHelpButtonAndLogoGrowWithTheStrip(t *testing.T) {
 	if tall <= usual {
 		t.Fatalf("the strip is %d high at X3 and %d at X1: it did not grow", tall, usual)
 	}
+	left, right = barInsetsFor(tall)
+	b.widget.SetInsets(left, right)
 	b.widget.Draw(testNoopRenderer{}, screenW, 600, 0, tall, b.theme)
 	if got := b.widget.DecorationX(); got >= logoX {
 		t.Errorf("the logo starts at %d in the tall strip and %d in the usual one: it did not grow", got, logoX)
 	}
-	zone = b.logoHotZone(screenW)
-	button, ok = b.logoButton(screenW)
-	if !ok || button.H != tall-2 || zone.H != tall {
-		t.Errorf("the tall strip, %d high: the button is %v (%v) and the hot zone %d high", tall, button, ok, zone.H)
+	zone = b.helpHotZone(screenW)
+	button = b.helpButton(screenW)
+	if button.H != tall-2 || zone.H != tall {
+		t.Errorf("the tall strip, %d high: the button is %v and the hot zone %d high", tall, button, zone.H)
 	}
-	// The button is the logo and its room: wider by the pad of this strip on each side.
-	if want := b.widget.DecorationX() - logoButtonPadFor(tall); button.X != want {
-		t.Errorf("the button starts at %d, want %d (the logo less its room)", button.X, want)
+	// The button is as wide as the strip is high, a pad of this strip from the window's edge.
+	if want := screenW - logoButtonPadFor(tall) - helpWidthFor(tall); button.X != want {
+		t.Errorf("the button starts at %d, want %d", button.X, want)
+	}
+	if d := b.widget.DecorationX(); d >= button.X {
+		t.Errorf("the logo at %d runs into the button at %d", d, button.X)
 	}
 }

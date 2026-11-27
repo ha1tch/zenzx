@@ -5,7 +5,8 @@
 
 package zenzx
 
-// The Tape menu is in three titled sections: Playback, with Play, Stop and Rewind (each with its button, the sprites of the Machine menu and of the tape deck); Mode, with
+// The Tape menu is in four titled sections: Load, with Load Tape..., Recent Tapes, Manage Tapes... and the
+// Autoload Tape checkbox (tapemenu_recent_gui.go and tapes_gui.go); Playback, with Play, Stop and Rewind (each with its button, the sprites of the Machine menu and of the tape deck); Mode, with
 // Accurate and Fast; and Information. Play and Stop are rows of their own, each with the transport
 // sprite the Machine menu's Pause, Play and Stop have (transportIcon), and each can be chosen only
 // when it would do something: Play when a tape is loaded and is not playing, Stop while it plays.
@@ -124,25 +125,32 @@ func tapeLoaded(zx *ZenZX) bool {
 func (b *appMenuBar) tapeSpec(zx *ZenZX) menuSpec {
 	playing := tapePlaying(zx)
 	return menuSpec{
+		menuTitle("Load"),
+		machineRow("Load Tape...", func(zx *ZenZX) { b.openLoadTapeDialog() }), // tapemenu_recent_gui.go
+		{label: "Recent Tapes", sub: b.recentTapesSpec(), needsMachine: true},
+		menuRow("Manage Tapes...", func(zx *ZenZX) { b.openTapes(zx) }), // tapes_gui.go
+		// Autoload Tape is the Preferences' choice too: the same setting, kept as soon as it is flipped
+		menuCheckbox("Autoload Tape", &b.tapeAutoload, func(zx *ZenZX) { b.saveSettings(zx) }),
+		menuSep(),
 		menuTitle("Playback"),
-		{label: "Play", icon: transportIcon("play"), disabled: playing || !tapeLoaded(zx), run: func(zx *ZenZX) {
+		{label: "Play", icon: transportIcon("play"), needsMachine: true, disabled: playing || !tapeLoaded(zx), run: func(zx *ZenZX) {
 			if !tapePlaying(zx) {
 				zx.PlayStopTape()
 			}
 		}},
-		{label: "Stop", icon: transportIcon("stop"), disabled: !playing, run: func(zx *ZenZX) {
+		{label: "Stop", icon: transportIcon("stop"), needsMachine: true, disabled: !playing, run: func(zx *ZenZX) {
 			if tapePlaying(zx) {
 				zx.PlayStopTape()
 			}
 		}},
-		{label: "Rewind", icon: transportIcon("rewind"), disabled: !tapeLoaded(zx), run: func(zx *ZenZX) { zx.RewindTape() }},
+		{label: "Rewind", icon: transportIcon("rewind"), needsMachine: true, disabled: !tapeLoaded(zx), run: func(zx *ZenZX) { zx.RewindTape() }},
 		menuSep(),
 		menuTitle("Mode"),
-		{label: "Accurate", icon: radioIcon(tapeAccurate(zx)), disabled: !tapeLoaded(zx), run: func(zx *ZenZX) { chooseTapeMode(zx, true) }},
-		{label: "Fast", icon: radioIcon(!tapeAccurate(zx)), disabled: !tapeLoaded(zx), run: func(zx *ZenZX) { chooseTapeMode(zx, false) }},
+		{label: "Accurate", icon: radioIcon(tapeAccurate(zx)), needsMachine: true, disabled: !tapeLoaded(zx), run: func(zx *ZenZX) { chooseTapeMode(zx, true) }},
+		{label: "Fast", icon: radioIcon(!tapeAccurate(zx)), needsMachine: true, disabled: !tapeLoaded(zx), run: func(zx *ZenZX) { chooseTapeMode(zx, false) }},
 		menuSep(),
 		menuTitle("Information"),
-		menuRow("Show Info", func(zx *ZenZX) { b.showInfo("TAPE INFO", tapeInfoText(zx)) }), // info_gui.go
+		machineRow("Tape Info", func(zx *ZenZX) { b.showInfo("TAPE INFO", tapeInfoText(zx)) }), // info_gui.go
 	}
 }
 
@@ -150,6 +158,7 @@ func (b *appMenuBar) tapeSpec(zx *ZenZX) menuSpec {
 // (the way the View and Machine menus are): a tape can start or end on its own, or by Alt+P.
 func (b *appMenuBar) refreshTapeItems(zx *ZenZX) {
 	spec := b.tapeSpec(zx)
+	b.tapeMenu = spec
 	b.actions[barTape] = spec.actions()
 	b.widget.SetItems(barTape, spec.items())
 }

@@ -39,7 +39,7 @@ import (
 // payload off first, so a program does not grow as it is exported again.
 //
 // Machines exported are the Spectrums: the 48K, the 128K, the +2, +2A and +3 and their Spanish
-// versions. A +3's disc is in its snapshot, so it goes with it.
+// versions. A +3's disk is in its snapshot, so it goes with it.
 // ============================================================================
 
 const (
@@ -53,7 +53,7 @@ const (
 	embeddedSnapshot = "(this program)"
 
 	// maxProgramPayload is the most a payload may be: a 128K snapshot is 130 KB, and a +3 with
-	// a disc a few hundred. This is far above, and keeps a corrupt length from being believed.
+	// a disk a few hundred. This is far above, and keeps a corrupt length from being believed.
 	maxProgramPayload = 256 << 20
 )
 

@@ -29,6 +29,13 @@ import (
 func (b *appMenuBar) snapshotSpec(now time.Time) menuSpec {
 	plan := planSnapshotMenu(timestampedSnapshots(listSnapshots(snapshotDir)), now)
 	spec := menuSpec{
+		menuTitle("Load"),
+		// Load Snapshot and Recent Snapshots: any snapshot, and the named ones lately saved or loaded
+		menuRow("Load Snapshot...", func(zx *ZenZX) { b.openLoadSnapshotDialog() }),
+		{label: "Recent Snapshots", sub: b.recentSnapshotsSpec()},
+		// Manage Snapshots: the window of snapshots_gui.go
+		menuRow("Manage Snapshots...", func(zx *ZenZX) { b.openSnapshots(zx) }),
+		menuSep(),
 		menuTitle("Save and Load"),
 		machineRow("Quick Save", func(zx *ZenZX) { zx.handleQuickSave() }),
 		menuRow("Quick Load", func(zx *ZenZX) { zx.handleQuickLoad() }),
@@ -36,14 +43,9 @@ func (b *appMenuBar) snapshotSpec(now time.Time) menuSpec {
 		{label: "Load Timestamped", sub: b.loadTimestampedSpec(plan)},
 		// Save As: the format, then the name (snapshotsaveas_gui.go)
 		{label: "Save As", sub: b.saveAsSpec(), needsMachine: true},
-		// Load Snapshot and Recent Snapshots: any snapshot, and the named ones lately saved or loaded
-		menuRow("Load Snapshot...", func(zx *ZenZX) { b.openLoadSnapshotDialog() }),
-		{label: "Recent Snapshots", sub: b.recentSnapshotsSpec()},
 		// Multisnapshots: every machine of the window, and how it is laid out (multisnapshot_menu_gui.go)
 		{label: "Save Multisnapshot...", run: func(zx *ZenZX) { b.openSaveMultiDialog() }, needsMachine: true, disabled: b.snapMachines < 2},
 		menuRow("Load Multisnapshot...", func(zx *ZenZX) { b.openLoadMultiDialog() }),
-		// Manage Snapshots: the window of snapshots_gui.go
-		menuRow("Manage Snapshots...", func(zx *ZenZX) { b.openSnapshots(zx) }),
 		// Load Binary: the window of binary_gui.go, on its Load file tab
 		machineRow("Load Binary...", func(zx *ZenZX) { b.openBinary(zx, binTabLoad) }),
 		menuSep(),

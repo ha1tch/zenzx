@@ -8,28 +8,28 @@ import (
 	"github.com/ha1tch/plus3/pkg/diskimg"
 )
 
-// makeBlankDSK writes a blank, formatted +3 disc image to a temp file and returns
+// makeBlankDSK writes a blank, formatted +3 disk image to a temp file and returns
 // its path, for the floppy-drop tests.
 func makeBlankDSK(t *testing.T) string {
 	t.Helper()
 	di := diskimg.NewDiskImage()
 	if err := di.InitializeDirectory(); err != nil {
-		t.Fatalf("format blank disc: %v", err)
+		t.Fatalf("format blank disk: %v", err)
 	}
 	path := filepath.Join(t.TempDir(), "blank.dsk")
 	if err := di.SaveToFile(path); err != nil {
-		t.Fatalf("save blank disc: %v", err)
+		t.Fatalf("save blank disk: %v", err)
 	}
 	return path
 }
 
-// discHasFile reports whether the +3DOS directory of the disc at path holds a
+// discHasFile reports whether the +3DOS directory of the disk at path holds a
 // file whose 8.3 name matches want (e.g. "GALLOP.NEX").
 func discHasFile(t *testing.T, path, want string) bool {
 	t.Helper()
 	di, err := diskimg.LoadFromFile(path)
 	if err != nil {
-		t.Fatalf("reload disc: %v", err)
+		t.Fatalf("reload disk: %v", err)
 	}
 	dir, err := di.GetDirectory()
 	if err != nil {
@@ -63,7 +63,7 @@ func trimName(b []byte) string {
 
 // TestAddFilesToDiscLands checks that addFilesToDisk writes a dropped file into
 // the +3DOS filesystem of a .dsk and that the FDC, reloaded from that image,
-// serves the new disc -- the core of drop-into-disc.
+// serves the new disk -- the core of drop-into-disk.
 func TestAddFilesToDiscLands(t *testing.T) {
 	dsk := makeBlankDSK(t)
 	host := filepath.Join(t.TempDir(), "gallop.nex")
@@ -79,22 +79,22 @@ func TestAddFilesToDiscLands(t *testing.T) {
 		t.Fatalf("written = %v, want [GALLOP.NEX]", written)
 	}
 	if !discHasFile(t, dsk, "gallop.nex") {
-		t.Errorf("GALLOP.NEX is not in the disc directory after the add")
+		t.Errorf("GALLOP.NEX is not in the disk directory after the add")
 	}
 
-	// The FDC, loaded from the written image, must accept it as a disc.
+	// The FDC, loaded from the written image, must accept it as a disk.
 	fdc := NewFDC765()
 	if err := fdc.LoadDisk(dsk); err != nil {
-		t.Fatalf("the FDC could not load the written disc: %v", err)
+		t.Fatalf("the FDC could not load the written disk: %v", err)
 	}
 	if !fdc.HasDisk() {
-		t.Errorf("the FDC reports no disc after loading the written image")
+		t.Errorf("the FDC reports no disk after loading the written image")
 	}
 }
 
-// TestAddFilesToDiscTargetsOneDisc checks that adding to one disc leaves another
+// TestAddFilesToDiscTargetsOneDisc checks that adding to one disk leaves another
 // untouched -- the floppy form of the focused-machine guarantee: two +3 machines
-// have two discs, and a drop must land only on the targeted one.
+// have two disks, and a drop must land only on the targeted one.
 func TestAddFilesToDiscTargetsOneDisc(t *testing.T) {
 	discA := makeBlankDSK(t)
 	discB := makeBlankDSK(t)
@@ -103,14 +103,14 @@ func TestAddFilesToDiscTargetsOneDisc(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add only to disc B (the "focused" machine's drive).
+	// Add only to disk B (the "focused" machine's drive).
 	if _, err := addFilesToDisk(discB, []string{host}); err != nil {
 		t.Fatal(err)
 	}
 	if !discHasFile(t, discB, "orbit.nex") {
-		t.Errorf("disc B did not get the file")
+		t.Errorf("disk B did not get the file")
 	}
 	if discHasFile(t, discA, "orbit.nex") {
-		t.Errorf("disc A got the file -- the write went to the wrong disc")
+		t.Errorf("disk A got the file -- the write went to the wrong disk")
 	}
 }

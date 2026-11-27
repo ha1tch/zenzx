@@ -4,6 +4,161 @@ All notable changes to ZenZX are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **A toolbar, swapped for the menus by a button at the left of the bar.** The button is four small
+  slanted bars (////) in one colour, like the other menu icons, in a rounded rectangle; each bar is
+  drawn pixel by pixel as the Spectrum logo's teeth are, a staircase of three 1x2 blocks, 3 pixels apart. Pressing it
+  slides the menus up out of the bar and a toolbar up in, in the same bar, while the bars turn a
+  half-turn, ending as it began; while the toolbar is in, the bars are dimmer, as in a pressed-in
+  button. Pressing it again brings the menus back. The toolbar has Reset, Play, Pause and Stop
+  (enabled as in the Machine menu), then Tapes, Disks, SD Cards, Snapshots and Screenshots, which open
+  those windows. Every button is a one-colour picture (the new ones in the manner of the
+  gui-elements sprites; Snapshots is its clock), and the pointer resting on one for half a second says
+  what it is. Disks and SD Cards are left out where the machine has none. In a narrow window the buttons
+  that do not fit are behind a "more" button (three dots) that opens them as a menu. A dropdown that is open
+  is closed first, and whether the toolbar is in is kept in `settings.json` (`toolbar`), so the next
+  run starts as this one ended.
+  Needs zenui's new `MenuBar.SetInsets` and `SetLabelsOffset` (0.4.0).
+- **A GUI program for FreeBSD that needs no cgo, built from Linux (T-96).** `make cross` now builds
+  the GUI for freebsd/amd64 and freebsd/arm64 with `CGO_ENABLED=0`
+  (`-gcflags="github.com/ebitengine/purego/internal/fakecgo=-std"`): raylib-go has a cgo-free FreeBSD
+  path that opens `libraylib.so` and `libffi.so` from the system, and the one piece that needed cgo,
+  oto's ALSA backend, is replaced on that build by a sound device of ours over OSS, `/dev/dsp`
+  (`audio_oss_freebsd.go`, 16-bit mono; the request numbers and the sample conversion are in
+  `audio_oss.go` and have a test). The machine needs `libffi` and raylib 6.0 exactly (`pkg install
+  raylib libffi`, the quarterly package branch). `tools/check_binaries.py` knows the libraries such a
+  program links (`libc.so.7`, `libpthread.so`). Run so far only in an emulated FreeBSD 14.5 amd64
+  (window, menus and boot screen come up); built and checked by its own workflow,
+  `.github/workflows/freebsd.yml` (run by hand and on every push to the main branch), and not
+  published by the release workflow; see `docs/KNOWN_ISSUES.md`. The audio device constructor is now `NewSystemAudioDevice`
+  (was `NewOtoAudioDevice`), one per build.
+- **Tape > Load Tape..., Recent Tapes, Manage Tapes... and an Autoload Tape checkbox, and a `tapes/`
+  folder (T-109).** The top of the Tape menu has a **Load** section. **Load Tape...** is a file browser of
+  tapes (`.tap`, `.tzx`) that starts in the folder of the tape loaded last, and otherwise in the new
+  default `tapes/` folder (`-tapes-dir`; made when first needed). **Recent Tapes** lists the tapes loaded
+  last, from the menu, File > Open, the window, a drop or `-tape`, newest first, 15 as rows and a last
+  row that leads to the rest; 60 are kept in `settings.json` as `recentTapes` (optional). **Manage
+  Tapes...** is a window like Manage Screenshots, of the tapes in the tapes folder and those loaded
+  from elsewhere: each has **the first screen on the tape** as its picture (a standard 6912-byte screen,
+  found by its header or, with no header, by its size), as a grid or rows; the **blocks of the tape that
+  has the focus** are listed under the list, with the block the picture came from marked, and scroll
+  (`Tab`, the arrow and Page keys, the wheel); Load, Rename and Delete (the word `DELETE`) act on the
+  files, and a renamed tape keeps its place among the recent ones. **Autoload Tape** is a checkbox on
+  the menu, the same setting as the Preferences row. Dormant guard G-35 draws the window in a real one.
+- **The Open browsers take a typed or pasted path, start where the last file was, and list the recent
+  files (T-104, T-106, T-107).** File > Open and Floppy Disk > Load Disk are zenui 0.4.0's
+  dialog now. The name field is always being edited, in Open as in Save: type or paste a path
+  (absolute, `~`, relative to the folder shown, with `..`, in quotes as Windows' Copy as path gives
+  it, or a `file://` address) and Enter opens the file or goes into the folder, and says why when it
+  cannot; Tab completes the name; a pattern such as `*.tap` limits the list. A **file type**
+  selector chooses all the Spectrum files, tapes, snapshots, disks, recordings, screens or Next
+  programs, or all files (`Ctrl+Tab` goes to the next). **Recent**, first in the sidebar, lists the
+  files opened last of every medium (opened in a browser or dropped on the window; 20 are kept, in
+  the settings file, and what has gone is left out), under the file type chosen. `Ctrl+H` shows the
+  hidden files and `Ctrl+D` the details (size and date, with heads that sort); how a folder was looked
+  at is kept. Each of the two browsers starts in the folder of the file opened last with it, kept
+  across a restart, and in the home folder when there is none or it has gone: it started in the
+  folder ZenZX was run from, which from a launcher is whatever the launcher sets. New settings keys,
+  all optional: `recentFiles`, `openFolder`, `diskFolder` and `fileDialog` (`hidden`, `details`,
+  `sort`, `descending`). The edit boxes of the program (Preferences, the forms, the browsers' name
+  field) take `Ctrl+C`, `Ctrl+X`, `Ctrl+V` and `Ctrl+A` (`Cmd` on a Mac), a caret, a selection and the
+  word and line keys.
+- **View > Screenshot saves the picture, and Manage Screenshots shows what was saved.** Save as PNG
+  (with the border when Border is on), Save as SCR (the 6912 bytes of the display memory),
+  Save as Hi-Res SCR and Save as Hi-Colour SCR (the Timex screens, written as `.hires.scr` and
+  `.hicol.scr` so that a file says which mode it holds and a `.scr` is always the standard 6912 bytes;
+  a hi-res file has the port's byte after its 12288, which holds its ink; a plain `.scr` of 12289 bytes is read as hi-res; File > Open, `-scr` and the script `scr` action load a `.hires.scr` or `.hicol.scr` into both screens and set the mode on a Next, or a hi-colour one on a classic machine with the hi-colour renderer, and refuse it elsewhere), Save as Layer 2 and Save as LoRes (`.nxi`: the palette
+  and then the pixels, as zentools reads them), each greyed where it does not apply to what the
+  machine is showing, and **Save as GIF (2 seconds)**, which records the next two seconds as 50
+  frames (one of every two the machine draws, 25 a second, 4/100 of a second each) with the standard
+  library's `image/gif` and a median-cut reduction to 256 colours for a picture that has more (one
+  with 256 or fewer is kept exactly); it is encoded and written on its own goroutine, so the machine
+  does not stop, and a toast says when it is saved. Files go in `screenshots/` (`-screenshots-dir`)
+  as `screenshot_<machine>_<YYYYMMDD>_<HHMMSS>.<ext>`, where the machine is the name of the first
+  BASIC program loaded, or the model, with every run of spaces and unsafe characters made one hyphen
+  because the underscore separates the fields. **Manage Screenshots...** is a window like Manage
+  Snapshots with a thumbnail of each file, as a grid or as rows of aligned columns, a Preview that
+  shows a screenshot at a whole-number zoom and plays a GIF, and Rename and Delete asked as in the
+  SD Cards window. `screenshot.go` (what is saved, and the names), `screenshot_gif.go` (the
+  recording and the encoder), `screenshotdir.go` (the listing, and reading each format back as a
+  picture), `screenshot_gui.go` (the menu), `screenshots_gui.go` (the window),
+  `screenshot_test.go`, `screenshotdir_test.go`, `screenshot_gui_test.go`,
+  `screenshots_gui_test.go` and, in a window, `screenshots_gl_test.go` (guard G-34). Closes T-100 and
+  T-101 as limits (a classic machine's border is one colour in a screenshot; the classic TS2068 does not
+  draw hi-res), and T-102 and T-103 (the 12289 rule, and the loader in `loadbin.go`); see `docs/RESOLVED.md`.
+- **A tape starts by itself: the machine types what loads it.** Opening a tape (File > Open, a drop,
+  `-tape`) resets the machine and a phantom typist presses the keys that load a tape on that model's
+  own ROM, a frame at a time, as FUSE's does: `LOAD ""` on a 48K and a Timex 2068, ENTER at the Tape
+  Loader of a 128K or a +2, ENTER and a wait on a +2A and a +3, the letters one at a time on the
+  Spanish 128K of 1985; a tape that begins with CODE is loaded with `LOAD ""CODE` by the same routes
+  (on a +3 as two commands). It waits for the ROM to have read all eight keyboard half-rows within a
+  frame, so no pause is tuned per model, and plays the tape after the last ENTER, in Fast, Accurate
+  and Turbo modes alike. In the window the machine runs ahead of the clock and is silent while it
+  types, and a key of the person's gives the typing up. New **Autoload tape** preference (Machines >
+  Tape, `"tapeAutoload"` in `settings.json`, on by default; the settings schema knows the key); with it
+  off the toast says what to type. The headless program does it with `-autoload-tape` (off by
+  default). Not on a Next, with a custom ROM, or over a snapshot. `phantomtypist.go`,
+  `phantomtypist_test.go`, `phantomtypist_wiring_test.go`, `tapeautoload_gui_test.go`,
+  `pkg/settingsconfig/tapeautoload_test.go`. Closes T-105; see `docs/RESOLVED.md`.
+
+### Changed
+
+- **The Help menu is opened by a burger button at the right end of the bar, not by the logo.** The
+  button is a thin circle with three thin lines in it, in the theme's text colour. The Spectrum
+  logo (or rainbow) moved a little left to make room and is only a picture now; the menu is
+  right-aligned with the button.
+- **No display: the GUI says so and exits.** Without a display server raylib's window call failed
+  silently and the program ran on, then died with a segmentation fault when it closed the window it
+  never had. It now checks the window came up and otherwise prints "cannot open a window; no display
+  is available" and exits with status 1.
+- **Menu indicators sit in one column, and the check boxes are a fifth larger.** The checkbox of Autoload
+  Tape, the Play, Stop and Rewind icons and the rings of Accurate and Fast were at three different indents in
+  the Tape menu; the Machine menu had the same between its Pause and Stop icons and its model checks. A
+  menu's checks and icons now share one column, a line and a half wide, and the labels start after it (zenui
+  0.4.0). The check boxes and tick marks of every menu are 0.6 of a line high where they were half. The
+  models under each maker in the Machine menu are no longer indented a level (`machines.json`, `indent`
+  is 0 for all; a file of your own keeps the indents it has).
+- **View > Border and Full Screen are checkboxes.** A box means an independent on/off option and a tick
+  the current choice in a set, but Border Display and Full Screen were ticks beside the FPS Counter's box.
+  Both are boxes now, and Border Display is called just Border. Unlike the FPS Counter they close the menu
+  when chosen, as they did, since they change the size of the window the menu hangs from (zenui's new
+  `Item.Box`: the box glyph without the keep-open of `Item.Toggle`).
+- **The Machine menu has a Play row, and Reset has an icon.** The head of the menu is now Reset, Play, Pause
+  and Stop, the same rows whatever the machine is doing, as the Tape menu's Play, Stop and Rewind are, each
+  enabled only when it can act: Play while the machine is paused or stopped, Pause while it runs, Stop and
+  Reset while there is a machine. Before, the second row changed its name between Pause and Play and a
+  stopped machine could be brought back only by picking a model. Play on a stopped machine starts one of
+  the model that was stopped (the one the menu has ticked). Reset has a recycle icon, two arrows chasing
+  round a ring, drawn like the transport sprites.
+- **The Load, Recent and Manage rows come in the same order, and are spelled the same, in the Tape,
+  Floppy Disk, Snapshot and SD Card menus (T-110).** Each puts its Load row first, then Recent, then
+  Manage, and a separator after them in the Tape, Floppy Disk and Snapshot menus (the Snapshot menu's group has a Load heading
+  of its own, and the Floppy Disk menu's Insert Blank Disk moved below the separator; the SD Card section has no
+  separator in it, its title being the break): Tape has Load Tape..., Recent Tapes and Manage Tapes...; the Floppy Disk menu has **Load
+  Disk...**, a new **Recent Disks** and **Manage Disks...** (Manage Disks... was last); Snapshot has
+  Load Snapshot..., Recent Snapshots and **Manage Snapshots...** (it came after Load
+  Multisnapshot...); and SD Card has Insert Card in Slot 2... and **Manage Cards...** (last until
+  now). The Info row is the last of each menu's section: Disk Info was above Manage Disks, and has no separator above it now.
+  **Recent Disks** is the disks among the recent files (Load Disk..., File > Open or a drop), 15 as rows
+  and a last row, "N more: Manage Disks...", that opens the window; it keeps no list of its own, so it
+  shares the 20 of Recent in the browsers. Names: Open DSK Image... is **Load Disk...** (and the
+  browser's title); Show Info in the Tape menu is **Tape Info**; the menu row Autoload tape is
+  **Autoload Tape** (the Preferences row keeps its name); and a floppy is spelled **disk** wherever it
+  is read in the program and the manual: the menus said disk, and the Floppy Disks window, the toasts, the
+  info windows and the manual said disc in places. DSK, the `-disk` option, "on disk" meaning storage, and the
+  console lines are as they were.
+
+- **Save browsers ask before replacing a file** (zenui 0.4.0): Save As of a snapshot or a
+  multisnapshot and New Empty SD Card Image show REPLACE on the button, and Enter or the button
+  confirms, Escape keeps the file. The Export form's Browse... does not ask, as the form asks about a
+  file that is there itself, and always did.
+- **A double click in a browser** needs its two clicks within half a second on the same row; it was
+  any second click on the selected row, so a row chosen with the keys opened on a single click.
+- ZenZX needs zenui v0.4.0.
+
 ## [0.50.0] - 2026-11-21
 
 A substantial minor release gathering the drawer, SD-card and floppy work, the

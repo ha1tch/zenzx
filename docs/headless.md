@@ -66,6 +66,12 @@ image to PNG:
 
 This is useful for verifying screen output against reference `.scr` files.
 
+A Timex screen, a `.hires.scr` or a `.hicol.scr` (12288 bytes, and for hi-res the byte of port 0xFF after
+them, whose bits 5-3 are the ink), loads into the machine's two screens and sets the mode, on a Next, or
+on a classic machine with `-ns-graphics` set to the hi-colour renderer for a hi-colour one; on any other
+machine it is refused with a message and nothing is changed. A plain `.scr` of 12289 bytes is read as hi-res,
+and one of 12288 bytes is guessed (a bitmap in its second half is hi-res).
+
 ## Flags
 
 The headless program's flags, with their defaults, are in the manual: [Command-line reference -- headless](MANUAL.md#command-line-reference--headless). `./zenzx-headless -help` prints them all.

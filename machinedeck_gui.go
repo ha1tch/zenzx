@@ -517,7 +517,7 @@ func (d *machineDeck) cardUse(path string) cardUse {
 	return cardUse{}
 }
 
-// diskUse tells which machine of the deck has the disc file at path in its
+// diskUse tells which machine of the deck has the disk file at path in its
 // drive, 0 for none.
 func (d *machineDeck) diskUse(path string) int {
 	for i, m := range d.machines {

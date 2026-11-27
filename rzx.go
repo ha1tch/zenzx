@@ -366,6 +366,7 @@ func (zx *ZenZX) rzxFrame() bool {
 	zx.display.SetBorderChanges(zx.io.GetBorderHistory(), zx.frameOrigin, zx.cyclesPerFrame)
 	zx.io.EndFrame()
 	zx.frameCount++
+	zx.shotFrame() // the GIF being recorded takes the frame (screenshot_gif.go)
 
 	if zx.running {
 		switch {

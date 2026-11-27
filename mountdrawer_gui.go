@@ -49,7 +49,7 @@ const (
 type mountSlot struct {
 	label    string        // "SD slot 2", "+3 Drive A"
 	kind     mountSlotKind // which storage it is, so mount routes correctly
-	contents string        // current card/disc name, or "empty"
+	contents string        // current card/disk name, or "empty"
 	free     string        // free-space hint, or ""
 	path     string        // backing image file, "" when none
 	target   bool          // true when it is a real drop target (writable, buildable)
@@ -290,7 +290,7 @@ func allMachineLoadable(files []string) bool {
 // works drop-then-reveal.
 //
 // Routing is by file type: a drop of only machine-loadable files (tapes,
-// snapshots, discs, .scr) falls through to the machine-load path and returns
+// snapshots, disks, .scr) falls through to the machine-load path and returns
 // false, so dropping a game still loads it. Any other file is copied onto a
 // card: TryDrop opens the drawer (as confirmation), mounts to the slot under
 // the cursor -- or the nearest writable slot when the cursor is not over one --
@@ -390,8 +390,8 @@ func mountRefusedMsg(slot *mountSlot) string {
 	switch slot.reason {
 	case "read-only":
 		return slot.label + " is read-only, so nothing was added"
-	case "no disc in the drive":
-		return "There is no disc in " + slot.label + ", so nothing was added"
+	case "no disk in the drive":
+		return "There is no disk in " + slot.label + ", so nothing was added"
 	default:
 		if slot.reason == "" {
 			return "Nothing was added to " + slot.label
@@ -431,11 +431,11 @@ func (m *mountDrawer) mount(slot *mountSlot, files []string) {
 	m.say(mountSuccessMsg(ff, slot))
 }
 
-// mountFloppy writes the dropped files into the +3 disc in the focused machine's
+// mountFloppy writes the dropped files into the +3 disk in the focused machine's
 // drive, through plus3's +3DOS filesystem, then reloads the drive from the image
-// so the running machine reads the new disc. It does not drive an OS re-read: on
+// so the running machine reads the new disk. It does not drive an OS re-read: on
 // the +3 the new file is seen on the next directory access (a CAT or a loader),
-// which is all that is needed -- the file lands on the right disc, in the focused
+// which is all that is needed -- the file lands on the right disk, in the focused
 // machine's drive. The acknowledgement is the toast.
 func (m *mountDrawer) mountFloppy(slot *mountSlot, files []string) {
 	zx := m.zx
@@ -449,17 +449,17 @@ func (m *mountDrawer) mountFloppy(slot *mountSlot, files []string) {
 		return
 	}
 	// addFilesToDisk saved the image back to the same file; reload the drive from
-	// it so the running machine reads the new disc (the FDC holds the image in
-	// memory, so without this it keeps serving the pre-write disc).
+	// it so the running machine reads the new disk (the FDC holds the image in
+	// memory, so without this it keeps serving the pre-write disk).
 	if err := zx.io.fdc.LoadDisk(slot.path); err != nil {
-		m.say("added to the disc, but the drive could not re-read it: " + err.Error())
+		m.say("added to the disk, but the drive could not re-read it: " + err.Error())
 		return
 	}
 	m.say(floppySuccessMsg(written, slot))
 }
 
-// floppySuccessMsg phrases the acknowledgement for a disc write: a few files are
-// named, a larger batch is counted, each placed on the disc by its drive.
+// floppySuccessMsg phrases the acknowledgement for a disk write: a few files are
+// named, a larger batch is counted, each placed on the disk by its drive.
 func floppySuccessMsg(written []string, slot *mountSlot) string {
 	disc := filepath.Base(slot.path)
 	switch len(written) {
@@ -592,8 +592,8 @@ func (m *mountDrawer) rebuildSlots() {
 			label: "+3 Drive A",
 			kind:  slotFloppy,
 		}
-		// The disc in the drive is the backing .dsk file; a file can be added to
-		// it only when there is one and it is a +3DOS disc plus3 can write.
+		// The disk in the drive is the backing .dsk file; a file can be added to
+		// it only when there is one and it is a +3DOS disk plus3 can write.
 		if disc := zx.io.fdc.DiskFile(); disc != "" {
 			s.contents = filepath.Base(disc)
 			s.path = disc
@@ -603,7 +603,7 @@ func (m *mountDrawer) rebuildSlots() {
 			}
 		} else {
 			s.contents = "empty"
-			s.reason = "no disc in the drive"
+			s.reason = "no disk in the drive"
 		}
 		m.slots = append(m.slots, s)
 	}

@@ -58,7 +58,7 @@ func saveAs(t *testing.T, zx *ZenZX, name, format string) string {
 }
 
 // The machine a .zxs is of is read from what the machine that saved it was, the +2A being a +3 with
-// no disc controller.
+// no disk controller.
 func TestAZXSIsOfTheMachineThatSavedIt(t *testing.T) {
 	for _, c := range []struct {
 		model string

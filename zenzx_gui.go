@@ -109,6 +109,8 @@ func RunGUI(args []string) {
 	snapshot := fs.String("snapshot", "", "Load snapshot on startup")
 	snapshotFormat := fs.String("format", "auto", "Snapshot format: auto, zxs, sna, z80, szx (load only), rzx (a recording to play, load only)")
 	snapshotsDir := fs.String("snapshots-dir", SnapshotDir, "Folder for the snapshots Quick Save, Save Timestamped and Save As make, and Manage Snapshots lists")
+	screenshotsDir := fs.String("screenshots-dir", ScreenshotDir, "Folder for the screenshots View > Screenshot saves, and Manage Screenshots lists")
+	tapesDir := fs.String("tapes-dir", TapeDir, "Folder Load Tape starts in when no tape has been loaded, and Manage Tapes lists")
 	tapeFile := fs.String("tape", "", "Load tape file (.tap or .tzx)")
 	tapeMode := fs.String("tapemode", "fast", "Tape mode: fast, accurate, or turbo (identical accurate-mode CPU/tape correctness, with per-instruction AMX/audio bookkeeping and per-frame border rendering skipped while the tape is actively loading)")
 	noAudio := fs.Bool("noaudio", false, "Disable audio")
@@ -133,6 +135,8 @@ func RunGUI(args []string) {
 	showVersion := fs.Bool("version", false, "Print version and exit")
 	fs.Parse(args)
 	snapshotDir = *snapshotsDir
+	screenshotDir = *screenshotsDir
+	tapeDir = *tapesDir
 	// snapshots from before they had a folder; startupNotes is what the window says once there is
 	// one, with the other things found before it opens
 	startupNotes := migrateLegacySnapshots()
@@ -313,7 +317,7 @@ func RunGUI(args []string) {
 	// see videorender.go).
 	zx := NewZenZX(backend)
 	zx.SetDisplay(NewDisplayManager(zx.screen))
-	audioDev := NewOtoAudioDevice()
+	audioDev := NewSystemAudioDevice()
 	zx.audio.SetDevice(audioDev)
 	if err := zx.io.setNextRegLog(*nextRegLogFlag); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -439,6 +443,7 @@ func RunGUI(args []string) {
 		z.NEXAskReset = func(path string) { dropC.openReset(path) }
 	}
 	hostHooks(zx)
+	defaultTypistRunAhead = 5         // the window paces 50 frames a second: the typist runs ahead of that, as FUSE does
 	zx.window().OnNotice = drawer.say // why the zoom and the border keys did nothing
 	if overlay != nil {
 		defer overlay.Unload()
@@ -448,6 +453,8 @@ func RunGUI(args []string) {
 	if bar != nil {
 		uiText = func() *zenuiraylib.BDFText { return bar.text } // the FPS counter is drawn in the chosen font
 		snapshotStartsPlaying = func() bool { return bar.snapshotPlay }
+		tapeAutoloadWanted = func() bool { return bar.tapeAutoload }
+		tapeInsertedHook = func(path string) { bar.noteRecentTape(zx, path) }
 		showDiagnostics = bar.showDiagnostics
 		showInfo = bar.showInfo
 		startupNotes = append(startupNotes, bar.warnings...)
@@ -906,6 +913,9 @@ func RunGUI(args []string) {
 			fmt.Printf("Error loading tape %s: %v\n", *tapeFile, err)
 		} else {
 			fmt.Printf("Loaded tape: %s\n", *tapeFile)
+			if tapeInsertedHook != nil {
+				tapeInsertedHook(*tapeFile)
+			}
 
 			// Set tape mode
 			switch strings.ToLower(*tapeMode) {
@@ -918,6 +928,11 @@ func RunGUI(args []string) {
 			default:
 				zx.tape.SetMode(TapeFast)
 				fmt.Println("Tape mode: Fast")
+			}
+
+			// With Autoload tape on (and no snapshot in the machine) the machine types what loads it.
+			if *snapshot == "" && tapeAutoloadWanted != nil && tapeAutoloadWanted() && zx.AutoloadTape() {
+				fmt.Println("Tape autoload: the machine is typing the load command")
 			}
 
 			// Show first few blocks
@@ -1155,6 +1170,9 @@ func RunGUI(args []string) {
 		plain, withShift := dropAsk, dropRun
 		if bar != nil {
 			plain, withShift = bar.dropPlain, bar.dropShift
+			for _, f := range files {
+				bar.noteRecentFile(zx, f) // the Recent place of the Open dialogs lists what was given, by drop or by dialog
+			}
 		}
 		plan := planDrop(files, dropContext{
 			atPrompt:  zx.nextAtIdlePrompt(),
@@ -1311,7 +1329,7 @@ func RunGUI(args []string) {
 		}
 		// A file drop is routed here, once: onto a drawer slot if it landed on
 		// one (mount into that slot), otherwise into the machine (snapshot,
-		// tape, disc, .scr). Read the drop exactly once -- the binding frees
+		// tape, disk, .scr). Read the drop exactly once -- the binding frees
 		// the list on the first LoadDroppedFiles call.
 		if rl.IsFileDropped() {
 			files := rl.LoadDroppedFiles()
@@ -1346,6 +1364,7 @@ func RunGUI(args []string) {
 			blockedOnRealMemory := sched != nil && sched.BlockingOnRealMemory()
 			zx.RunTurboAwareFrame(blockedOnRealMemory)
 		}
+		zx.announceShots() // a GIF that finished since the last frame says so (screenshot_gif.go)
 		// A paused machine shows the Play button in the middle of its picture; clicking it
 		// resumes the machine, as F2 does. Not while something else has the pointer.
 		playShown = zx.paused && !zx.stopped && !zx.stopping && (hud == nil || !hud.Active())

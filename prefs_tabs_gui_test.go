@@ -36,7 +36,7 @@ func TestPreferencesTabsGroupEveryRow(t *testing.T) {
 	for label, tab := range map[string]string{
 		"Theme": "Appearance", "Font": "Appearance", "Font zoom": "Appearance",
 		"Display zoom": "Appearance", "Fixed menu bar": "Appearance",
-		"Machine dock": "Machines", "Several machines": "Machines", "A loaded snapshot": "Machines",
+		"Machine dock": "Machines", "Several machines": "Machines", "A loaded snapshot": "Machines", "Autoload tape": "Machines",
 		"A plain drop": "Files", "With Shift held": "Files", "Escape": "Keyboard",
 	} {
 		if tabOf[label] != tab {
